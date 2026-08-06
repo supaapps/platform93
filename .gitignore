@@ -1,0 +1,24 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+
+# Build and test output
+dist/
+build/
+coverage/
+tmp/
+*.log
+
+# Dependencies
+node_modules/
+vendor/
