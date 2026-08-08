@@ -6,10 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
+	pathpkg "path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -728,28 +729,36 @@ func (s *Server) adminHandler() http.Handler {
 			http.NotFound(w, r)
 		})
 	}
-	files := http.FileServer(http.Dir(s.adminAssets))
+	assets := os.DirFS(s.adminAssets)
+	files := http.FileServerFS(assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := filepath.Join(s.adminAssets, filepath.Clean(r.URL.Path))
-		if info, err := os.Stat(path); err == nil && !info.IsDir() {
-			if strings.EqualFold(filepath.Ext(path), ".html") {
-				s.serveAdminHTML(w, r, path)
+		assetPath := strings.TrimPrefix(pathpkg.Clean("/"+r.URL.Path), "/")
+		if assetPath == "" {
+			assetPath = "."
+		}
+		if !fs.ValidPath(assetPath) {
+			http.NotFound(w, r)
+			return
+		}
+		if info, err := fs.Stat(assets, assetPath); err == nil && !info.IsDir() {
+			if strings.EqualFold(pathpkg.Ext(assetPath), ".html") {
+				s.serveAdminHTML(w, r, assets, assetPath)
 				return
 			}
 			files.ServeHTTP(w, r)
 			return
 		}
-		index := filepath.Join(s.adminAssets, strings.Trim(r.URL.Path, "/"), "index.html")
-		if _, err := os.Stat(index); err == nil {
-			s.serveAdminHTML(w, r, index)
+		index := pathpkg.Join(assetPath, "index.html")
+		if _, err := fs.Stat(assets, index); err == nil {
+			s.serveAdminHTML(w, r, assets, index)
 			return
 		}
-		s.serveAdminHTML(w, r, filepath.Join(s.adminAssets, "index.html"))
+		s.serveAdminHTML(w, r, assets, "index.html")
 	})
 }
 
-func (s *Server) serveAdminHTML(w http.ResponseWriter, r *http.Request, path string) {
-	content, err := os.ReadFile(path)
+func (s *Server) serveAdminHTML(w http.ResponseWriter, r *http.Request, assets fs.FS, assetPath string) {
+	content, err := fs.ReadFile(assets, assetPath)
 	if err != nil {
 		http.NotFound(w, r)
 		return

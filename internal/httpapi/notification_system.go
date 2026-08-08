@@ -48,7 +48,7 @@ func appendCredentialQuery(rawURL string, values map[string]string) string {
 }
 
 func (s *Server) renderSystemNotification(ctx context.Context, applicationID *string, templateKey, recipient string, supplied map[string]any) (string, string, []byte, error) {
-	variables := make(map[string]any, len(supplied)+8)
+	variables := make(map[string]any)
 	for key, value := range supplied {
 		variables[key] = value
 	}
