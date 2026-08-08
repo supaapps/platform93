@@ -979,10 +979,10 @@ components:
               additionalProperties: false
             version: { type: integer, format: int64, minimum: 1 }
     UUID: { type: string, format: uuid }
-    Locale: { type: string, maxLength: 35, description: Canonical BCP 47 language tag such as en, de-CH, or pt-BR. Empty means no user preference. }
+    Locale: { type: string, maxLength: 35, description: "Canonical BCP 47 language tag such as en, de-CH, or pt-BR. Empty means no user preference." }
     Problem: { type: object, required: [type, title, status, code], properties: { type: { type: string, format: uri-reference }, title: { type: string }, status: { type: integer }, detail: { type: string }, code: { type: string }, request_id: { type: string } } }
     Page: { type: object, required: [items, next_cursor], properties: { items: { type: array, items: {} }, next_cursor: { type: [string, "null"] } } }
-    OrganizationPage: { type: object, required: [items, next_cursor, installation_role], properties: { items: { type: array, items: { type: object, additionalProperties: true } }, next_cursor: { type: [string, "null"] }, installation_role: { type: [string, "null"], enum: [owner, admin, auditor, null], description: The current operator's installation-wide role, or null for organization-only access. } } }
+    OrganizationPage: { type: object, required: [items, next_cursor, installation_role], properties: { items: { type: array, items: { type: object, additionalProperties: true } }, next_cursor: { type: [string, "null"] }, installation_role: { type: [string, "null"], enum: [owner, admin, auditor, null], description: "The current operator's installation-wide role, or null for organization-only access." } } }
     BootstrapRequest: { type: object, required: [credential, email], properties: { credential: { type: string, writeOnly: true }, email: { type: string, format: email }, display_name: { type: string } } }
     AcceptOrganizationInvitation: { type: object, required: [invitation_token], properties: { invitation_token: { type: string, minLength: 1, writeOnly: true }, display_name: { type: string, maxLength: 200 } }, additionalProperties: false }
     ApplicationFlowConfig: { type: object, required: [oauth_client_id, sign_in_redirect_uri, invitation_redirect_uri], additionalProperties: false, properties: { oauth_client_id: { type: string, minLength: 1 }, sign_in_redirect_uri: { type: string, format: uri }, invitation_redirect_uri: { type: string, format: uri } } }

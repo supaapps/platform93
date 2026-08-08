@@ -18,7 +18,7 @@ jobs:
       - uses: github/codeql-action/autobuild@v3
       - uses: github/codeql-action/analyze@v3
   dependency-review:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.repository.private == false
     permissions: { contents: read }
     runs-on: ubuntu-latest
     steps:

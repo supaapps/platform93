@@ -1,0 +1,50 @@
+{{- range $mode := list "api" "worker" "dispatcher" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platform93-{{ $mode }}
+  labels: {{- include "platform93.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ index $.Values.replicas $mode }}
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  selector: { matchLabels: { app.kubernetes.io/name: platform93, app.kubernetes.io/component: {{ $mode }} } }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: platform93, app.kubernetes.io/component: {{ $mode }} }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: {{ if eq $mode "api" }}"8093"{{ else }}"9090"{{ end }}
+    spec:
+      terminationGracePeriodSeconds: 40
+      serviceAccountName: platform93
+      automountServiceAccountToken: false
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: platform93
+          image: {{ include "platform93.image" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: [{{ if eq $mode "api" }}"serve"{{ else }}"{{ $mode }}"{{ end }}]
+          envFrom: [{ configMapRef: { name: platform93-config } }]
+          env:
+            - name: PLATFORM93_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ $.Values.database.existingSecret }}, key: {{ $.Values.database.urlKey }} } }
+          volumeMounts: [{ name: master-key, mountPath: /run/platform93, readOnly: true }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+          resources: {{ index $.Values.resources $mode | toYaml | nindent 12 }}
+          {{- if eq $mode "api" }}
+          ports: [{ name: http, containerPort: 8093 }]
+          startupProbe: { httpGet: { path: /readyz, port: http }, periodSeconds: 2, failureThreshold: 60 }
+          livenessProbe: { httpGet: { path: /healthz, port: http }, initialDelaySeconds: 5, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /readyz, port: http }, initialDelaySeconds: 3, periodSeconds: 5 }
+          lifecycle: { preStop: { exec: { command: ["/bin/sh", "-c", "sleep 5"] } } }
+          {{- else }}
+          ports: [{ name: metrics, containerPort: 9090 }]
+          livenessProbe: { httpGet: { path: /healthz, port: metrics }, initialDelaySeconds: 5, periodSeconds: 10 }
+          {{- end }}
+      volumes:
+        - name: master-key
+          secret: { secretName: {{ $.Values.masterKey.existingSecret }}, items: [{ key: {{ $.Values.masterKey.key }}, path: master-key }] }
+---
+{{- end }}

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: platform93
+description: Self-hosted identity, billing, entitlements, notifications, and events
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+annotations:
+  licenses: Apache-2.0
+  org.opencontainers.image.source: https://github.com/supaapps/platform93

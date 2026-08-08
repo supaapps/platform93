@@ -1,0 +1,46 @@
+{{- if .Values.backup.enabled }}
+{{- if not .Values.backup.existingClaim }}
+{{- fail "backup.existingClaim is required when backup.enabled=true" }}
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: platform93-backup
+  labels: {{- include "platform93.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.backup.retentionSuccessfulJobs }}
+  failedJobsHistoryLimit: {{ .Values.backup.retentionFailedJobs }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels: { app.kubernetes.io/name: platform93, app.kubernetes.io/component: backup }
+        spec:
+          restartPolicy: Never
+          serviceAccountName: platform93
+          automountServiceAccountToken: false
+          securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+          containers:
+            - name: backup
+              image: {{ include "platform93.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["/bin/sh", "-c"]
+              args: ['exec /app/platform93 backup "/backups/platform93-$(date -u +%Y%m%dT%H%M%SZ).dump"']
+              envFrom: [{ configMapRef: { name: platform93-config } }]
+              env:
+                - name: PLATFORM93_DATABASE_URL
+                  valueFrom: { secretKeyRef: { name: {{ .Values.database.existingSecret }}, key: {{ .Values.database.urlKey }} } }
+              volumeMounts:
+                - { name: master-key, mountPath: /run/platform93, readOnly: true }
+                - { name: backups, mountPath: /backups }
+              securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: ["ALL"] } }
+              resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
+          volumes:
+            - name: master-key
+              secret: { secretName: {{ .Values.masterKey.existingSecret }}, items: [{ key: {{ .Values.masterKey.key }}, path: master-key }] }
+            - name: backups
+              persistentVolumeClaim: { claimName: {{ .Values.backup.existingClaim }} }
+{{- end }}

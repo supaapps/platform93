@@ -54,7 +54,7 @@ export type OrganizationPolicy = UpdateOrganizationPolicy & {
 export type Uuid = string;
 
 /**
- * Canonical BCP 47 language tag such as en
+ * Canonical BCP 47 language tag such as en, de-CH, or pt-BR. Empty means no user preference.
  */
 export type Locale = string;
 
@@ -78,7 +78,7 @@ export type OrganizationPage = {
     }>;
     next_cursor: string | null;
     /**
-     * The current operator's installation-wide role
+     * The current operator's installation-wide role, or null for organization-only access.
      */
     installation_role: 'owner' | 'admin' | 'auditor' | null;
 };

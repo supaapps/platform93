@@ -33,6 +33,6 @@ tmp/
 *.test
 *.prof
 *.tsbuildinfo
-platform93
+/platform93
 __pycache__/
 *.py[cod]
