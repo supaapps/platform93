@@ -749,5 +749,5 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByLabel("Invitation credential").fill(invitationCredential!);
   await page.getByLabel("Display name").fill("Organization Admin");
   await page.getByRole("button", { name: "Accept invitation" }).click();
-  await expect(page.locator(".cards").getByText("Platform93 Test", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Platform93 Test", exact: true })).toBeVisible();
 });

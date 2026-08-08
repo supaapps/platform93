@@ -670,7 +670,7 @@ function OperatorLogin({ available, onComplete }: { available: boolean; onComple
                 : "Send sign-in code"}
           </button>
         </form>}
-        {method === "email" && !available && <p className="error">Operator email login is unavailable because no installation SMTP provider is configured. Use a configured password, restore an existing session, or run <code>platform93 recover</code>.</p>}
+        {!available && <p className="error">Operator email login is unavailable because no installation SMTP provider is configured. Use a configured password, restore an existing session, or run <code>platform93 recover</code>.</p>}
         {method === "password" && <form onSubmit={submitPassword}>
           <label>Operator email<input required name="email" type="email" autoComplete="username" /></label>
           <label>Password<input required name="password" type="password" minLength={12} autoComplete="current-password" /></label>
