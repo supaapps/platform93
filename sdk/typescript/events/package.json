@@ -1,0 +1,41 @@
+{
+  "name": "@supaapps/platform93-events",
+  "version": "0.1.0",
+  "description": "CloudEvents contracts and webhook verification for Platform93",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/supaapps/platform93.git",
+    "directory": "sdk/typescript/events"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "schemas"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "node ../../../scripts/sync-event-schemas.mjs",
+    "postpack": "node ../../../scripts/sync-event-schemas.mjs --clean",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.1",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,8 @@
+extends:
+  - recommended
+rules:
+  operation-summary: off
+  operation-4xx-response: off
+  operation-2xx-response: off
+  security-defined: error
+  no-unresolved-refs: error

@@ -1,0 +1,140 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+permissions: { contents: read }
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_DB: platform93_test, POSTGRES_USER: platform93, POSTGRES_PASSWORD: platform93 }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U platform93 -d platform93_test" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PLATFORM93_DATABASE_URL: postgres://platform93:platform93@localhost:5432/platform93_test?sslmode=disable
+      PLATFORM93_MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25.x", cache: true }
+      - run: gofmt -w cmd internal migrations sdk/go
+      - run: git diff --exit-code
+      - run: go vet ./...
+      - run: go test -race -coverprofile=coverage.out ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+      - run: go run ./cmd/platform93 migrate
+      - run: go run ./cmd/platform93 doctor
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.13.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm audit --prod
+      - run: pnpm --filter @platform93/admin build
+  integrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: "8.2", tools: composer:v2 }
+      - run: composer validate --strict
+      - run: composer install --no-interaction --prefer-dist
+      - run: composer audit --no-interaction
+      - run: php sdk/php/tests/conformance.php
+      - run: php sdk/php/tests/auth_conformance.php
+      - run: find sdk/php/src -name '*.php' -print0 | xargs -0 -n1 php -l
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python -m pip install build
+      - run: python -m build sdk/python/auth && python -m build sdk/python/webhooks
+      - run: python -m pip install -e sdk/python/auth
+      - run: PYTHONPATH=sdk/python/auth/src python sdk/python/auth/tests/conformance.py
+      - run: PYTHONPATH=sdk/python/webhooks/src python sdk/python/webhooks/tests/conformance.py
+  browser:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_DB: platform93_browser, POSTGRES_USER: platform93, POSTGRES_PASSWORD: platform93 }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U platform93 -d platform93_browser" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PLATFORM93_DATABASE_URL: postgres://platform93:platform93@localhost:5432/platform93_browser?sslmode=disable
+      PLATFORM93_MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      PLATFORM93_PUBLIC_URL: http://127.0.0.1:8093
+      PLATFORM93_ADMIN_ASSETS: web/out
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25.x", cache: true }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.13.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: go run ./cmd/platform93 migrate
+      - run: |
+          TOKEN="$(go run ./cmd/platform93 bootstrap)"
+          echo "PLATFORM93_BOOTSTRAP_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+      - run: go build -o /tmp/platform93 ./cmd/platform93
+      - run: |
+          /tmp/platform93 serve >/tmp/platform93.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl --fail --silent http://127.0.0.1:8093/readyz && exit 0
+            sleep 1
+          done
+          cat /tmp/platform93.log
+          exit 1
+      - run: pnpm --dir web exec playwright install --with-deps chromium
+      - run: pnpm --dir web test:e2e
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25.x", cache: true }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.13.0 }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm generate
+      - run: git diff --exit-code
+      - run: npx --yes @redocly/cli@latest lint api/openapi/platform93.yaml
+      - run: node scripts/check-route-contract.mjs
+      - run: node scripts/validate-event-schema.mjs
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with: { context: ., push: false, load: true, tags: platform93:test }
+      - uses: aquasecurity/trivy-action@0.33.1
+        with: { image-ref: platform93:test, severity: HIGH,CRITICAL, ignore-unfixed: true, exit-code: "1" }
+  deployment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f deploy/compose/compose.yaml config --quiet
+      - run: docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.17.3 lint deploy/helm/platform93
+      - run: docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.17.3 template platform93 deploy/helm/platform93 >/tmp/platform93-helm.yaml
+  security:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, security-events: write }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+      - uses: anchore/sbom-action@v0
+        with: { path: ., output-file: sbom.spdx.json }

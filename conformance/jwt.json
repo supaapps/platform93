@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "audience": "platform93:application:01900000-0000-7000-8000-000000000093",
+  "application_id": "01900000-0000-7000-8000-000000000093",
+  "cases": [
+    { "name": "valid_access", "mutation": "none", "accept": true },
+    { "name": "valid_machine", "mutation": "machine", "accept": true },
+    { "name": "valid_delegated", "mutation": "delegated", "accept": true },
+    { "name": "wrong_issuer", "mutation": "wrong_issuer", "accept": false },
+    { "name": "wrong_audience", "mutation": "wrong_audience", "accept": false },
+    { "name": "wrong_application", "mutation": "wrong_application", "accept": false },
+    { "name": "expired", "mutation": "expired", "accept": false },
+    { "name": "future_not_before", "mutation": "future_nbf", "accept": false },
+    { "name": "future_issued_at", "mutation": "future_iat", "accept": false },
+    { "name": "missing_subject", "mutation": "missing_sub", "accept": false },
+    { "name": "missing_application", "mutation": "missing_application", "accept": false },
+    { "name": "missing_token_kind", "mutation": "missing_token_kind", "accept": false },
+    { "name": "missing_actor_type", "mutation": "missing_actor_type", "accept": false },
+    { "name": "operator_actor_rejected", "mutation": "operator_actor", "accept": false },
+    { "name": "algorithm_confusion", "mutation": "wrong_algorithm", "accept": false },
+    { "name": "missing_key_id", "mutation": "missing_kid", "accept": false },
+    { "name": "unknown_key_id", "mutation": "unknown_kid", "accept": false },
+    { "name": "wrong_signature", "mutation": "wrong_signature", "accept": false },
+    { "name": "delegated_wrong_actor_type", "mutation": "delegated_wrong_actor_type", "accept": false }
+  ]
+}

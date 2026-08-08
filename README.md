@@ -1,28 +1,68 @@
 # Platform93
 
-Platform93 is an open-source control plane for application identity, tenants,
-products, billing, entitlements, customer data, events, and administration.
+Platform93 is an Apache-2.0 self-hosted control plane for application identity,
+authorization, workspaces, billing, entitlements, transactional email, events, and
+outgoing webhooks. PostgreSQL is the only required runtime service.
 
 It keeps authoritative security and commercial state outside application code and
 exposes it through versioned APIs, events, and generated SDKs.
 
 > The control plane outside your app.
 
-## Project Status
+Platform93 targets fresh installations and new contracts. It does not include
+legacy API adapters, source-database import, hosted end-user pages, CRM,
+marketing automation, or a generic application database.
 
-Platform93 is in its initial architecture and contract-design phase. No stable
-release or compatibility promise exists yet.
+The repository is currently a development foundation, not a `v1.0.0` release.
+See [Release Readiness](docs/release-readiness.md) for implemented coverage and
+the gates that remain before a production tag.
 
-## Intended Capabilities
+## Repository
 
-- Passwordless-first authentication, sessions, OAuth 2.1, and OpenID Connect.
-- Application users, tenants, memberships, roles, and permissions.
-- Products, prices, payment-provider checkout, subscriptions, invoices, and taxes.
-- Local entitlement checkout and administrative grants.
-- User and tenant entitlements with explicit provenance and expiration.
-- Durable events, signed webhooks, notifications, and audit history.
-- Admin web interface, CLI, OpenAPI contract, and generated SDKs.
-- Self-hosting with PostgreSQL and one published application image.
+- `cmd/platform93`: API, worker, dispatcher, migration, bootstrap, and recovery CLI.
+- `internal`: isolated Go domain and infrastructure modules.
+- `migrations`: explicit PostgreSQL schema history embedded in the binary.
+- `api/openapi`: canonical HTTP contract.
+- `schemas/events`: immutable event contracts.
+- `web`: statically exported administrator application embedded in the image.
+- `sdk`: supported TypeScript, PHP, Python, and Go integrations.
+- `deploy`: Docker Compose and production Helm packaging.
+
+## Local Start
+
+Create `postgres_password`, `database_url`, and `platform93_master_key` files in
+`deploy/compose/secrets`. The database URL uses the PostgreSQL password; the
+master key is the base64 representation of exactly 32 random bytes.
+
+```bash
+docker build -t platform93:dev .
+PLATFORM93_IMAGE=platform93:dev docker compose -f deploy/compose/compose.yaml up -d
+docker compose -f deploy/compose/compose.yaml run --rm api bootstrap
+```
+
+Open `http://localhost:8093` and consume the one-time bootstrap credential.
+
+## Development
+
+```bash
+pnpm install
+pnpm typecheck
+go test ./...
+pnpm --filter @platform93/admin build
+go build ./cmd/platform93
+```
+
+## Integration Packages
+
+- `@supaapps/platform93-sdk`: generated TypeScript API client.
+- `@supaapps/platform93-auth`: headless browser authentication and token storage adapters.
+- `@supaapps/platform93-react`: React provider and authentication hooks.
+- `@supaapps/platform93-server`: strict Node.js JWT/JWKS verification.
+- `@supaapps/platform93-events`: event contracts and webhook verification.
+- `supaapps/platform93`: Composer authentication/webhook package with optional Laravel guard.
+- `supaapps-platform93-auth`: Python verifier with FastAPI, Django, and Flask adapters.
+- `supaapps-platform93-webhooks`: Python webhook signature verification.
+- `github.com/supaapps/platform93/sdk/go`: Go authentication and webhook packages.
 
 ## Principles
 
@@ -31,13 +71,17 @@ release or compatibility promise exists yet.
 - Public behavior is contract-first and versioned.
 - Data is exportable and provider integrations remain replaceable.
 - Operations, migrations, backups, and diagnostics are product features.
-- The repository never contains deployment credentials or private environment data.
+- The repository never contains deployment credentials or private application data.
 
-See [Architecture Principles](docs/architecture.md), [Contributing](CONTRIBUTING.md),
-and [Security Policy](SECURITY.md).
+See [Architecture Principles](docs/architecture.md),
+[Application Configuration](docs/application-configuration.md),
+[Catalog And Entitlements](docs/catalog-entitlements.md),
+[Notification Templates](docs/notifications.md),
+[Provider Inheritance](docs/provider-inheritance.md),
+[Organization Management And Governance](docs/organization-management.md),
+[Events And Webhooks](docs/events-webhooks.md),
+[Contributing](CONTRIBUTING.md), and [Security Policy](SECURITY.md).
 
 ## License
 
-An OSI-approved license will be selected before the first source release. Until a
-license file is committed, copyright law applies and the repository should not be
-treated as licensed for redistribution.
+Apache License 2.0. See [LICENSE](LICENSE).

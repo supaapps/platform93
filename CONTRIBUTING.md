@@ -16,7 +16,7 @@ be discussed before substantial implementation.
 ## Security-sensitive Changes
 
 Authentication, authorization, token, cryptography, billing, entitlement, secret,
-and tenant-isolation changes require explicit threat analysis and negative tests.
+and application/workspace-isolation changes require explicit threat analysis and negative tests.
 
 ## Compatibility
 

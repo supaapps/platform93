@@ -1,0 +1,40 @@
+{
+  "name": "@supaapps/platform93-server",
+  "version": "0.1.0",
+  "description": "Strict server-side JWT and JWKS verification for Platform93",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/supaapps/platform93.git",
+    "directory": "sdk/typescript/server"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "jose": "^6.0.12"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

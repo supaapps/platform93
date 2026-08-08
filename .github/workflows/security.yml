@@ -1,0 +1,27 @@
+name: Security
+on:
+  pull_request:
+  push: { branches: [main] }
+  schedule: [{ cron: "23 4 * * 1" }]
+permissions: { contents: read }
+jobs:
+  codeql:
+    permissions: { contents: read, security-events: write, packages: read }
+    strategy:
+      fail-fast: false
+      matrix: { language: [go, javascript-typescript] }
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: "${{ matrix.language }}" }
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    permissions: { contents: read }
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with: { fail-on-severity: high, deny-licenses: "AGPL-1.0-only, AGPL-3.0-only" }

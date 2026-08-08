@@ -1,0 +1,28 @@
+{
+  "name": "platform93-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.13.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "8.5.23",
+      "sharp": "0.35.0"
+    }
+  },
+  "scripts": {
+    "build": "pnpm build:packages && pnpm --filter @platform93/admin build",
+    "build:packages": "pnpm --filter @supaapps/platform93-sdk build && pnpm --filter @supaapps/platform93-auth build && pnpm --filter @supaapps/platform93-react build && pnpm --filter @supaapps/platform93-server build && pnpm --filter @supaapps/platform93-events build",
+    "generate": "node scripts/project-openapi-30.mjs && go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0 -config api/openapi/oapi-codegen.yaml api/openapi/platform93.openapi30.yaml && pnpm --filter @supaapps/platform93-sdk generate",
+    "check:routes": "node scripts/check-route-contract.mjs",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm build:packages && pnpm --filter @platform93/admin typecheck"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  }
+}

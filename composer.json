@@ -1,0 +1,39 @@
+{
+  "name": "supaapps/platform93",
+  "description": "Authentication and webhook integration for Platform93",
+  "homepage": "https://github.com/supaapps/platform93",
+  "type": "library",
+  "license": "Apache-2.0",
+  "support": {
+    "issues": "https://github.com/supaapps/platform93/issues",
+    "source": "https://github.com/supaapps/platform93"
+  },
+  "require": {
+    "php": "^8.2",
+    "firebase/php-jwt": "^7.1",
+    "psr/cache": "^3.0",
+    "psr/http-message": "^2.0"
+  },
+  "suggest": {
+    "illuminate/auth": "Provides the optional Platform93 Laravel guard",
+    "illuminate/http": "Provides Laravel request integration",
+    "illuminate/support": "Provides Laravel service-provider discovery"
+  },
+  "autoload": {
+    "psr-4": { "Supaapps\\Platform93\\": "sdk/php/src/" }
+  },
+  "autoload-dev": {
+    "psr-4": { "Supaapps\\Platform93\\Tests\\": "sdk/php/tests/" }
+  },
+  "config": {
+    "vendor-dir": "sdk/php/vendor"
+  },
+  "extra": {
+    "laravel": {
+      "providers": ["Supaapps\\Platform93\\Laravel\\Platform93ServiceProvider"]
+    }
+  },
+  "archive": {
+    "exclude": ["/node_modules", "/vendor", "/sdk/php/vendor", "/web", "/internal", "/migrations", "/deploy", "/api", "/.github", "/sdk/typescript", "/sdk/python", "/sdk/go", "/cmd", "/scripts", "/schemas", "/conformance"]
+  }
+}
