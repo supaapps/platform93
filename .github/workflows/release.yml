@@ -105,13 +105,18 @@ jobs:
       - run: pnpm install --frozen-lockfile && pnpm build:packages
       - run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          NPM_TAG="latest"
+          if [[ "$VERSION" == *-* ]]; then
+            NPM_TAG="${VERSION#*-}"
+            NPM_TAG="${NPM_TAG%%.*}"
+          fi
           node scripts/set-release-version.mjs "$VERSION"
           mkdir -p "$RUNNER_TEMP/platform93-npm"
           for PACKAGE in sdk auth react server events; do
             pnpm --dir "sdk/typescript/${PACKAGE}" pack --pack-destination "$RUNNER_TEMP/platform93-npm"
           done
           for TARBALL in "$RUNNER_TEMP"/platform93-npm/*.tgz; do
-            npx --yes npm@11.5.1 publish "$TARBALL" --access public --provenance
+            npx --yes npm@11.5.1 publish "$TARBALL" --access public --provenance --tag "$NPM_TAG"
           done
   pypi:
     needs: verify
