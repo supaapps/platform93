@@ -68,6 +68,20 @@ type WebhookTestData struct {
 	Test              bool   `json:"test"`
 }
 
+type StorageObjectData struct {
+	ObjectID   string `json:"object_id"`
+	OwnerType  string `json:"owner_type"`
+	Visibility string `json:"visibility"`
+	SizeBytes  int64  `json:"size_bytes"`
+}
+
+type StorageProviderData struct {
+	ProviderID     string `json:"provider_id"`
+	Scope          string `json:"scope"`
+	PublicEnabled  bool   `json:"public_enabled"`
+	PrivateEnabled bool   `json:"private_enabled"`
+}
+
 type UserIDData struct {
 	UserID string `json:"user_id"`
 }

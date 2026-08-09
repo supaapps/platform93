@@ -66,6 +66,13 @@ structures, `VerifyAndDecode`, `DecodeData`, and known-version checks. PHP and P
 expose the same built-in/custom discrimination and major-version guard after signature
 verification.
 
+Storage lifecycle contracts include `storage.object.upload_requested`,
+`storage.object.ready`, `storage.object.deleted`, `storage.provider.verified`, and
+`storage.provider.disabled`. Object events contain identifiers, ownership class,
+visibility, and byte size only. Provider events contain safe capability flags and
+scope only. Signed transfer URLs, bucket credentials, object keys, and provider
+secrets are never included.
+
 ```ts
 const event = verifyWebhook(rawBody, signature, endpointSecret);
 

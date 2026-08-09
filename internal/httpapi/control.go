@@ -173,7 +173,7 @@ VALUES ($1,$2,$3,$4)`, id, organizationID, request.Name, request.Slug)
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO roles (id,application_id,key,name,scope,permissions,built_in)
 VALUES ($1,$2,'application_admin','Application administrator','application',ARRAY[$4],true),
-($3,$2,'workspace_member','Workspace member','workspace',ARRAY['read'],true),
+($3,$2,'workspace_member','Workspace member','workspace',ARRAY['read','storage:read'],true),
 ($5,$2,'event_publisher','Event publisher','application',ARRAY['events:publish'],true)`, kernel.NewID(), id, kernel.NewID(), "/applications/"+id.String()+"/*", kernel.NewID())
 	}
 	if err == nil {
@@ -337,7 +337,7 @@ func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {
 	auth["registration_enabled"] = internal.RegistrationMode == "public"
 	auth["password_enabled"] = internal.PasswordEnabled
 	auth["passwordless_enabled"] = internal.PasswordlessEnabled
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"schema_version": "1.1", "api_base": s.app.PublicURL + "/v1", "issuer": s.app.Issuer(), "application_id": chi.URLParam(r, "application_id"), "public_config": decodeMap(publicConfig), "auth": auth})
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{"schema_version": "1.2", "api_base": s.app.PublicURL + "/v1", "issuer": s.app.Issuer(), "application_id": chi.URLParam(r, "application_id"), "public_config": decodeMap(publicConfig), "auth": auth, "storage": s.storageCapabilities(r.Context(), chi.URLParam(r, "application_id"))})
 }
 
 func (s *Server) createClient(w http.ResponseWriter, r *http.Request) {

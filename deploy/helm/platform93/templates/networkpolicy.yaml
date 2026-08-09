@@ -21,4 +21,7 @@ spec:
         {{- range .Values.networkPolicy.smtpPorts }}
         - { protocol: TCP, port: {{ . }} }
         {{- end }}
+        {{- range .Values.networkPolicy.storagePorts }}
+        - { protocol: TCP, port: {{ . }} }
+        {{- end }}
 {{- end }}

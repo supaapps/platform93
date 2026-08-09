@@ -438,6 +438,44 @@ type CreateProduct struct {
 	Status            interface{}             `json:"status,omitempty"`
 }
 
+// CreateStorageProvider defines model for CreateStorageProvider.
+type CreateStorageProvider struct {
+	AccessKeyId *string `json:"access_key_id,omitempty"`
+
+	// AllowPrivateEndpoint Installation-scoped opt-in for local or private-network S3 endpoints.
+	AllowPrivateEndpoint  *bool   `json:"allow_private_endpoint,omitempty"`
+	Endpoint              string  `json:"endpoint"`
+	ForcePathStyle        *bool   `json:"force_path_style,omitempty"`
+	Inheritable           *bool   `json:"inheritable,omitempty"`
+	MaxApplicationBytes   *int64  `json:"max_application_bytes,omitempty"`
+	MaxApplicationObjects *int64  `json:"max_application_objects,omitempty"`
+	MaxEmailImageBytes    *int64  `json:"max_email_image_bytes,omitempty"`
+	MaxObjectBytes        *int64  `json:"max_object_bytes,omitempty"`
+	Name                  string  `json:"name"`
+	PrivateBucket         *string `json:"private_bucket,omitempty"`
+	PublicBaseUrl         *string `json:"public_base_url,omitempty"`
+	PublicBucket          *string `json:"public_bucket,omitempty"`
+	Region                string  `json:"region"`
+	SecretAccessKey       *string `json:"secret_access_key,omitempty"`
+	union                 json.RawMessage
+}
+
+// CreateStorageProvider0 defines model for .
+type CreateStorageProvider0 = interface{}
+
+// CreateStorageProvider1 defines model for .
+type CreateStorageProvider1 = interface{}
+
+// CreateStorageUpload defines model for CreateStorageUpload.
+type CreateStorageUpload struct {
+	ContentType string                  `json:"content_type"`
+	Filename    string                  `json:"filename"`
+	Metadata    *map[string]interface{} `json:"metadata,omitempty"`
+	Purpose     interface{}             `json:"purpose,omitempty"`
+	SizeBytes   int64                   `json:"size_bytes"`
+	Visibility  interface{}             `json:"visibility"`
+}
+
 // EmailStart defines model for EmailStart.
 type EmailStart struct {
 	Delivery    interface{}         `json:"delivery"`
@@ -705,6 +743,49 @@ type RuntimeConfig struct {
 	Issuer        string                 `json:"issuer"`
 	PublicConfig  map[string]interface{} `json:"public_config"`
 	SchemaVersion string                 `json:"schema_version"`
+	Storage       RuntimeStorageConfig   `json:"storage"`
+}
+
+// RuntimeStorageConfig defines model for RuntimeStorageConfig.
+type RuntimeStorageConfig struct {
+	MaxEmailImageBytes    *int64      `json:"max_email_image_bytes,omitempty"`
+	MaxPrivateObjectBytes *int64      `json:"max_private_object_bytes,omitempty"`
+	MaxPublicObjectBytes  *int64      `json:"max_public_object_bytes,omitempty"`
+	PrivateProviderScope  interface{} `json:"private_provider_scope,omitempty"`
+	PrivateUploadsEnabled bool        `json:"private_uploads_enabled"`
+	PublicProviderScope   interface{} `json:"public_provider_scope,omitempty"`
+	PublicUploadsEnabled  bool        `json:"public_uploads_enabled"`
+}
+
+// StorageObject defines model for StorageObject.
+type StorageObject struct {
+	ApplicationId   *openapi_types.UUID    `json:"application_id,omitempty"`
+	ContentType     string                 `json:"content_type"`
+	CreatedAt       time.Time              `json:"created_at"`
+	Etag            *string                `json:"etag,omitempty"`
+	Filename        string                 `json:"filename"`
+	Id              UUID                   `json:"id"`
+	LastError       *string                `json:"last_error,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata"`
+	OwnerId         *openapi_types.UUID    `json:"owner_id,omitempty"`
+	OwnerType       interface{}            `json:"owner_type"`
+	ProviderId      UUID                   `json:"provider_id"`
+	PublicUrl       *string                `json:"public_url,omitempty"`
+	ReadyAt         *time.Time             `json:"ready_at,omitempty"`
+	SizeBytes       int64                  `json:"size_bytes"`
+	Status          interface{}            `json:"status"`
+	UpdatedAt       time.Time              `json:"updated_at"`
+	UploadExpiresAt *time.Time             `json:"upload_expires_at,omitempty"`
+	Version         int64                  `json:"version"`
+	Visibility      interface{}            `json:"visibility"`
+}
+
+// StorageUploadAuthorization defines model for StorageUploadAuthorization.
+type StorageUploadAuthorization struct {
+	Object          StorageObject     `json:"object"`
+	RequiredHeaders map[string]string `json:"required_headers"`
+	UploadExpiresAt time.Time         `json:"upload_expires_at"`
+	UploadUrl       *string           `json:"upload_url,omitempty"`
 }
 
 // TokenResponse defines model for TokenResponse.
@@ -781,6 +862,12 @@ type User struct {
 // ApplicationID defines model for ApplicationID.
 type ApplicationID = UUID
 
+// ConfirmAffectedObjects defines model for ConfirmAffectedObjects.
+type ConfirmAffectedObjects = bool
+
+// ForceDelete defines model for ForceDelete.
+type ForceDelete = bool
+
 // IdempotencyKey defines model for IdempotencyKey.
 type IdempotencyKey = string
 
@@ -811,6 +898,9 @@ type OAuthScope = string
 // OAuthState defines model for OAuthState.
 type OAuthState = string
 
+// ObjectID defines model for ObjectID.
+type ObjectID = UUID
+
 // OrganizationID defines model for OrganizationID.
 type OrganizationID = UUID
 
@@ -831,6 +921,9 @@ type SessionID = UUID
 
 // SubscriptionID defines model for SubscriptionID.
 type SubscriptionID = UUID
+
+// WorkspaceID defines model for WorkspaceID.
+type WorkspaceID = UUID
 
 // WorkspaceIDQuery defines model for WorkspaceIDQuery.
 type WorkspaceIDQuery = UUID
@@ -876,6 +969,12 @@ type SMTPProvider struct {
 	TlsMode     interface{}         `json:"tls_mode"`
 	Username    *string             `json:"username,omitempty"`
 }
+
+// StorageProvider defines model for StorageProvider.
+type StorageProvider = CreateStorageProvider
+
+// StorageUpload defines model for StorageUpload.
+type StorageUpload = CreateStorageUpload
 
 // bearerAuthContextKey is the context key for bearerAuth security scheme
 type bearerAuthContextKey string
@@ -1081,11 +1180,21 @@ type PasswordChangeJSONBody = map[string]interface{}
 // CheckMyPermissionsJSONBody defines parameters for CheckMyPermissions.
 type CheckMyPermissionsJSONBody = map[string]interface{}
 
+// CreateMyStorageUploadParams defines parameters for CreateMyStorageUpload.
+type CreateMyStorageUploadParams struct {
+	IdempotencyKey RequiredIdempotencyKey `json:"Idempotency-Key"`
+}
+
 // AcceptMyWorkspaceInvitationJSONBody defines parameters for AcceptMyWorkspaceInvitation.
 type AcceptMyWorkspaceInvitationJSONBody = map[string]interface{}
 
 // CreateMyWorkspaceJSONBody defines parameters for CreateMyWorkspace.
 type CreateMyWorkspaceJSONBody = map[string]interface{}
+
+// CreateApplicationStorageUploadParams defines parameters for CreateApplicationStorageUpload.
+type CreateApplicationStorageUploadParams struct {
+	IdempotencyKey RequiredIdempotencyKey `json:"Idempotency-Key"`
+}
 
 // UpdateMyWorkspaceJSONBody defines parameters for UpdateMyWorkspace.
 type UpdateMyWorkspaceJSONBody = map[string]interface{}
@@ -1104,6 +1213,11 @@ type CreateMyWorkspaceInvitationJSONBody = map[string]interface{}
 
 // ReplaceMyWorkspaceMemberRolesJSONBody defines parameters for ReplaceMyWorkspaceMemberRoles.
 type ReplaceMyWorkspaceMemberRolesJSONBody = map[string]interface{}
+
+// CreateWorkspaceStorageUploadParams defines parameters for CreateWorkspaceStorageUpload.
+type CreateWorkspaceStorageUploadParams struct {
+	IdempotencyKey RequiredIdempotencyKey `json:"Idempotency-Key"`
+}
 
 // CreateAuditExportJSONBody defines parameters for CreateAuditExport.
 type CreateAuditExportJSONBody = map[string]interface{}
@@ -1240,6 +1354,26 @@ type UpdateRoleJSONBody = map[string]interface{}
 // CreateSenderIdentityJSONBody defines parameters for CreateSenderIdentity.
 type CreateSenderIdentityJSONBody = map[string]interface{}
 
+// DeleteControlApplicationStorageObjectParams defines parameters for DeleteControlApplicationStorageObject.
+type DeleteControlApplicationStorageObjectParams struct {
+	// Force Break managed email-template references; requires X-Audit-Reason.
+	Force *ForceDelete `form:"force,omitempty" json:"force,omitempty"`
+}
+
+// DisableApplicationStorageProviderParams defines parameters for DisableApplicationStorageProvider.
+type DisableApplicationStorageProviderParams struct {
+	// ConfirmAffectedObjects Required when disabling a provider pinned by live objects.
+	ConfirmAffectedObjects *ConfirmAffectedObjects `form:"confirm_affected_objects,omitempty" json:"confirm_affected_objects,omitempty"`
+}
+
+// UpdateApplicationStorageProviderJSONBody defines parameters for UpdateApplicationStorageProvider.
+type UpdateApplicationStorageProviderJSONBody = map[string]interface{}
+
+// CreateControlApplicationStorageUploadParams defines parameters for CreateControlApplicationStorageUpload.
+type CreateControlApplicationStorageUploadParams struct {
+	IdempotencyKey RequiredIdempotencyKey `json:"Idempotency-Key"`
+}
+
 // CreateUserJSONBody defines parameters for CreateUser.
 type CreateUserJSONBody = map[string]interface{}
 
@@ -1360,6 +1494,26 @@ type UpdateOrganizationPolicyParams struct {
 	IfMatch IfMatch `json:"If-Match"`
 }
 
+// DeleteInstallationStorageObjectParams defines parameters for DeleteInstallationStorageObject.
+type DeleteInstallationStorageObjectParams struct {
+	// Force Break managed email-template references; requires X-Audit-Reason.
+	Force *ForceDelete `form:"force,omitempty" json:"force,omitempty"`
+}
+
+// DisableInstallationStorageProviderParams defines parameters for DisableInstallationStorageProvider.
+type DisableInstallationStorageProviderParams struct {
+	// ConfirmAffectedObjects Required when disabling a provider pinned by live objects.
+	ConfirmAffectedObjects *ConfirmAffectedObjects `form:"confirm_affected_objects,omitempty" json:"confirm_affected_objects,omitempty"`
+}
+
+// UpdateInstallationStorageProviderJSONBody defines parameters for UpdateInstallationStorageProvider.
+type UpdateInstallationStorageProviderJSONBody = map[string]interface{}
+
+// CreateInstallationStorageUploadParams defines parameters for CreateInstallationStorageUpload.
+type CreateInstallationStorageUploadParams struct {
+	IdempotencyKey RequiredIdempotencyKey `json:"Idempotency-Key"`
+}
+
 // ListOrganizationsParams defines parameters for ListOrganizations.
 type ListOrganizationsParams struct {
 	IncludeRetired *IncludeRetired `form:"include_retired,omitempty" json:"include_retired,omitempty"`
@@ -1433,6 +1587,21 @@ type TestOrganizationNotificationProviderJSONBody = map[string]interface{}
 type TestOrganizationNotificationProviderParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
+
+// DeleteOrganizationStorageObjectParams defines parameters for DeleteOrganizationStorageObject.
+type DeleteOrganizationStorageObjectParams struct {
+	// Force Break managed email-template references; requires X-Audit-Reason.
+	Force *ForceDelete `form:"force,omitempty" json:"force,omitempty"`
+}
+
+// DisableOrganizationStorageProviderParams defines parameters for DisableOrganizationStorageProvider.
+type DisableOrganizationStorageProviderParams struct {
+	// ConfirmAffectedObjects Required when disabling a provider pinned by live objects.
+	ConfirmAffectedObjects *ConfirmAffectedObjects `form:"confirm_affected_objects,omitempty" json:"confirm_affected_objects,omitempty"`
+}
+
+// UpdateOrganizationStorageProviderJSONBody defines parameters for UpdateOrganizationStorageProvider.
+type UpdateOrganizationStorageProviderJSONBody = map[string]interface{}
 
 // ManagementListOrganizationsParams defines parameters for ManagementListOrganizations.
 type ManagementListOrganizationsParams struct {
@@ -1626,11 +1795,17 @@ type PasswordChangeJSONRequestBody = PasswordChangeJSONBody
 // CheckMyPermissionsJSONRequestBody defines body for CheckMyPermissions for application/json ContentType.
 type CheckMyPermissionsJSONRequestBody = CheckMyPermissionsJSONBody
 
+// CreateMyStorageUploadJSONRequestBody defines body for CreateMyStorageUpload for application/json ContentType.
+type CreateMyStorageUploadJSONRequestBody = CreateStorageUpload
+
 // AcceptMyWorkspaceInvitationJSONRequestBody defines body for AcceptMyWorkspaceInvitation for application/json ContentType.
 type AcceptMyWorkspaceInvitationJSONRequestBody = AcceptMyWorkspaceInvitationJSONBody
 
 // CreateMyWorkspaceJSONRequestBody defines body for CreateMyWorkspace for application/json ContentType.
 type CreateMyWorkspaceJSONRequestBody = CreateMyWorkspaceJSONBody
+
+// CreateApplicationStorageUploadJSONRequestBody defines body for CreateApplicationStorageUpload for application/json ContentType.
+type CreateApplicationStorageUploadJSONRequestBody = CreateStorageUpload
 
 // UpdateMyWorkspaceJSONRequestBody defines body for UpdateMyWorkspace for application/json ContentType.
 type UpdateMyWorkspaceJSONRequestBody = UpdateMyWorkspaceJSONBody
@@ -1652,6 +1827,9 @@ type ReplaceMyWorkspaceMemberRolesJSONRequestBody = ReplaceMyWorkspaceMemberRole
 
 // TransferMyWorkspaceOwnershipJSONRequestBody defines body for TransferMyWorkspaceOwnership for application/json ContentType.
 type TransferMyWorkspaceOwnershipJSONRequestBody = OwnershipTransfer
+
+// CreateWorkspaceStorageUploadJSONRequestBody defines body for CreateWorkspaceStorageUpload for application/json ContentType.
+type CreateWorkspaceStorageUploadJSONRequestBody = CreateStorageUpload
 
 // CreateAuditExportJSONRequestBody defines body for CreateAuditExport for application/json ContentType.
 type CreateAuditExportJSONRequestBody = CreateAuditExportJSONBody
@@ -1767,6 +1945,15 @@ type UpdateRoleJSONRequestBody = UpdateRoleJSONBody
 // CreateSenderIdentityJSONRequestBody defines body for CreateSenderIdentity for application/json ContentType.
 type CreateSenderIdentityJSONRequestBody = CreateSenderIdentityJSONBody
 
+// CreateApplicationStorageProviderJSONRequestBody defines body for CreateApplicationStorageProvider for application/json ContentType.
+type CreateApplicationStorageProviderJSONRequestBody = CreateStorageProvider
+
+// UpdateApplicationStorageProviderJSONRequestBody defines body for UpdateApplicationStorageProvider for application/json ContentType.
+type UpdateApplicationStorageProviderJSONRequestBody = UpdateApplicationStorageProviderJSONBody
+
+// CreateControlApplicationStorageUploadJSONRequestBody defines body for CreateControlApplicationStorageUpload for application/json ContentType.
+type CreateControlApplicationStorageUploadJSONRequestBody = CreateStorageUpload
+
 // CreateUserJSONRequestBody defines body for CreateUser for application/json ContentType.
 type CreateUserJSONRequestBody = CreateUserJSONBody
 
@@ -1872,6 +2059,15 @@ type UpdateInstallationOperatorJSONRequestBody = UpdateInstallationOperatorJSONB
 // UpdateOrganizationPolicyJSONRequestBody defines body for UpdateOrganizationPolicy for application/json ContentType.
 type UpdateOrganizationPolicyJSONRequestBody = UpdateOrganizationPolicy
 
+// CreateInstallationStorageProviderJSONRequestBody defines body for CreateInstallationStorageProvider for application/json ContentType.
+type CreateInstallationStorageProviderJSONRequestBody = CreateStorageProvider
+
+// UpdateInstallationStorageProviderJSONRequestBody defines body for UpdateInstallationStorageProvider for application/json ContentType.
+type UpdateInstallationStorageProviderJSONRequestBody = UpdateInstallationStorageProviderJSONBody
+
+// CreateInstallationStorageUploadJSONRequestBody defines body for CreateInstallationStorageUpload for application/json ContentType.
+type CreateInstallationStorageUploadJSONRequestBody = CreateStorageUpload
+
 // AcceptOrganizationInvitationJSONRequestBody defines body for AcceptOrganizationInvitation for application/json ContentType.
 type AcceptOrganizationInvitationJSONRequestBody = AcceptOrganizationInvitation
 
@@ -1914,6 +2110,12 @@ type UpdateOrganizationNotificationProviderJSONRequestBody = UpdateOrganizationN
 // TestOrganizationNotificationProviderJSONRequestBody defines body for TestOrganizationNotificationProvider for application/json ContentType.
 type TestOrganizationNotificationProviderJSONRequestBody = TestOrganizationNotificationProviderJSONBody
 
+// CreateOrganizationStorageProviderJSONRequestBody defines body for CreateOrganizationStorageProvider for application/json ContentType.
+type CreateOrganizationStorageProviderJSONRequestBody = CreateStorageProvider
+
+// UpdateOrganizationStorageProviderJSONRequestBody defines body for UpdateOrganizationStorageProvider for application/json ContentType.
+type UpdateOrganizationStorageProviderJSONRequestBody = UpdateOrganizationStorageProviderJSONBody
+
 // ManagementCreateOrganizationJSONRequestBody defines body for ManagementCreateOrganization for application/json ContentType.
 type ManagementCreateOrganizationJSONRequestBody ManagementCreateOrganizationJSONBody
 
@@ -1934,6 +2136,289 @@ type BootstrapJSONRequestBody = BootstrapRequest
 
 // CreateSetupNotificationProviderJSONRequestBody defines body for CreateSetupNotificationProvider for application/json ContentType.
 type CreateSetupNotificationProviderJSONRequestBody CreateSetupNotificationProviderJSONBody
+
+// AsCreateStorageProvider0 returns the union data inside the CreateStorageProvider as a CreateStorageProvider0
+func (t CreateStorageProvider) AsCreateStorageProvider0() (CreateStorageProvider0, error) {
+	var body CreateStorageProvider0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCreateStorageProvider0 overwrites any union data inside the CreateStorageProvider as the provided CreateStorageProvider0
+func (t *CreateStorageProvider) FromCreateStorageProvider0(v CreateStorageProvider0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCreateStorageProvider0 performs a merge with any union data inside the CreateStorageProvider, using the provided CreateStorageProvider0
+func (t *CreateStorageProvider) MergeCreateStorageProvider0(v CreateStorageProvider0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCreateStorageProvider1 returns the union data inside the CreateStorageProvider as a CreateStorageProvider1
+func (t CreateStorageProvider) AsCreateStorageProvider1() (CreateStorageProvider1, error) {
+	var body CreateStorageProvider1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCreateStorageProvider1 overwrites any union data inside the CreateStorageProvider as the provided CreateStorageProvider1
+func (t *CreateStorageProvider) FromCreateStorageProvider1(v CreateStorageProvider1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCreateStorageProvider1 performs a merge with any union data inside the CreateStorageProvider, using the provided CreateStorageProvider1
+func (t *CreateStorageProvider) MergeCreateStorageProvider1(v CreateStorageProvider1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t CreateStorageProvider) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	object["access_key_id"], err = json.Marshal(t.AccessKeyId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'access_key_id': %w", err)
+	}
+
+	if t.AllowPrivateEndpoint != nil {
+		object["allow_private_endpoint"], err = json.Marshal(t.AllowPrivateEndpoint)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'allow_private_endpoint': %w", err)
+		}
+	}
+
+	object["endpoint"], err = json.Marshal(t.Endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'endpoint': %w", err)
+	}
+
+	if t.ForcePathStyle != nil {
+		object["force_path_style"], err = json.Marshal(t.ForcePathStyle)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'force_path_style': %w", err)
+		}
+	}
+
+	if t.Inheritable != nil {
+		object["inheritable"], err = json.Marshal(t.Inheritable)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'inheritable': %w", err)
+		}
+	}
+
+	if t.MaxApplicationBytes != nil {
+		object["max_application_bytes"], err = json.Marshal(t.MaxApplicationBytes)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'max_application_bytes': %w", err)
+		}
+	}
+
+	if t.MaxApplicationObjects != nil {
+		object["max_application_objects"], err = json.Marshal(t.MaxApplicationObjects)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'max_application_objects': %w", err)
+		}
+	}
+
+	if t.MaxEmailImageBytes != nil {
+		object["max_email_image_bytes"], err = json.Marshal(t.MaxEmailImageBytes)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'max_email_image_bytes': %w", err)
+		}
+	}
+
+	if t.MaxObjectBytes != nil {
+		object["max_object_bytes"], err = json.Marshal(t.MaxObjectBytes)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'max_object_bytes': %w", err)
+		}
+	}
+
+	object["name"], err = json.Marshal(t.Name)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'name': %w", err)
+	}
+
+	if t.PrivateBucket != nil {
+		object["private_bucket"], err = json.Marshal(t.PrivateBucket)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'private_bucket': %w", err)
+		}
+	}
+
+	if t.PublicBaseUrl != nil {
+		object["public_base_url"], err = json.Marshal(t.PublicBaseUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'public_base_url': %w", err)
+		}
+	}
+
+	if t.PublicBucket != nil {
+		object["public_bucket"], err = json.Marshal(t.PublicBucket)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'public_bucket': %w", err)
+		}
+	}
+
+	object["region"], err = json.Marshal(t.Region)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'region': %w", err)
+	}
+
+	object["secret_access_key"], err = json.Marshal(t.SecretAccessKey)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'secret_access_key': %w", err)
+	}
+
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *CreateStorageProvider) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["access_key_id"]; found {
+		err = json.Unmarshal(raw, &t.AccessKeyId)
+		if err != nil {
+			return fmt.Errorf("error reading 'access_key_id': %w", err)
+		}
+	}
+
+	if raw, found := object["allow_private_endpoint"]; found {
+		err = json.Unmarshal(raw, &t.AllowPrivateEndpoint)
+		if err != nil {
+			return fmt.Errorf("error reading 'allow_private_endpoint': %w", err)
+		}
+	}
+
+	if raw, found := object["endpoint"]; found {
+		err = json.Unmarshal(raw, &t.Endpoint)
+		if err != nil {
+			return fmt.Errorf("error reading 'endpoint': %w", err)
+		}
+	}
+
+	if raw, found := object["force_path_style"]; found {
+		err = json.Unmarshal(raw, &t.ForcePathStyle)
+		if err != nil {
+			return fmt.Errorf("error reading 'force_path_style': %w", err)
+		}
+	}
+
+	if raw, found := object["inheritable"]; found {
+		err = json.Unmarshal(raw, &t.Inheritable)
+		if err != nil {
+			return fmt.Errorf("error reading 'inheritable': %w", err)
+		}
+	}
+
+	if raw, found := object["max_application_bytes"]; found {
+		err = json.Unmarshal(raw, &t.MaxApplicationBytes)
+		if err != nil {
+			return fmt.Errorf("error reading 'max_application_bytes': %w", err)
+		}
+	}
+
+	if raw, found := object["max_application_objects"]; found {
+		err = json.Unmarshal(raw, &t.MaxApplicationObjects)
+		if err != nil {
+			return fmt.Errorf("error reading 'max_application_objects': %w", err)
+		}
+	}
+
+	if raw, found := object["max_email_image_bytes"]; found {
+		err = json.Unmarshal(raw, &t.MaxEmailImageBytes)
+		if err != nil {
+			return fmt.Errorf("error reading 'max_email_image_bytes': %w", err)
+		}
+	}
+
+	if raw, found := object["max_object_bytes"]; found {
+		err = json.Unmarshal(raw, &t.MaxObjectBytes)
+		if err != nil {
+			return fmt.Errorf("error reading 'max_object_bytes': %w", err)
+		}
+	}
+
+	if raw, found := object["name"]; found {
+		err = json.Unmarshal(raw, &t.Name)
+		if err != nil {
+			return fmt.Errorf("error reading 'name': %w", err)
+		}
+	}
+
+	if raw, found := object["private_bucket"]; found {
+		err = json.Unmarshal(raw, &t.PrivateBucket)
+		if err != nil {
+			return fmt.Errorf("error reading 'private_bucket': %w", err)
+		}
+	}
+
+	if raw, found := object["public_base_url"]; found {
+		err = json.Unmarshal(raw, &t.PublicBaseUrl)
+		if err != nil {
+			return fmt.Errorf("error reading 'public_base_url': %w", err)
+		}
+	}
+
+	if raw, found := object["public_bucket"]; found {
+		err = json.Unmarshal(raw, &t.PublicBucket)
+		if err != nil {
+			return fmt.Errorf("error reading 'public_bucket': %w", err)
+		}
+	}
+
+	if raw, found := object["region"]; found {
+		err = json.Unmarshal(raw, &t.Region)
+		if err != nil {
+			return fmt.Errorf("error reading 'region': %w", err)
+		}
+	}
+
+	if raw, found := object["secret_access_key"]; found {
+		err = json.Unmarshal(raw, &t.SecretAccessKey)
+		if err != nil {
+			return fmt.Errorf("error reading 'secret_access_key': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsRoleAssignment0 returns the union data inside the RoleAssignment as a RoleAssignment0
 func (t RoleAssignment) AsRoleAssignment0() (RoleAssignment0, error) {
@@ -2323,6 +2808,24 @@ type ServerInterface interface {
 	// (DELETE /v1/applications/{application_id}/me/sessions/{session_id})
 	RevokeMySession(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, sessionId UUID)
 
+	// (GET /v1/applications/{application_id}/me/storage/objects)
+	ListMyStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
+
+	// (DELETE /v1/applications/{application_id}/me/storage/objects/{object_id})
+	DeleteMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
+	// (GET /v1/applications/{application_id}/me/storage/objects/{object_id})
+	GetMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
+	// (POST /v1/applications/{application_id}/me/storage/objects/{object_id}/download)
+	DownloadMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
+	// (POST /v1/applications/{application_id}/me/storage/uploads)
+	CreateMyStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateMyStorageUploadParams)
+
+	// (POST /v1/applications/{application_id}/me/storage/uploads/{object_id}/complete)
+	CompleteMyStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
 	// (GET /v1/applications/{application_id}/me/subscriptions)
 	ListMySubscriptions(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
 
@@ -2340,6 +2843,24 @@ type ServerInterface interface {
 
 	// (GET /v1/applications/{application_id}/public-config)
 	PublicConfig(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
+
+	// (GET /v1/applications/{application_id}/storage/objects)
+	ListApplicationStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
+
+	// (DELETE /v1/applications/{application_id}/storage/objects/{object_id})
+	DeleteApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
+	// (GET /v1/applications/{application_id}/storage/objects/{object_id})
+	GetApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
+	// (POST /v1/applications/{application_id}/storage/objects/{object_id}/download)
+	DownloadApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
+	// (POST /v1/applications/{application_id}/storage/uploads)
+	CreateApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateApplicationStorageUploadParams)
+
+	// (POST /v1/applications/{application_id}/storage/uploads/{object_id}/complete)
+	CompleteApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
 
 	// (DELETE /v1/applications/{application_id}/workspaces/{workspace_id})
 	ArchiveMyWorkspace(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId UUID)
@@ -2388,6 +2909,24 @@ type ServerInterface interface {
 
 	// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/owner-transfer)
 	TransferMyWorkspaceOwnership(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId UUID)
+
+	// (GET /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects)
+	ListWorkspaceStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID)
+
+	// (DELETE /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id})
+	DeleteWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID)
+
+	// (GET /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id})
+	GetWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID)
+
+	// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}/download)
+	DownloadWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID)
+
+	// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads)
+	CreateWorkspaceStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, params CreateWorkspaceStorageUploadParams)
+
+	// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads/{object_id}/complete)
+	CompleteWorkspaceStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID)
 
 	// (GET /v1/control/applications/{application_id})
 	GetApplication(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
@@ -2719,6 +3258,45 @@ type ServerInterface interface {
 	// (GET /v1/control/applications/{application_id}/statistics)
 	GetApplicationStatistics(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
 
+	// (GET /v1/control/applications/{application_id}/storage/objects)
+	ListControlApplicationStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
+
+	// (DELETE /v1/control/applications/{application_id}/storage/objects/{object_id})
+	DeleteControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID, params DeleteControlApplicationStorageObjectParams)
+
+	// (GET /v1/control/applications/{application_id}/storage/objects/{object_id})
+	GetControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
+	// (POST /v1/control/applications/{application_id}/storage/objects/{object_id}/download)
+	DownloadControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
+	// (GET /v1/control/applications/{application_id}/storage/providers)
+	ListApplicationStorageProviders(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
+
+	// (POST /v1/control/applications/{application_id}/storage/providers)
+	CreateApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
+
+	// (DELETE /v1/control/applications/{application_id}/storage/providers/{provider_id})
+	DisableApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID, params DisableApplicationStorageProviderParams)
+
+	// (GET /v1/control/applications/{application_id}/storage/providers/{provider_id})
+	GetApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID)
+
+	// (PATCH /v1/control/applications/{application_id}/storage/providers/{provider_id})
+	UpdateApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID)
+
+	// (POST /v1/control/applications/{application_id}/storage/providers/{provider_id}/enable)
+	EnableApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID)
+
+	// (POST /v1/control/applications/{application_id}/storage/providers/{provider_id}/verify)
+	VerifyApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID)
+
+	// (POST /v1/control/applications/{application_id}/storage/uploads)
+	CreateControlApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateControlApplicationStorageUploadParams)
+
+	// (POST /v1/control/applications/{application_id}/storage/uploads/{object_id}/complete)
+	CompleteControlApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID)
+
 	// (GET /v1/control/applications/{application_id}/users)
 	ListUsers(w http.ResponseWriter, r *http.Request, applicationId ApplicationID)
 
@@ -2971,6 +3549,45 @@ type ServerInterface interface {
 	// (POST /v1/control/installation/signing-keys/rotate)
 	RotateSigningKey(w http.ResponseWriter, r *http.Request)
 
+	// (GET /v1/control/installation/storage/objects)
+	ListInstallationStorageObjects(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /v1/control/installation/storage/objects/{object_id})
+	DeleteInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID, params DeleteInstallationStorageObjectParams)
+
+	// (GET /v1/control/installation/storage/objects/{object_id})
+	GetInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID)
+
+	// (POST /v1/control/installation/storage/objects/{object_id}/download)
+	DownloadInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID)
+
+	// (GET /v1/control/installation/storage/providers)
+	ListInstallationStorageProviders(w http.ResponseWriter, r *http.Request)
+
+	// (POST /v1/control/installation/storage/providers)
+	CreateInstallationStorageProvider(w http.ResponseWriter, r *http.Request)
+
+	// (DELETE /v1/control/installation/storage/providers/{provider_id})
+	DisableInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID, params DisableInstallationStorageProviderParams)
+
+	// (GET /v1/control/installation/storage/providers/{provider_id})
+	GetInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID)
+
+	// (PATCH /v1/control/installation/storage/providers/{provider_id})
+	UpdateInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID)
+
+	// (POST /v1/control/installation/storage/providers/{provider_id}/enable)
+	EnableInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID)
+
+	// (POST /v1/control/installation/storage/providers/{provider_id}/verify)
+	VerifyInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID)
+
+	// (POST /v1/control/installation/storage/uploads)
+	CreateInstallationStorageUpload(w http.ResponseWriter, r *http.Request, params CreateInstallationStorageUploadParams)
+
+	// (POST /v1/control/installation/storage/uploads/{object_id}/complete)
+	CompleteInstallationStorageUpload(w http.ResponseWriter, r *http.Request, objectId ObjectID)
+
 	// (POST /v1/control/organization-invitations/accept)
 	AcceptOrganizationInvitation(w http.ResponseWriter, r *http.Request)
 
@@ -3084,6 +3701,39 @@ type ServerInterface interface {
 
 	// (POST /v1/control/organizations/{organization_id}/restore)
 	RestoreOrganization(w http.ResponseWriter, r *http.Request, organizationId OrganizationID)
+
+	// (GET /v1/control/organizations/{organization_id}/storage/objects)
+	ListOrganizationStorageObjects(w http.ResponseWriter, r *http.Request, organizationId OrganizationID)
+
+	// (DELETE /v1/control/organizations/{organization_id}/storage/objects/{object_id})
+	DeleteOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID, params DeleteOrganizationStorageObjectParams)
+
+	// (GET /v1/control/organizations/{organization_id}/storage/objects/{object_id})
+	GetOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID)
+
+	// (POST /v1/control/organizations/{organization_id}/storage/objects/{object_id}/download)
+	DownloadOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID)
+
+	// (GET /v1/control/organizations/{organization_id}/storage/providers)
+	ListOrganizationStorageProviders(w http.ResponseWriter, r *http.Request, organizationId OrganizationID)
+
+	// (POST /v1/control/organizations/{organization_id}/storage/providers)
+	CreateOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID)
+
+	// (DELETE /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+	DisableOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID, params DisableOrganizationStorageProviderParams)
+
+	// (GET /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+	GetOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID)
+
+	// (PATCH /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+	UpdateOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID)
+
+	// (POST /v1/control/organizations/{organization_id}/storage/providers/{provider_id}/enable)
+	EnableOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID)
+
+	// (POST /v1/control/organizations/{organization_id}/storage/providers/{provider_id}/verify)
+	VerifyOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID)
 
 	// (GET /v1/management/organizations)
 	ManagementListOrganizations(w http.ResponseWriter, r *http.Request, params ManagementListOrganizationsParams)
@@ -3559,6 +4209,36 @@ func (_ Unimplemented) RevokeMySession(w http.ResponseWriter, r *http.Request, a
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (GET /v1/applications/{application_id}/me/storage/objects)
+func (_ Unimplemented) ListMyStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/applications/{application_id}/me/storage/objects/{object_id})
+func (_ Unimplemented) DeleteMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/applications/{application_id}/me/storage/objects/{object_id})
+func (_ Unimplemented) GetMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/me/storage/objects/{object_id}/download)
+func (_ Unimplemented) DownloadMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/me/storage/uploads)
+func (_ Unimplemented) CreateMyStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateMyStorageUploadParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/me/storage/uploads/{object_id}/complete)
+func (_ Unimplemented) CompleteMyStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /v1/applications/{application_id}/me/subscriptions)
 func (_ Unimplemented) ListMySubscriptions(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -3586,6 +4266,36 @@ func (_ Unimplemented) CreateMyWorkspace(w http.ResponseWriter, r *http.Request,
 
 // (GET /v1/applications/{application_id}/public-config)
 func (_ Unimplemented) PublicConfig(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/applications/{application_id}/storage/objects)
+func (_ Unimplemented) ListApplicationStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/applications/{application_id}/storage/objects/{object_id})
+func (_ Unimplemented) DeleteApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/applications/{application_id}/storage/objects/{object_id})
+func (_ Unimplemented) GetApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/storage/objects/{object_id}/download)
+func (_ Unimplemented) DownloadApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/storage/uploads)
+func (_ Unimplemented) CreateApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateApplicationStorageUploadParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/storage/uploads/{object_id}/complete)
+func (_ Unimplemented) CompleteApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -3666,6 +4376,36 @@ func (_ Unimplemented) LeaveWorkspace(w http.ResponseWriter, r *http.Request, ap
 
 // (POST /v1/applications/{application_id}/workspaces/{workspace_id}/owner-transfer)
 func (_ Unimplemented) TransferMyWorkspaceOwnership(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects)
+func (_ Unimplemented) ListWorkspaceStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id})
+func (_ Unimplemented) DeleteWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id})
+func (_ Unimplemented) GetWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}/download)
+func (_ Unimplemented) DownloadWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads)
+func (_ Unimplemented) CreateWorkspaceStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, params CreateWorkspaceStorageUploadParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads/{object_id}/complete)
+func (_ Unimplemented) CompleteWorkspaceStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -4219,6 +4959,71 @@ func (_ Unimplemented) GetApplicationStatistics(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (GET /v1/control/applications/{application_id}/storage/objects)
+func (_ Unimplemented) ListControlApplicationStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/control/applications/{application_id}/storage/objects/{object_id})
+func (_ Unimplemented) DeleteControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID, params DeleteControlApplicationStorageObjectParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/applications/{application_id}/storage/objects/{object_id})
+func (_ Unimplemented) GetControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/applications/{application_id}/storage/objects/{object_id}/download)
+func (_ Unimplemented) DownloadControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/applications/{application_id}/storage/providers)
+func (_ Unimplemented) ListApplicationStorageProviders(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/applications/{application_id}/storage/providers)
+func (_ Unimplemented) CreateApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/control/applications/{application_id}/storage/providers/{provider_id})
+func (_ Unimplemented) DisableApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID, params DisableApplicationStorageProviderParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/applications/{application_id}/storage/providers/{provider_id})
+func (_ Unimplemented) GetApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PATCH /v1/control/applications/{application_id}/storage/providers/{provider_id})
+func (_ Unimplemented) UpdateApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/applications/{application_id}/storage/providers/{provider_id}/enable)
+func (_ Unimplemented) EnableApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/applications/{application_id}/storage/providers/{provider_id}/verify)
+func (_ Unimplemented) VerifyApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/applications/{application_id}/storage/uploads)
+func (_ Unimplemented) CreateControlApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateControlApplicationStorageUploadParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/applications/{application_id}/storage/uploads/{object_id}/complete)
+func (_ Unimplemented) CompleteControlApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (GET /v1/control/applications/{application_id}/users)
 func (_ Unimplemented) ListUsers(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -4639,6 +5444,71 @@ func (_ Unimplemented) RotateSigningKey(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// (GET /v1/control/installation/storage/objects)
+func (_ Unimplemented) ListInstallationStorageObjects(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/control/installation/storage/objects/{object_id})
+func (_ Unimplemented) DeleteInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID, params DeleteInstallationStorageObjectParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/installation/storage/objects/{object_id})
+func (_ Unimplemented) GetInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/installation/storage/objects/{object_id}/download)
+func (_ Unimplemented) DownloadInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/installation/storage/providers)
+func (_ Unimplemented) ListInstallationStorageProviders(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/installation/storage/providers)
+func (_ Unimplemented) CreateInstallationStorageProvider(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/control/installation/storage/providers/{provider_id})
+func (_ Unimplemented) DisableInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID, params DisableInstallationStorageProviderParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/installation/storage/providers/{provider_id})
+func (_ Unimplemented) GetInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PATCH /v1/control/installation/storage/providers/{provider_id})
+func (_ Unimplemented) UpdateInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/installation/storage/providers/{provider_id}/enable)
+func (_ Unimplemented) EnableInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/installation/storage/providers/{provider_id}/verify)
+func (_ Unimplemented) VerifyInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/installation/storage/uploads)
+func (_ Unimplemented) CreateInstallationStorageUpload(w http.ResponseWriter, r *http.Request, params CreateInstallationStorageUploadParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/installation/storage/uploads/{object_id}/complete)
+func (_ Unimplemented) CompleteInstallationStorageUpload(w http.ResponseWriter, r *http.Request, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // (POST /v1/control/organization-invitations/accept)
 func (_ Unimplemented) AcceptOrganizationInvitation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -4826,6 +5696,61 @@ func (_ Unimplemented) GetOrganizationPolicy(w http.ResponseWriter, r *http.Requ
 
 // (POST /v1/control/organizations/{organization_id}/restore)
 func (_ Unimplemented) RestoreOrganization(w http.ResponseWriter, r *http.Request, organizationId OrganizationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/organizations/{organization_id}/storage/objects)
+func (_ Unimplemented) ListOrganizationStorageObjects(w http.ResponseWriter, r *http.Request, organizationId OrganizationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/control/organizations/{organization_id}/storage/objects/{object_id})
+func (_ Unimplemented) DeleteOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID, params DeleteOrganizationStorageObjectParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/organizations/{organization_id}/storage/objects/{object_id})
+func (_ Unimplemented) GetOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/organizations/{organization_id}/storage/objects/{object_id}/download)
+func (_ Unimplemented) DownloadOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/organizations/{organization_id}/storage/providers)
+func (_ Unimplemented) ListOrganizationStorageProviders(w http.ResponseWriter, r *http.Request, organizationId OrganizationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/organizations/{organization_id}/storage/providers)
+func (_ Unimplemented) CreateOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (DELETE /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+func (_ Unimplemented) DisableOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID, params DisableOrganizationStorageProviderParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+func (_ Unimplemented) GetOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PATCH /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+func (_ Unimplemented) UpdateOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/organizations/{organization_id}/storage/providers/{provider_id}/enable)
+func (_ Unimplemented) EnableOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (POST /v1/control/organizations/{organization_id}/storage/providers/{provider_id}/verify)
+func (_ Unimplemented) VerifyOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7657,6 +8582,262 @@ func (siw *ServerInterfaceWrapper) RevokeMySession(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ListMyStorageObjects operation middleware
+func (siw *ServerInterfaceWrapper) ListMyStorageObjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyStorageObjects(w, r, applicationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteMyStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMyStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMyStorageObject(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) GetMyStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyStorageObject(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadMyStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DownloadMyStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadMyStorageObject(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateMyStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateMyStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateMyStorageUploadParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey RequiredIdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateMyStorageUpload(w, r, applicationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteMyStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CompleteMyStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteMyStorageUpload(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListMySubscriptions operation middleware
 func (siw *ServerInterfaceWrapper) ListMySubscriptions(w http.ResponseWriter, r *http.Request) {
 
@@ -7843,6 +9024,262 @@ func (siw *ServerInterfaceWrapper) PublicConfig(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PublicConfig(w, r, applicationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListApplicationStorageObjects operation middleware
+func (siw *ServerInterfaceWrapper) ListApplicationStorageObjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListApplicationStorageObjects(w, r, applicationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteApplicationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteApplicationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteApplicationStorageObject(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetApplicationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) GetApplicationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApplicationStorageObject(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadApplicationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DownloadApplicationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadApplicationStorageObject(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateApplicationStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateApplicationStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateApplicationStorageUploadParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey RequiredIdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateApplicationStorageUpload(w, r, applicationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteApplicationStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CompleteApplicationStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteApplicationStorageUpload(w, r, applicationId, objectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8544,6 +9981,316 @@ func (siw *ServerInterfaceWrapper) TransferMyWorkspaceOwnership(w http.ResponseW
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TransferMyWorkspaceOwnership(w, r, applicationId, workspaceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkspaceStorageObjects operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaceStorageObjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceId WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", chi.URLParam(r, "workspace_id"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkspaceStorageObjects(w, r, applicationId, workspaceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWorkspaceStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorkspaceStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceId WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", chi.URLParam(r, "workspace_id"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWorkspaceStorageObject(w, r, applicationId, workspaceId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkspaceStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkspaceStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceId WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", chi.URLParam(r, "workspace_id"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkspaceStorageObject(w, r, applicationId, workspaceId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadWorkspaceStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DownloadWorkspaceStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceId WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", chi.URLParam(r, "workspace_id"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadWorkspaceStorageObject(w, r, applicationId, workspaceId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWorkspaceStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkspaceStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceId WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", chi.URLParam(r, "workspace_id"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateWorkspaceStorageUploadParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey RequiredIdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkspaceStorageUpload(w, r, applicationId, workspaceId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteWorkspaceStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CompleteWorkspaceStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "workspace_id" -------------
+	var workspaceId WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspace_id", chi.URLParam(r, "workspace_id"), &workspaceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspace_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteWorkspaceStorageUpload(w, r, applicationId, workspaceId, objectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13030,6 +14777,589 @@ func (siw *ServerInterfaceWrapper) GetApplicationStatistics(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// ListControlApplicationStorageObjects operation middleware
+func (siw *ServerInterfaceWrapper) ListControlApplicationStorageObjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListControlApplicationStorageObjects(w, r, applicationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteControlApplicationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteControlApplicationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteControlApplicationStorageObjectParams
+
+	// ------------- Optional query parameter "force" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "force", r.URL.Query(), &params.Force, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "force"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "force", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteControlApplicationStorageObject(w, r, applicationId, objectId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetControlApplicationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) GetControlApplicationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetControlApplicationStorageObject(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadControlApplicationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DownloadControlApplicationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadControlApplicationStorageObject(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListApplicationStorageProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListApplicationStorageProviders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListApplicationStorageProviders(w, r, applicationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateApplicationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) CreateApplicationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateApplicationStorageProvider(w, r, applicationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableApplicationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) DisableApplicationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DisableApplicationStorageProviderParams
+
+	// ------------- Optional query parameter "confirm_affected_objects" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "confirm_affected_objects", r.URL.Query(), &params.ConfirmAffectedObjects, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "confirm_affected_objects"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "confirm_affected_objects", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableApplicationStorageProvider(w, r, applicationId, providerId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetApplicationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) GetApplicationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetApplicationStorageProvider(w, r, applicationId, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateApplicationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) UpdateApplicationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateApplicationStorageProvider(w, r, applicationId, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnableApplicationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) EnableApplicationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnableApplicationStorageProvider(w, r, applicationId, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VerifyApplicationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) VerifyApplicationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VerifyApplicationStorageProvider(w, r, applicationId, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateControlApplicationStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateControlApplicationStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateControlApplicationStorageUploadParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey RequiredIdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateControlApplicationStorageUpload(w, r, applicationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteControlApplicationStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CompleteControlApplicationStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "application_id" -------------
+	var applicationId ApplicationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "application_id", chi.URLParam(r, "application_id"), &applicationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "application_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteControlApplicationStorageUpload(w, r, applicationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListUsers operation middleware
 func (siw *ServerInterfaceWrapper) ListUsers(w http.ResponseWriter, r *http.Request) {
 
@@ -15878,6 +18208,463 @@ func (siw *ServerInterfaceWrapper) RotateSigningKey(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ListInstallationStorageObjects operation middleware
+func (siw *ServerInterfaceWrapper) ListInstallationStorageObjects(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInstallationStorageObjects(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInstallationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInstallationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteInstallationStorageObjectParams
+
+	// ------------- Optional query parameter "force" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "force", r.URL.Query(), &params.Force, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "force"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "force", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInstallationStorageObject(w, r, objectId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInstallationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) GetInstallationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInstallationStorageObject(w, r, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadInstallationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DownloadInstallationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadInstallationStorageObject(w, r, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInstallationStorageProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListInstallationStorageProviders(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInstallationStorageProviders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInstallationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) CreateInstallationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInstallationStorageProvider(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableInstallationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) DisableInstallationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DisableInstallationStorageProviderParams
+
+	// ------------- Optional query parameter "confirm_affected_objects" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "confirm_affected_objects", r.URL.Query(), &params.ConfirmAffectedObjects, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "confirm_affected_objects"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "confirm_affected_objects", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableInstallationStorageProvider(w, r, providerId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInstallationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) GetInstallationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInstallationStorageProvider(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateInstallationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) UpdateInstallationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateInstallationStorageProvider(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnableInstallationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) EnableInstallationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnableInstallationStorageProvider(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VerifyInstallationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) VerifyInstallationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VerifyInstallationStorageProvider(w, r, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInstallationStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CreateInstallationStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateInstallationStorageUploadParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey RequiredIdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInstallationStorageUpload(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteInstallationStorageUpload operation middleware
+func (siw *ServerInterfaceWrapper) CompleteInstallationStorageUpload(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteInstallationStorageUpload(w, r, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // AcceptOrganizationInvitation operation middleware
 func (siw *ServerInterfaceWrapper) AcceptOrganizationInvitation(w http.ResponseWriter, r *http.Request) {
 
@@ -17356,6 +20143,484 @@ func (siw *ServerInterfaceWrapper) RestoreOrganization(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListOrganizationStorageObjects operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizationStorageObjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizationStorageObjects(w, r, organizationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteOrganizationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOrganizationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteOrganizationStorageObjectParams
+
+	// ------------- Optional query parameter "force" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "force", r.URL.Query(), &params.Force, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "force"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "force", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOrganizationStorageObject(w, r, organizationId, objectId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganizationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationStorageObject(w, r, organizationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadOrganizationStorageObject operation middleware
+func (siw *ServerInterfaceWrapper) DownloadOrganizationStorageObject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "object_id" -------------
+	var objectId ObjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "object_id", chi.URLParam(r, "object_id"), &objectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "object_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadOrganizationStorageObject(w, r, organizationId, objectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrganizationStorageProviders operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizationStorageProviders(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizationStorageProviders(w, r, organizationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateOrganizationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) CreateOrganizationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateOrganizationStorageProvider(w, r, organizationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableOrganizationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) DisableOrganizationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DisableOrganizationStorageProviderParams
+
+	// ------------- Optional query parameter "confirm_affected_objects" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "confirm_affected_objects", r.URL.Query(), &params.ConfirmAffectedObjects, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "confirm_affected_objects"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "confirm_affected_objects", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableOrganizationStorageProvider(w, r, organizationId, providerId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganizationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationStorageProvider(w, r, organizationId, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOrganizationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOrganizationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOrganizationStorageProvider(w, r, organizationId, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EnableOrganizationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) EnableOrganizationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EnableOrganizationStorageProvider(w, r, organizationId, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VerifyOrganizationStorageProvider operation middleware
+func (siw *ServerInterfaceWrapper) VerifyOrganizationStorageProvider(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "provider_id" -------------
+	var providerId ProviderID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "provider_id", chi.URLParam(r, "provider_id"), &providerId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provider_id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, OperatorBearerScopes, []string{})
+
+	ctx = context.WithValue(ctx, OperatorCookieScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VerifyOrganizationStorageProvider(w, r, organizationId, providerId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ManagementListOrganizations operation middleware
 func (siw *ServerInterfaceWrapper) ManagementListOrganizations(w http.ResponseWriter, r *http.Request) {
 
@@ -18343,6 +21608,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/v1/applications/{application_id}/me/sessions/{session_id}", wrapper.RevokeMySession)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/applications/{application_id}/me/storage/objects", wrapper.ListMyStorageObjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/applications/{application_id}/me/storage/objects/{object_id}", wrapper.DeleteMyStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/applications/{application_id}/me/storage/objects/{object_id}", wrapper.GetMyStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/me/storage/objects/{object_id}/download", wrapper.DownloadMyStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/me/storage/uploads", wrapper.CreateMyStorageUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/me/storage/uploads/{object_id}/complete", wrapper.CompleteMyStorageUpload)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/applications/{application_id}/me/subscriptions", wrapper.ListMySubscriptions)
 	})
 	r.Group(func(r chi.Router) {
@@ -18359,6 +21642,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/applications/{application_id}/public-config", wrapper.PublicConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/applications/{application_id}/storage/objects", wrapper.ListApplicationStorageObjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/applications/{application_id}/storage/objects/{object_id}", wrapper.DeleteApplicationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/applications/{application_id}/storage/objects/{object_id}", wrapper.GetApplicationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/storage/objects/{object_id}/download", wrapper.DownloadApplicationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/storage/uploads", wrapper.CreateApplicationStorageUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/storage/uploads/{object_id}/complete", wrapper.CompleteApplicationStorageUpload)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/v1/applications/{application_id}/workspaces/{workspace_id}", wrapper.ArchiveMyWorkspace)
@@ -18407,6 +21708,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/applications/{application_id}/workspaces/{workspace_id}/owner-transfer", wrapper.TransferMyWorkspaceOwnership)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects", wrapper.ListWorkspaceStorageObjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}", wrapper.DeleteWorkspaceStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}", wrapper.GetWorkspaceStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}/download", wrapper.DownloadWorkspaceStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads", wrapper.CreateWorkspaceStorageUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads/{object_id}/complete", wrapper.CompleteWorkspaceStorageUpload)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/control/applications/{application_id}", wrapper.GetApplication)
@@ -18739,6 +22058,45 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/v1/control/applications/{application_id}/statistics", wrapper.GetApplicationStatistics)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/applications/{application_id}/storage/objects", wrapper.ListControlApplicationStorageObjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/control/applications/{application_id}/storage/objects/{object_id}", wrapper.DeleteControlApplicationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/applications/{application_id}/storage/objects/{object_id}", wrapper.GetControlApplicationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/applications/{application_id}/storage/objects/{object_id}/download", wrapper.DownloadControlApplicationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/applications/{application_id}/storage/providers", wrapper.ListApplicationStorageProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/applications/{application_id}/storage/providers", wrapper.CreateApplicationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/control/applications/{application_id}/storage/providers/{provider_id}", wrapper.DisableApplicationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/applications/{application_id}/storage/providers/{provider_id}", wrapper.GetApplicationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/v1/control/applications/{application_id}/storage/providers/{provider_id}", wrapper.UpdateApplicationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/applications/{application_id}/storage/providers/{provider_id}/enable", wrapper.EnableApplicationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/applications/{application_id}/storage/providers/{provider_id}/verify", wrapper.VerifyApplicationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/applications/{application_id}/storage/uploads", wrapper.CreateControlApplicationStorageUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/applications/{application_id}/storage/uploads/{object_id}/complete", wrapper.CompleteControlApplicationStorageUpload)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/control/applications/{application_id}/users", wrapper.ListUsers)
 	})
 	r.Group(func(r chi.Router) {
@@ -18991,6 +22349,45 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/v1/control/installation/signing-keys/rotate", wrapper.RotateSigningKey)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/installation/storage/objects", wrapper.ListInstallationStorageObjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/control/installation/storage/objects/{object_id}", wrapper.DeleteInstallationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/installation/storage/objects/{object_id}", wrapper.GetInstallationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/installation/storage/objects/{object_id}/download", wrapper.DownloadInstallationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/installation/storage/providers", wrapper.ListInstallationStorageProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/installation/storage/providers", wrapper.CreateInstallationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/control/installation/storage/providers/{provider_id}", wrapper.DisableInstallationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/installation/storage/providers/{provider_id}", wrapper.GetInstallationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/v1/control/installation/storage/providers/{provider_id}", wrapper.UpdateInstallationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/installation/storage/providers/{provider_id}/enable", wrapper.EnableInstallationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/installation/storage/providers/{provider_id}/verify", wrapper.VerifyInstallationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/installation/storage/uploads", wrapper.CreateInstallationStorageUpload)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/installation/storage/uploads/{object_id}/complete", wrapper.CompleteInstallationStorageUpload)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/control/organization-invitations/accept", wrapper.AcceptOrganizationInvitation)
 	})
 	r.Group(func(r chi.Router) {
@@ -19103,6 +22500,39 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/control/organizations/{organization_id}/restore", wrapper.RestoreOrganization)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/objects", wrapper.ListOrganizationStorageObjects)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/objects/{object_id}", wrapper.DeleteOrganizationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/objects/{object_id}", wrapper.GetOrganizationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/objects/{object_id}/download", wrapper.DownloadOrganizationStorageObject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/providers", wrapper.ListOrganizationStorageProviders)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/providers", wrapper.CreateOrganizationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/providers/{provider_id}", wrapper.DisableOrganizationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/providers/{provider_id}", wrapper.GetOrganizationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/providers/{provider_id}", wrapper.UpdateOrganizationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/providers/{provider_id}/enable", wrapper.EnableOrganizationStorageProvider)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/control/organizations/{organization_id}/storage/providers/{provider_id}/verify", wrapper.VerifyOrganizationStorageProvider)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/management/organizations", wrapper.ManagementListOrganizations)
@@ -20872,6 +24302,114 @@ func (response RevokeMySession204Response) VisitRevokeMySessionResponse(w http.R
 	return nil
 }
 
+type ListMyStorageObjectsRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+}
+
+type ListMyStorageObjectsResponseObject interface {
+	VisitListMyStorageObjectsResponse(w http.ResponseWriter) error
+}
+
+type ListMyStorageObjects200JSONResponse struct{ PageJSONResponse }
+
+func (response ListMyStorageObjects200JSONResponse) VisitListMyStorageObjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteMyStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type DeleteMyStorageObjectResponseObject interface {
+	VisitDeleteMyStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DeleteMyStorageObject204Response struct {
+}
+
+func (response DeleteMyStorageObject204Response) VisitDeleteMyStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetMyStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type GetMyStorageObjectResponseObject interface {
+	VisitGetMyStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type GetMyStorageObject200Response struct {
+}
+
+func (response GetMyStorageObject200Response) VisitGetMyStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DownloadMyStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type DownloadMyStorageObjectResponseObject interface {
+	VisitDownloadMyStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DownloadMyStorageObject200Response struct {
+}
+
+func (response DownloadMyStorageObject200Response) VisitDownloadMyStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type CreateMyStorageUploadRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	Params        CreateMyStorageUploadParams
+	Body          *CreateMyStorageUploadJSONRequestBody
+}
+
+type CreateMyStorageUploadResponseObject interface {
+	VisitCreateMyStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CreateMyStorageUpload201Response struct {
+}
+
+func (response CreateMyStorageUpload201Response) VisitCreateMyStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type CompleteMyStorageUploadRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type CompleteMyStorageUploadResponseObject interface {
+	VisitCompleteMyStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CompleteMyStorageUpload200Response struct {
+}
+
+func (response CompleteMyStorageUpload200Response) VisitCompleteMyStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
 type ListMySubscriptionsRequestObject struct {
 	ApplicationId ApplicationID `json:"application_id"`
 }
@@ -20993,6 +24531,114 @@ func (response PublicConfig200JSONResponse) VisitPublicConfigResponse(w http.Res
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListApplicationStorageObjectsRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+}
+
+type ListApplicationStorageObjectsResponseObject interface {
+	VisitListApplicationStorageObjectsResponse(w http.ResponseWriter) error
+}
+
+type ListApplicationStorageObjects200JSONResponse struct{ PageJSONResponse }
+
+func (response ListApplicationStorageObjects200JSONResponse) VisitListApplicationStorageObjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteApplicationStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type DeleteApplicationStorageObjectResponseObject interface {
+	VisitDeleteApplicationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DeleteApplicationStorageObject204Response struct {
+}
+
+func (response DeleteApplicationStorageObject204Response) VisitDeleteApplicationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetApplicationStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type GetApplicationStorageObjectResponseObject interface {
+	VisitGetApplicationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type GetApplicationStorageObject200Response struct {
+}
+
+func (response GetApplicationStorageObject200Response) VisitGetApplicationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DownloadApplicationStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type DownloadApplicationStorageObjectResponseObject interface {
+	VisitDownloadApplicationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DownloadApplicationStorageObject200Response struct {
+}
+
+func (response DownloadApplicationStorageObject200Response) VisitDownloadApplicationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type CreateApplicationStorageUploadRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	Params        CreateApplicationStorageUploadParams
+	Body          *CreateApplicationStorageUploadJSONRequestBody
+}
+
+type CreateApplicationStorageUploadResponseObject interface {
+	VisitCreateApplicationStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CreateApplicationStorageUpload201Response struct {
+}
+
+func (response CreateApplicationStorageUpload201Response) VisitCreateApplicationStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type CompleteApplicationStorageUploadRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type CompleteApplicationStorageUploadResponseObject interface {
+	VisitCompleteApplicationStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CompleteApplicationStorageUpload200Response struct {
+}
+
+func (response CompleteApplicationStorageUpload200Response) VisitCompleteApplicationStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
 }
 
 type ArchiveMyWorkspaceRequestObject struct {
@@ -21297,6 +24943,120 @@ func (response TransferMyWorkspaceOwnership200JSONResponse) VisitTransferMyWorks
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListWorkspaceStorageObjectsRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	WorkspaceId   WorkspaceID   `json:"workspace_id"`
+}
+
+type ListWorkspaceStorageObjectsResponseObject interface {
+	VisitListWorkspaceStorageObjectsResponse(w http.ResponseWriter) error
+}
+
+type ListWorkspaceStorageObjects200JSONResponse struct{ PageJSONResponse }
+
+func (response ListWorkspaceStorageObjects200JSONResponse) VisitListWorkspaceStorageObjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	WorkspaceId   WorkspaceID   `json:"workspace_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type DeleteWorkspaceStorageObjectResponseObject interface {
+	VisitDeleteWorkspaceStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DeleteWorkspaceStorageObject204Response struct {
+}
+
+func (response DeleteWorkspaceStorageObject204Response) VisitDeleteWorkspaceStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetWorkspaceStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	WorkspaceId   WorkspaceID   `json:"workspace_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type GetWorkspaceStorageObjectResponseObject interface {
+	VisitGetWorkspaceStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type GetWorkspaceStorageObject200Response struct {
+}
+
+func (response GetWorkspaceStorageObject200Response) VisitGetWorkspaceStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DownloadWorkspaceStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	WorkspaceId   WorkspaceID   `json:"workspace_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type DownloadWorkspaceStorageObjectResponseObject interface {
+	VisitDownloadWorkspaceStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DownloadWorkspaceStorageObject200Response struct {
+}
+
+func (response DownloadWorkspaceStorageObject200Response) VisitDownloadWorkspaceStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type CreateWorkspaceStorageUploadRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	WorkspaceId   WorkspaceID   `json:"workspace_id"`
+	Params        CreateWorkspaceStorageUploadParams
+	Body          *CreateWorkspaceStorageUploadJSONRequestBody
+}
+
+type CreateWorkspaceStorageUploadResponseObject interface {
+	VisitCreateWorkspaceStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CreateWorkspaceStorageUpload201Response struct {
+}
+
+func (response CreateWorkspaceStorageUpload201Response) VisitCreateWorkspaceStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type CompleteWorkspaceStorageUploadRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	WorkspaceId   WorkspaceID   `json:"workspace_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type CompleteWorkspaceStorageUploadResponseObject interface {
+	VisitCompleteWorkspaceStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CompleteWorkspaceStorageUpload200Response struct {
+}
+
+func (response CompleteWorkspaceStorageUpload200Response) VisitCompleteWorkspaceStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
 }
 
 type GetApplicationRequestObject struct {
@@ -23505,6 +27265,257 @@ func (response GetApplicationStatistics200Response) VisitGetApplicationStatistic
 	return nil
 }
 
+type ListControlApplicationStorageObjectsRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+}
+
+type ListControlApplicationStorageObjectsResponseObject interface {
+	VisitListControlApplicationStorageObjectsResponse(w http.ResponseWriter) error
+}
+
+type ListControlApplicationStorageObjects200JSONResponse struct{ PageJSONResponse }
+
+func (response ListControlApplicationStorageObjects200JSONResponse) VisitListControlApplicationStorageObjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteControlApplicationStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+	Params        DeleteControlApplicationStorageObjectParams
+}
+
+type DeleteControlApplicationStorageObjectResponseObject interface {
+	VisitDeleteControlApplicationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DeleteControlApplicationStorageObject204Response struct {
+}
+
+func (response DeleteControlApplicationStorageObject204Response) VisitDeleteControlApplicationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetControlApplicationStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type GetControlApplicationStorageObjectResponseObject interface {
+	VisitGetControlApplicationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type GetControlApplicationStorageObject200Response struct {
+}
+
+func (response GetControlApplicationStorageObject200Response) VisitGetControlApplicationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DownloadControlApplicationStorageObjectRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type DownloadControlApplicationStorageObjectResponseObject interface {
+	VisitDownloadControlApplicationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DownloadControlApplicationStorageObject200Response struct {
+}
+
+func (response DownloadControlApplicationStorageObject200Response) VisitDownloadControlApplicationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type ListApplicationStorageProvidersRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+}
+
+type ListApplicationStorageProvidersResponseObject interface {
+	VisitListApplicationStorageProvidersResponse(w http.ResponseWriter) error
+}
+
+type ListApplicationStorageProviders200JSONResponse struct{ PageJSONResponse }
+
+func (response ListApplicationStorageProviders200JSONResponse) VisitListApplicationStorageProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateApplicationStorageProviderRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	Body          *CreateApplicationStorageProviderJSONRequestBody
+}
+
+type CreateApplicationStorageProviderResponseObject interface {
+	VisitCreateApplicationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type CreateApplicationStorageProvider201Response struct {
+}
+
+func (response CreateApplicationStorageProvider201Response) VisitCreateApplicationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type DisableApplicationStorageProviderRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ProviderId    ProviderID    `json:"provider_id"`
+	Params        DisableApplicationStorageProviderParams
+}
+
+type DisableApplicationStorageProviderResponseObject interface {
+	VisitDisableApplicationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type DisableApplicationStorageProvider204Response struct {
+}
+
+func (response DisableApplicationStorageProvider204Response) VisitDisableApplicationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DisableApplicationStorageProvider409ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DisableApplicationStorageProvider409ApplicationProblemPlusJSONResponse) VisitDisableApplicationStorageProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetApplicationStorageProviderRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ProviderId    ProviderID    `json:"provider_id"`
+}
+
+type GetApplicationStorageProviderResponseObject interface {
+	VisitGetApplicationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type GetApplicationStorageProvider200Response struct {
+}
+
+func (response GetApplicationStorageProvider200Response) VisitGetApplicationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type UpdateApplicationStorageProviderRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ProviderId    ProviderID    `json:"provider_id"`
+	Body          *UpdateApplicationStorageProviderJSONRequestBody
+}
+
+type UpdateApplicationStorageProviderResponseObject interface {
+	VisitUpdateApplicationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type UpdateApplicationStorageProvider200Response struct {
+}
+
+func (response UpdateApplicationStorageProvider200Response) VisitUpdateApplicationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type EnableApplicationStorageProviderRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ProviderId    ProviderID    `json:"provider_id"`
+}
+
+type EnableApplicationStorageProviderResponseObject interface {
+	VisitEnableApplicationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type EnableApplicationStorageProvider200Response struct {
+}
+
+func (response EnableApplicationStorageProvider200Response) VisitEnableApplicationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type VerifyApplicationStorageProviderRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ProviderId    ProviderID    `json:"provider_id"`
+}
+
+type VerifyApplicationStorageProviderResponseObject interface {
+	VisitVerifyApplicationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type VerifyApplicationStorageProvider204Response struct {
+}
+
+func (response VerifyApplicationStorageProvider204Response) VisitVerifyApplicationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type CreateControlApplicationStorageUploadRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	Params        CreateControlApplicationStorageUploadParams
+	Body          *CreateControlApplicationStorageUploadJSONRequestBody
+}
+
+type CreateControlApplicationStorageUploadResponseObject interface {
+	VisitCreateControlApplicationStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CreateControlApplicationStorageUpload201Response struct {
+}
+
+func (response CreateControlApplicationStorageUpload201Response) VisitCreateControlApplicationStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type CompleteControlApplicationStorageUploadRequestObject struct {
+	ApplicationId ApplicationID `json:"application_id"`
+	ObjectId      ObjectID      `json:"object_id"`
+}
+
+type CompleteControlApplicationStorageUploadResponseObject interface {
+	VisitCompleteControlApplicationStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CompleteControlApplicationStorageUpload200Response struct {
+}
+
+func (response CompleteControlApplicationStorageUpload200Response) VisitCompleteControlApplicationStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
 type ListUsersRequestObject struct {
 	ApplicationId ApplicationID `json:"application_id"`
 }
@@ -25239,6 +29250,266 @@ func (response RotateSigningKey201Response) VisitRotateSigningKeyResponse(w http
 	return nil
 }
 
+type ListInstallationStorageObjectsRequestObject struct {
+}
+
+type ListInstallationStorageObjectsResponseObject interface {
+	VisitListInstallationStorageObjectsResponse(w http.ResponseWriter) error
+}
+
+type ListInstallationStorageObjects200JSONResponse struct{ PageJSONResponse }
+
+func (response ListInstallationStorageObjects200JSONResponse) VisitListInstallationStorageObjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstallationStorageObjectRequestObject struct {
+	ObjectId ObjectID `json:"object_id"`
+	Params   DeleteInstallationStorageObjectParams
+}
+
+type DeleteInstallationStorageObjectResponseObject interface {
+	VisitDeleteInstallationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DeleteInstallationStorageObject204Response struct {
+}
+
+func (response DeleteInstallationStorageObject204Response) VisitDeleteInstallationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetInstallationStorageObjectRequestObject struct {
+	ObjectId ObjectID `json:"object_id"`
+}
+
+type GetInstallationStorageObjectResponseObject interface {
+	VisitGetInstallationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type GetInstallationStorageObject200Response struct {
+}
+
+func (response GetInstallationStorageObject200Response) VisitGetInstallationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DownloadInstallationStorageObjectRequestObject struct {
+	ObjectId ObjectID `json:"object_id"`
+}
+
+type DownloadInstallationStorageObjectResponseObject interface {
+	VisitDownloadInstallationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DownloadInstallationStorageObject200Response struct {
+}
+
+func (response DownloadInstallationStorageObject200Response) VisitDownloadInstallationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type ListInstallationStorageProvidersRequestObject struct {
+}
+
+type ListInstallationStorageProvidersResponseObject interface {
+	VisitListInstallationStorageProvidersResponse(w http.ResponseWriter) error
+}
+
+type ListInstallationStorageProviders200JSONResponse struct{ PageJSONResponse }
+
+func (response ListInstallationStorageProviders200JSONResponse) VisitListInstallationStorageProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInstallationStorageProviderRequestObject struct {
+	Body *CreateInstallationStorageProviderJSONRequestBody
+}
+
+type CreateInstallationStorageProviderResponseObject interface {
+	VisitCreateInstallationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type CreateInstallationStorageProvider201Response struct {
+}
+
+func (response CreateInstallationStorageProvider201Response) VisitCreateInstallationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type DisableInstallationStorageProviderRequestObject struct {
+	ProviderId ProviderID `json:"provider_id"`
+	Params     DisableInstallationStorageProviderParams
+}
+
+type DisableInstallationStorageProviderResponseObject interface {
+	VisitDisableInstallationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type DisableInstallationStorageProvider204Response struct {
+}
+
+func (response DisableInstallationStorageProvider204Response) VisitDisableInstallationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DisableInstallationStorageProvider409ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DisableInstallationStorageProvider409ApplicationProblemPlusJSONResponse) VisitDisableInstallationStorageProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstallationStorageProviderRequestObject struct {
+	ProviderId ProviderID `json:"provider_id"`
+}
+
+type GetInstallationStorageProviderResponseObject interface {
+	VisitGetInstallationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type GetInstallationStorageProvider200Response struct {
+}
+
+func (response GetInstallationStorageProvider200Response) VisitGetInstallationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type UpdateInstallationStorageProviderRequestObject struct {
+	ProviderId ProviderID `json:"provider_id"`
+	Body       *UpdateInstallationStorageProviderJSONRequestBody
+}
+
+type UpdateInstallationStorageProviderResponseObject interface {
+	VisitUpdateInstallationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type UpdateInstallationStorageProvider200Response struct {
+}
+
+func (response UpdateInstallationStorageProvider200Response) VisitUpdateInstallationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type EnableInstallationStorageProviderRequestObject struct {
+	ProviderId ProviderID `json:"provider_id"`
+}
+
+type EnableInstallationStorageProviderResponseObject interface {
+	VisitEnableInstallationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type EnableInstallationStorageProvider200Response struct {
+}
+
+func (response EnableInstallationStorageProvider200Response) VisitEnableInstallationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type VerifyInstallationStorageProviderRequestObject struct {
+	ProviderId ProviderID `json:"provider_id"`
+}
+
+type VerifyInstallationStorageProviderResponseObject interface {
+	VisitVerifyInstallationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type VerifyInstallationStorageProvider204Response struct {
+}
+
+func (response VerifyInstallationStorageProvider204Response) VisitVerifyInstallationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type VerifyInstallationStorageProvider502ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response VerifyInstallationStorageProvider502ApplicationProblemPlusJSONResponse) VisitVerifyInstallationStorageProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateInstallationStorageUploadRequestObject struct {
+	Params CreateInstallationStorageUploadParams
+	Body   *CreateInstallationStorageUploadJSONRequestBody
+}
+
+type CreateInstallationStorageUploadResponseObject interface {
+	VisitCreateInstallationStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CreateInstallationStorageUpload201JSONResponse StorageUploadAuthorization
+
+func (response CreateInstallationStorageUpload201JSONResponse) VisitCreateInstallationStorageUploadResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteInstallationStorageUploadRequestObject struct {
+	ObjectId ObjectID `json:"object_id"`
+}
+
+type CompleteInstallationStorageUploadResponseObject interface {
+	VisitCompleteInstallationStorageUploadResponse(w http.ResponseWriter) error
+}
+
+type CompleteInstallationStorageUpload200Response struct {
+}
+
+func (response CompleteInstallationStorageUpload200Response) VisitCompleteInstallationStorageUploadResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
 type AcceptOrganizationInvitationRequestObject struct {
 	Body *AcceptOrganizationInvitationJSONRequestBody
 }
@@ -26014,6 +30285,222 @@ func (response RestoreOrganization204Response) VisitRestoreOrganizationResponse(
 	return nil
 }
 
+type ListOrganizationStorageObjectsRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+}
+
+type ListOrganizationStorageObjectsResponseObject interface {
+	VisitListOrganizationStorageObjectsResponse(w http.ResponseWriter) error
+}
+
+type ListOrganizationStorageObjects200JSONResponse struct{ PageJSONResponse }
+
+func (response ListOrganizationStorageObjects200JSONResponse) VisitListOrganizationStorageObjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrganizationStorageObjectRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	ObjectId       ObjectID       `json:"object_id"`
+	Params         DeleteOrganizationStorageObjectParams
+}
+
+type DeleteOrganizationStorageObjectResponseObject interface {
+	VisitDeleteOrganizationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DeleteOrganizationStorageObject204Response struct {
+}
+
+func (response DeleteOrganizationStorageObject204Response) VisitDeleteOrganizationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetOrganizationStorageObjectRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	ObjectId       ObjectID       `json:"object_id"`
+}
+
+type GetOrganizationStorageObjectResponseObject interface {
+	VisitGetOrganizationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type GetOrganizationStorageObject200Response struct {
+}
+
+func (response GetOrganizationStorageObject200Response) VisitGetOrganizationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type DownloadOrganizationStorageObjectRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	ObjectId       ObjectID       `json:"object_id"`
+}
+
+type DownloadOrganizationStorageObjectResponseObject interface {
+	VisitDownloadOrganizationStorageObjectResponse(w http.ResponseWriter) error
+}
+
+type DownloadOrganizationStorageObject200Response struct {
+}
+
+func (response DownloadOrganizationStorageObject200Response) VisitDownloadOrganizationStorageObjectResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type ListOrganizationStorageProvidersRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+}
+
+type ListOrganizationStorageProvidersResponseObject interface {
+	VisitListOrganizationStorageProvidersResponse(w http.ResponseWriter) error
+}
+
+type ListOrganizationStorageProviders200JSONResponse struct{ PageJSONResponse }
+
+func (response ListOrganizationStorageProviders200JSONResponse) VisitListOrganizationStorageProvidersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateOrganizationStorageProviderRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	Body           *CreateOrganizationStorageProviderJSONRequestBody
+}
+
+type CreateOrganizationStorageProviderResponseObject interface {
+	VisitCreateOrganizationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type CreateOrganizationStorageProvider201Response struct {
+}
+
+func (response CreateOrganizationStorageProvider201Response) VisitCreateOrganizationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(201)
+	return nil
+}
+
+type DisableOrganizationStorageProviderRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	ProviderId     ProviderID     `json:"provider_id"`
+	Params         DisableOrganizationStorageProviderParams
+}
+
+type DisableOrganizationStorageProviderResponseObject interface {
+	VisitDisableOrganizationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type DisableOrganizationStorageProvider204Response struct {
+}
+
+func (response DisableOrganizationStorageProvider204Response) VisitDisableOrganizationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DisableOrganizationStorageProvider409ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response DisableOrganizationStorageProvider409ApplicationProblemPlusJSONResponse) VisitDisableOrganizationStorageProviderResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationStorageProviderRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	ProviderId     ProviderID     `json:"provider_id"`
+}
+
+type GetOrganizationStorageProviderResponseObject interface {
+	VisitGetOrganizationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type GetOrganizationStorageProvider200Response struct {
+}
+
+func (response GetOrganizationStorageProvider200Response) VisitGetOrganizationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type UpdateOrganizationStorageProviderRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	ProviderId     ProviderID     `json:"provider_id"`
+	Body           *UpdateOrganizationStorageProviderJSONRequestBody
+}
+
+type UpdateOrganizationStorageProviderResponseObject interface {
+	VisitUpdateOrganizationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type UpdateOrganizationStorageProvider200Response struct {
+}
+
+func (response UpdateOrganizationStorageProvider200Response) VisitUpdateOrganizationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type EnableOrganizationStorageProviderRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	ProviderId     ProviderID     `json:"provider_id"`
+}
+
+type EnableOrganizationStorageProviderResponseObject interface {
+	VisitEnableOrganizationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type EnableOrganizationStorageProvider200Response struct {
+}
+
+func (response EnableOrganizationStorageProvider200Response) VisitEnableOrganizationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(200)
+	return nil
+}
+
+type VerifyOrganizationStorageProviderRequestObject struct {
+	OrganizationId OrganizationID `json:"organization_id"`
+	ProviderId     ProviderID     `json:"provider_id"`
+}
+
+type VerifyOrganizationStorageProviderResponseObject interface {
+	VisitVerifyOrganizationStorageProviderResponse(w http.ResponseWriter) error
+}
+
+type VerifyOrganizationStorageProvider204Response struct {
+}
+
+func (response VerifyOrganizationStorageProvider204Response) VisitVerifyOrganizationStorageProviderResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
 type ManagementListOrganizationsRequestObject struct {
 	Params ManagementListOrganizationsParams
 }
@@ -26643,6 +31130,24 @@ type StrictServerInterface interface {
 	// (DELETE /v1/applications/{application_id}/me/sessions/{session_id})
 	RevokeMySession(ctx context.Context, request RevokeMySessionRequestObject) (RevokeMySessionResponseObject, error)
 
+	// (GET /v1/applications/{application_id}/me/storage/objects)
+	ListMyStorageObjects(ctx context.Context, request ListMyStorageObjectsRequestObject) (ListMyStorageObjectsResponseObject, error)
+
+	// (DELETE /v1/applications/{application_id}/me/storage/objects/{object_id})
+	DeleteMyStorageObject(ctx context.Context, request DeleteMyStorageObjectRequestObject) (DeleteMyStorageObjectResponseObject, error)
+
+	// (GET /v1/applications/{application_id}/me/storage/objects/{object_id})
+	GetMyStorageObject(ctx context.Context, request GetMyStorageObjectRequestObject) (GetMyStorageObjectResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/me/storage/objects/{object_id}/download)
+	DownloadMyStorageObject(ctx context.Context, request DownloadMyStorageObjectRequestObject) (DownloadMyStorageObjectResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/me/storage/uploads)
+	CreateMyStorageUpload(ctx context.Context, request CreateMyStorageUploadRequestObject) (CreateMyStorageUploadResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/me/storage/uploads/{object_id}/complete)
+	CompleteMyStorageUpload(ctx context.Context, request CompleteMyStorageUploadRequestObject) (CompleteMyStorageUploadResponseObject, error)
+
 	// (GET /v1/applications/{application_id}/me/subscriptions)
 	ListMySubscriptions(ctx context.Context, request ListMySubscriptionsRequestObject) (ListMySubscriptionsResponseObject, error)
 
@@ -26660,6 +31165,24 @@ type StrictServerInterface interface {
 
 	// (GET /v1/applications/{application_id}/public-config)
 	PublicConfig(ctx context.Context, request PublicConfigRequestObject) (PublicConfigResponseObject, error)
+
+	// (GET /v1/applications/{application_id}/storage/objects)
+	ListApplicationStorageObjects(ctx context.Context, request ListApplicationStorageObjectsRequestObject) (ListApplicationStorageObjectsResponseObject, error)
+
+	// (DELETE /v1/applications/{application_id}/storage/objects/{object_id})
+	DeleteApplicationStorageObject(ctx context.Context, request DeleteApplicationStorageObjectRequestObject) (DeleteApplicationStorageObjectResponseObject, error)
+
+	// (GET /v1/applications/{application_id}/storage/objects/{object_id})
+	GetApplicationStorageObject(ctx context.Context, request GetApplicationStorageObjectRequestObject) (GetApplicationStorageObjectResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/storage/objects/{object_id}/download)
+	DownloadApplicationStorageObject(ctx context.Context, request DownloadApplicationStorageObjectRequestObject) (DownloadApplicationStorageObjectResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/storage/uploads)
+	CreateApplicationStorageUpload(ctx context.Context, request CreateApplicationStorageUploadRequestObject) (CreateApplicationStorageUploadResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/storage/uploads/{object_id}/complete)
+	CompleteApplicationStorageUpload(ctx context.Context, request CompleteApplicationStorageUploadRequestObject) (CompleteApplicationStorageUploadResponseObject, error)
 
 	// (DELETE /v1/applications/{application_id}/workspaces/{workspace_id})
 	ArchiveMyWorkspace(ctx context.Context, request ArchiveMyWorkspaceRequestObject) (ArchiveMyWorkspaceResponseObject, error)
@@ -26708,6 +31231,24 @@ type StrictServerInterface interface {
 
 	// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/owner-transfer)
 	TransferMyWorkspaceOwnership(ctx context.Context, request TransferMyWorkspaceOwnershipRequestObject) (TransferMyWorkspaceOwnershipResponseObject, error)
+
+	// (GET /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects)
+	ListWorkspaceStorageObjects(ctx context.Context, request ListWorkspaceStorageObjectsRequestObject) (ListWorkspaceStorageObjectsResponseObject, error)
+
+	// (DELETE /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id})
+	DeleteWorkspaceStorageObject(ctx context.Context, request DeleteWorkspaceStorageObjectRequestObject) (DeleteWorkspaceStorageObjectResponseObject, error)
+
+	// (GET /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id})
+	GetWorkspaceStorageObject(ctx context.Context, request GetWorkspaceStorageObjectRequestObject) (GetWorkspaceStorageObjectResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}/download)
+	DownloadWorkspaceStorageObject(ctx context.Context, request DownloadWorkspaceStorageObjectRequestObject) (DownloadWorkspaceStorageObjectResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads)
+	CreateWorkspaceStorageUpload(ctx context.Context, request CreateWorkspaceStorageUploadRequestObject) (CreateWorkspaceStorageUploadResponseObject, error)
+
+	// (POST /v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads/{object_id}/complete)
+	CompleteWorkspaceStorageUpload(ctx context.Context, request CompleteWorkspaceStorageUploadRequestObject) (CompleteWorkspaceStorageUploadResponseObject, error)
 
 	// (GET /v1/control/applications/{application_id})
 	GetApplication(ctx context.Context, request GetApplicationRequestObject) (GetApplicationResponseObject, error)
@@ -27039,6 +31580,45 @@ type StrictServerInterface interface {
 	// (GET /v1/control/applications/{application_id}/statistics)
 	GetApplicationStatistics(ctx context.Context, request GetApplicationStatisticsRequestObject) (GetApplicationStatisticsResponseObject, error)
 
+	// (GET /v1/control/applications/{application_id}/storage/objects)
+	ListControlApplicationStorageObjects(ctx context.Context, request ListControlApplicationStorageObjectsRequestObject) (ListControlApplicationStorageObjectsResponseObject, error)
+
+	// (DELETE /v1/control/applications/{application_id}/storage/objects/{object_id})
+	DeleteControlApplicationStorageObject(ctx context.Context, request DeleteControlApplicationStorageObjectRequestObject) (DeleteControlApplicationStorageObjectResponseObject, error)
+
+	// (GET /v1/control/applications/{application_id}/storage/objects/{object_id})
+	GetControlApplicationStorageObject(ctx context.Context, request GetControlApplicationStorageObjectRequestObject) (GetControlApplicationStorageObjectResponseObject, error)
+
+	// (POST /v1/control/applications/{application_id}/storage/objects/{object_id}/download)
+	DownloadControlApplicationStorageObject(ctx context.Context, request DownloadControlApplicationStorageObjectRequestObject) (DownloadControlApplicationStorageObjectResponseObject, error)
+
+	// (GET /v1/control/applications/{application_id}/storage/providers)
+	ListApplicationStorageProviders(ctx context.Context, request ListApplicationStorageProvidersRequestObject) (ListApplicationStorageProvidersResponseObject, error)
+
+	// (POST /v1/control/applications/{application_id}/storage/providers)
+	CreateApplicationStorageProvider(ctx context.Context, request CreateApplicationStorageProviderRequestObject) (CreateApplicationStorageProviderResponseObject, error)
+
+	// (DELETE /v1/control/applications/{application_id}/storage/providers/{provider_id})
+	DisableApplicationStorageProvider(ctx context.Context, request DisableApplicationStorageProviderRequestObject) (DisableApplicationStorageProviderResponseObject, error)
+
+	// (GET /v1/control/applications/{application_id}/storage/providers/{provider_id})
+	GetApplicationStorageProvider(ctx context.Context, request GetApplicationStorageProviderRequestObject) (GetApplicationStorageProviderResponseObject, error)
+
+	// (PATCH /v1/control/applications/{application_id}/storage/providers/{provider_id})
+	UpdateApplicationStorageProvider(ctx context.Context, request UpdateApplicationStorageProviderRequestObject) (UpdateApplicationStorageProviderResponseObject, error)
+
+	// (POST /v1/control/applications/{application_id}/storage/providers/{provider_id}/enable)
+	EnableApplicationStorageProvider(ctx context.Context, request EnableApplicationStorageProviderRequestObject) (EnableApplicationStorageProviderResponseObject, error)
+
+	// (POST /v1/control/applications/{application_id}/storage/providers/{provider_id}/verify)
+	VerifyApplicationStorageProvider(ctx context.Context, request VerifyApplicationStorageProviderRequestObject) (VerifyApplicationStorageProviderResponseObject, error)
+
+	// (POST /v1/control/applications/{application_id}/storage/uploads)
+	CreateControlApplicationStorageUpload(ctx context.Context, request CreateControlApplicationStorageUploadRequestObject) (CreateControlApplicationStorageUploadResponseObject, error)
+
+	// (POST /v1/control/applications/{application_id}/storage/uploads/{object_id}/complete)
+	CompleteControlApplicationStorageUpload(ctx context.Context, request CompleteControlApplicationStorageUploadRequestObject) (CompleteControlApplicationStorageUploadResponseObject, error)
+
 	// (GET /v1/control/applications/{application_id}/users)
 	ListUsers(ctx context.Context, request ListUsersRequestObject) (ListUsersResponseObject, error)
 
@@ -27291,6 +31871,45 @@ type StrictServerInterface interface {
 	// (POST /v1/control/installation/signing-keys/rotate)
 	RotateSigningKey(ctx context.Context, request RotateSigningKeyRequestObject) (RotateSigningKeyResponseObject, error)
 
+	// (GET /v1/control/installation/storage/objects)
+	ListInstallationStorageObjects(ctx context.Context, request ListInstallationStorageObjectsRequestObject) (ListInstallationStorageObjectsResponseObject, error)
+
+	// (DELETE /v1/control/installation/storage/objects/{object_id})
+	DeleteInstallationStorageObject(ctx context.Context, request DeleteInstallationStorageObjectRequestObject) (DeleteInstallationStorageObjectResponseObject, error)
+
+	// (GET /v1/control/installation/storage/objects/{object_id})
+	GetInstallationStorageObject(ctx context.Context, request GetInstallationStorageObjectRequestObject) (GetInstallationStorageObjectResponseObject, error)
+
+	// (POST /v1/control/installation/storage/objects/{object_id}/download)
+	DownloadInstallationStorageObject(ctx context.Context, request DownloadInstallationStorageObjectRequestObject) (DownloadInstallationStorageObjectResponseObject, error)
+
+	// (GET /v1/control/installation/storage/providers)
+	ListInstallationStorageProviders(ctx context.Context, request ListInstallationStorageProvidersRequestObject) (ListInstallationStorageProvidersResponseObject, error)
+
+	// (POST /v1/control/installation/storage/providers)
+	CreateInstallationStorageProvider(ctx context.Context, request CreateInstallationStorageProviderRequestObject) (CreateInstallationStorageProviderResponseObject, error)
+
+	// (DELETE /v1/control/installation/storage/providers/{provider_id})
+	DisableInstallationStorageProvider(ctx context.Context, request DisableInstallationStorageProviderRequestObject) (DisableInstallationStorageProviderResponseObject, error)
+
+	// (GET /v1/control/installation/storage/providers/{provider_id})
+	GetInstallationStorageProvider(ctx context.Context, request GetInstallationStorageProviderRequestObject) (GetInstallationStorageProviderResponseObject, error)
+
+	// (PATCH /v1/control/installation/storage/providers/{provider_id})
+	UpdateInstallationStorageProvider(ctx context.Context, request UpdateInstallationStorageProviderRequestObject) (UpdateInstallationStorageProviderResponseObject, error)
+
+	// (POST /v1/control/installation/storage/providers/{provider_id}/enable)
+	EnableInstallationStorageProvider(ctx context.Context, request EnableInstallationStorageProviderRequestObject) (EnableInstallationStorageProviderResponseObject, error)
+
+	// (POST /v1/control/installation/storage/providers/{provider_id}/verify)
+	VerifyInstallationStorageProvider(ctx context.Context, request VerifyInstallationStorageProviderRequestObject) (VerifyInstallationStorageProviderResponseObject, error)
+
+	// (POST /v1/control/installation/storage/uploads)
+	CreateInstallationStorageUpload(ctx context.Context, request CreateInstallationStorageUploadRequestObject) (CreateInstallationStorageUploadResponseObject, error)
+
+	// (POST /v1/control/installation/storage/uploads/{object_id}/complete)
+	CompleteInstallationStorageUpload(ctx context.Context, request CompleteInstallationStorageUploadRequestObject) (CompleteInstallationStorageUploadResponseObject, error)
+
 	// (POST /v1/control/organization-invitations/accept)
 	AcceptOrganizationInvitation(ctx context.Context, request AcceptOrganizationInvitationRequestObject) (AcceptOrganizationInvitationResponseObject, error)
 
@@ -27404,6 +32023,39 @@ type StrictServerInterface interface {
 
 	// (POST /v1/control/organizations/{organization_id}/restore)
 	RestoreOrganization(ctx context.Context, request RestoreOrganizationRequestObject) (RestoreOrganizationResponseObject, error)
+
+	// (GET /v1/control/organizations/{organization_id}/storage/objects)
+	ListOrganizationStorageObjects(ctx context.Context, request ListOrganizationStorageObjectsRequestObject) (ListOrganizationStorageObjectsResponseObject, error)
+
+	// (DELETE /v1/control/organizations/{organization_id}/storage/objects/{object_id})
+	DeleteOrganizationStorageObject(ctx context.Context, request DeleteOrganizationStorageObjectRequestObject) (DeleteOrganizationStorageObjectResponseObject, error)
+
+	// (GET /v1/control/organizations/{organization_id}/storage/objects/{object_id})
+	GetOrganizationStorageObject(ctx context.Context, request GetOrganizationStorageObjectRequestObject) (GetOrganizationStorageObjectResponseObject, error)
+
+	// (POST /v1/control/organizations/{organization_id}/storage/objects/{object_id}/download)
+	DownloadOrganizationStorageObject(ctx context.Context, request DownloadOrganizationStorageObjectRequestObject) (DownloadOrganizationStorageObjectResponseObject, error)
+
+	// (GET /v1/control/organizations/{organization_id}/storage/providers)
+	ListOrganizationStorageProviders(ctx context.Context, request ListOrganizationStorageProvidersRequestObject) (ListOrganizationStorageProvidersResponseObject, error)
+
+	// (POST /v1/control/organizations/{organization_id}/storage/providers)
+	CreateOrganizationStorageProvider(ctx context.Context, request CreateOrganizationStorageProviderRequestObject) (CreateOrganizationStorageProviderResponseObject, error)
+
+	// (DELETE /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+	DisableOrganizationStorageProvider(ctx context.Context, request DisableOrganizationStorageProviderRequestObject) (DisableOrganizationStorageProviderResponseObject, error)
+
+	// (GET /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+	GetOrganizationStorageProvider(ctx context.Context, request GetOrganizationStorageProviderRequestObject) (GetOrganizationStorageProviderResponseObject, error)
+
+	// (PATCH /v1/control/organizations/{organization_id}/storage/providers/{provider_id})
+	UpdateOrganizationStorageProvider(ctx context.Context, request UpdateOrganizationStorageProviderRequestObject) (UpdateOrganizationStorageProviderResponseObject, error)
+
+	// (POST /v1/control/organizations/{organization_id}/storage/providers/{provider_id}/enable)
+	EnableOrganizationStorageProvider(ctx context.Context, request EnableOrganizationStorageProviderRequestObject) (EnableOrganizationStorageProviderResponseObject, error)
+
+	// (POST /v1/control/organizations/{organization_id}/storage/providers/{provider_id}/verify)
+	VerifyOrganizationStorageProvider(ctx context.Context, request VerifyOrganizationStorageProviderRequestObject) (VerifyOrganizationStorageProviderResponseObject, error)
 
 	// (GET /v1/management/organizations)
 	ManagementListOrganizations(ctx context.Context, request ManagementListOrganizationsRequestObject) (ManagementListOrganizationsResponseObject, error)
@@ -29970,6 +34622,174 @@ func (sh *strictHandler) RevokeMySession(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// ListMyStorageObjects operation middleware
+func (sh *strictHandler) ListMyStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	var request ListMyStorageObjectsRequestObject
+
+	request.ApplicationId = applicationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMyStorageObjects(ctx, request.(ListMyStorageObjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMyStorageObjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMyStorageObjectsResponseObject); ok {
+		if err := validResponse.VisitListMyStorageObjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteMyStorageObject operation middleware
+func (sh *strictHandler) DeleteMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request DeleteMyStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteMyStorageObject(ctx, request.(DeleteMyStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteMyStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteMyStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDeleteMyStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyStorageObject operation middleware
+func (sh *strictHandler) GetMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request GetMyStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyStorageObject(ctx, request.(GetMyStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyStorageObjectResponseObject); ok {
+		if err := validResponse.VisitGetMyStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadMyStorageObject operation middleware
+func (sh *strictHandler) DownloadMyStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request DownloadMyStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadMyStorageObject(ctx, request.(DownloadMyStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadMyStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadMyStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDownloadMyStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateMyStorageUpload operation middleware
+func (sh *strictHandler) CreateMyStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateMyStorageUploadParams) {
+	var request CreateMyStorageUploadRequestObject
+
+	request.ApplicationId = applicationId
+	request.Params = params
+
+	var body CreateMyStorageUploadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateMyStorageUpload(ctx, request.(CreateMyStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateMyStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateMyStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCreateMyStorageUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteMyStorageUpload operation middleware
+func (sh *strictHandler) CompleteMyStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request CompleteMyStorageUploadRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteMyStorageUpload(ctx, request.(CompleteMyStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteMyStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteMyStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCompleteMyStorageUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListMySubscriptions operation middleware
 func (sh *strictHandler) ListMySubscriptions(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
 	var request ListMySubscriptionsRequestObject
@@ -30134,6 +34954,174 @@ func (sh *strictHandler) PublicConfig(w http.ResponseWriter, r *http.Request, ap
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PublicConfigResponseObject); ok {
 		if err := validResponse.VisitPublicConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListApplicationStorageObjects operation middleware
+func (sh *strictHandler) ListApplicationStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	var request ListApplicationStorageObjectsRequestObject
+
+	request.ApplicationId = applicationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListApplicationStorageObjects(ctx, request.(ListApplicationStorageObjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListApplicationStorageObjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListApplicationStorageObjectsResponseObject); ok {
+		if err := validResponse.VisitListApplicationStorageObjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteApplicationStorageObject operation middleware
+func (sh *strictHandler) DeleteApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request DeleteApplicationStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteApplicationStorageObject(ctx, request.(DeleteApplicationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteApplicationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteApplicationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDeleteApplicationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetApplicationStorageObject operation middleware
+func (sh *strictHandler) GetApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request GetApplicationStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApplicationStorageObject(ctx, request.(GetApplicationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApplicationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApplicationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitGetApplicationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadApplicationStorageObject operation middleware
+func (sh *strictHandler) DownloadApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request DownloadApplicationStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadApplicationStorageObject(ctx, request.(DownloadApplicationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadApplicationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadApplicationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDownloadApplicationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateApplicationStorageUpload operation middleware
+func (sh *strictHandler) CreateApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateApplicationStorageUploadParams) {
+	var request CreateApplicationStorageUploadRequestObject
+
+	request.ApplicationId = applicationId
+	request.Params = params
+
+	var body CreateApplicationStorageUploadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateApplicationStorageUpload(ctx, request.(CreateApplicationStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateApplicationStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateApplicationStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCreateApplicationStorageUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteApplicationStorageUpload operation middleware
+func (sh *strictHandler) CompleteApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request CompleteApplicationStorageUploadRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteApplicationStorageUpload(ctx, request.(CompleteApplicationStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteApplicationStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteApplicationStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCompleteApplicationStorageUploadResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -30620,6 +35608,180 @@ func (sh *strictHandler) TransferMyWorkspaceOwnership(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TransferMyWorkspaceOwnershipResponseObject); ok {
 		if err := validResponse.VisitTransferMyWorkspaceOwnershipResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkspaceStorageObjects operation middleware
+func (sh *strictHandler) ListWorkspaceStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID) {
+	var request ListWorkspaceStorageObjectsRequestObject
+
+	request.ApplicationId = applicationId
+	request.WorkspaceId = workspaceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkspaceStorageObjects(ctx, request.(ListWorkspaceStorageObjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkspaceStorageObjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkspaceStorageObjectsResponseObject); ok {
+		if err := validResponse.VisitListWorkspaceStorageObjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWorkspaceStorageObject operation middleware
+func (sh *strictHandler) DeleteWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID) {
+	var request DeleteWorkspaceStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.WorkspaceId = workspaceId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWorkspaceStorageObject(ctx, request.(DeleteWorkspaceStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWorkspaceStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWorkspaceStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDeleteWorkspaceStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkspaceStorageObject operation middleware
+func (sh *strictHandler) GetWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID) {
+	var request GetWorkspaceStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.WorkspaceId = workspaceId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkspaceStorageObject(ctx, request.(GetWorkspaceStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkspaceStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkspaceStorageObjectResponseObject); ok {
+		if err := validResponse.VisitGetWorkspaceStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadWorkspaceStorageObject operation middleware
+func (sh *strictHandler) DownloadWorkspaceStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID) {
+	var request DownloadWorkspaceStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.WorkspaceId = workspaceId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadWorkspaceStorageObject(ctx, request.(DownloadWorkspaceStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadWorkspaceStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadWorkspaceStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDownloadWorkspaceStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWorkspaceStorageUpload operation middleware
+func (sh *strictHandler) CreateWorkspaceStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, params CreateWorkspaceStorageUploadParams) {
+	var request CreateWorkspaceStorageUploadRequestObject
+
+	request.ApplicationId = applicationId
+	request.WorkspaceId = workspaceId
+	request.Params = params
+
+	var body CreateWorkspaceStorageUploadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorkspaceStorageUpload(ctx, request.(CreateWorkspaceStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorkspaceStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorkspaceStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCreateWorkspaceStorageUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteWorkspaceStorageUpload operation middleware
+func (sh *strictHandler) CompleteWorkspaceStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, workspaceId WorkspaceID, objectId ObjectID) {
+	var request CompleteWorkspaceStorageUploadRequestObject
+
+	request.ApplicationId = applicationId
+	request.WorkspaceId = workspaceId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteWorkspaceStorageUpload(ctx, request.(CompleteWorkspaceStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteWorkspaceStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteWorkspaceStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCompleteWorkspaceStorageUploadResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -33821,6 +38983,377 @@ func (sh *strictHandler) GetApplicationStatistics(w http.ResponseWriter, r *http
 	}
 }
 
+// ListControlApplicationStorageObjects operation middleware
+func (sh *strictHandler) ListControlApplicationStorageObjects(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	var request ListControlApplicationStorageObjectsRequestObject
+
+	request.ApplicationId = applicationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListControlApplicationStorageObjects(ctx, request.(ListControlApplicationStorageObjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListControlApplicationStorageObjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListControlApplicationStorageObjectsResponseObject); ok {
+		if err := validResponse.VisitListControlApplicationStorageObjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteControlApplicationStorageObject operation middleware
+func (sh *strictHandler) DeleteControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID, params DeleteControlApplicationStorageObjectParams) {
+	var request DeleteControlApplicationStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteControlApplicationStorageObject(ctx, request.(DeleteControlApplicationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteControlApplicationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteControlApplicationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDeleteControlApplicationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetControlApplicationStorageObject operation middleware
+func (sh *strictHandler) GetControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request GetControlApplicationStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetControlApplicationStorageObject(ctx, request.(GetControlApplicationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetControlApplicationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetControlApplicationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitGetControlApplicationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadControlApplicationStorageObject operation middleware
+func (sh *strictHandler) DownloadControlApplicationStorageObject(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request DownloadControlApplicationStorageObjectRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadControlApplicationStorageObject(ctx, request.(DownloadControlApplicationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadControlApplicationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadControlApplicationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDownloadControlApplicationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListApplicationStorageProviders operation middleware
+func (sh *strictHandler) ListApplicationStorageProviders(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	var request ListApplicationStorageProvidersRequestObject
+
+	request.ApplicationId = applicationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListApplicationStorageProviders(ctx, request.(ListApplicationStorageProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListApplicationStorageProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListApplicationStorageProvidersResponseObject); ok {
+		if err := validResponse.VisitListApplicationStorageProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateApplicationStorageProvider operation middleware
+func (sh *strictHandler) CreateApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
+	var request CreateApplicationStorageProviderRequestObject
+
+	request.ApplicationId = applicationId
+
+	var body CreateApplicationStorageProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateApplicationStorageProvider(ctx, request.(CreateApplicationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateApplicationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateApplicationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitCreateApplicationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DisableApplicationStorageProvider operation middleware
+func (sh *strictHandler) DisableApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID, params DisableApplicationStorageProviderParams) {
+	var request DisableApplicationStorageProviderRequestObject
+
+	request.ApplicationId = applicationId
+	request.ProviderId = providerId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DisableApplicationStorageProvider(ctx, request.(DisableApplicationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DisableApplicationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DisableApplicationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitDisableApplicationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetApplicationStorageProvider operation middleware
+func (sh *strictHandler) GetApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID) {
+	var request GetApplicationStorageProviderRequestObject
+
+	request.ApplicationId = applicationId
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetApplicationStorageProvider(ctx, request.(GetApplicationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetApplicationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetApplicationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitGetApplicationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateApplicationStorageProvider operation middleware
+func (sh *strictHandler) UpdateApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID) {
+	var request UpdateApplicationStorageProviderRequestObject
+
+	request.ApplicationId = applicationId
+	request.ProviderId = providerId
+
+	var body UpdateApplicationStorageProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateApplicationStorageProvider(ctx, request.(UpdateApplicationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateApplicationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateApplicationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitUpdateApplicationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EnableApplicationStorageProvider operation middleware
+func (sh *strictHandler) EnableApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID) {
+	var request EnableApplicationStorageProviderRequestObject
+
+	request.ApplicationId = applicationId
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EnableApplicationStorageProvider(ctx, request.(EnableApplicationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EnableApplicationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EnableApplicationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitEnableApplicationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// VerifyApplicationStorageProvider operation middleware
+func (sh *strictHandler) VerifyApplicationStorageProvider(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, providerId ProviderID) {
+	var request VerifyApplicationStorageProviderRequestObject
+
+	request.ApplicationId = applicationId
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VerifyApplicationStorageProvider(ctx, request.(VerifyApplicationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VerifyApplicationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VerifyApplicationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitVerifyApplicationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateControlApplicationStorageUpload operation middleware
+func (sh *strictHandler) CreateControlApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, params CreateControlApplicationStorageUploadParams) {
+	var request CreateControlApplicationStorageUploadRequestObject
+
+	request.ApplicationId = applicationId
+	request.Params = params
+
+	var body CreateControlApplicationStorageUploadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateControlApplicationStorageUpload(ctx, request.(CreateControlApplicationStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateControlApplicationStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateControlApplicationStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCreateControlApplicationStorageUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteControlApplicationStorageUpload operation middleware
+func (sh *strictHandler) CompleteControlApplicationStorageUpload(w http.ResponseWriter, r *http.Request, applicationId ApplicationID, objectId ObjectID) {
+	var request CompleteControlApplicationStorageUploadRequestObject
+
+	request.ApplicationId = applicationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteControlApplicationStorageUpload(ctx, request.(CompleteControlApplicationStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteControlApplicationStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteControlApplicationStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCompleteControlApplicationStorageUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListUsers operation middleware
 func (sh *strictHandler) ListUsers(w http.ResponseWriter, r *http.Request, applicationId ApplicationID) {
 	var request ListUsersRequestObject
@@ -36229,6 +41762,361 @@ func (sh *strictHandler) RotateSigningKey(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ListInstallationStorageObjects operation middleware
+func (sh *strictHandler) ListInstallationStorageObjects(w http.ResponseWriter, r *http.Request) {
+	var request ListInstallationStorageObjectsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInstallationStorageObjects(ctx, request.(ListInstallationStorageObjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInstallationStorageObjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInstallationStorageObjectsResponseObject); ok {
+		if err := validResponse.VisitListInstallationStorageObjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInstallationStorageObject operation middleware
+func (sh *strictHandler) DeleteInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID, params DeleteInstallationStorageObjectParams) {
+	var request DeleteInstallationStorageObjectRequestObject
+
+	request.ObjectId = objectId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInstallationStorageObject(ctx, request.(DeleteInstallationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInstallationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInstallationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDeleteInstallationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInstallationStorageObject operation middleware
+func (sh *strictHandler) GetInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID) {
+	var request GetInstallationStorageObjectRequestObject
+
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInstallationStorageObject(ctx, request.(GetInstallationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInstallationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInstallationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitGetInstallationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadInstallationStorageObject operation middleware
+func (sh *strictHandler) DownloadInstallationStorageObject(w http.ResponseWriter, r *http.Request, objectId ObjectID) {
+	var request DownloadInstallationStorageObjectRequestObject
+
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadInstallationStorageObject(ctx, request.(DownloadInstallationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadInstallationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadInstallationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDownloadInstallationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInstallationStorageProviders operation middleware
+func (sh *strictHandler) ListInstallationStorageProviders(w http.ResponseWriter, r *http.Request) {
+	var request ListInstallationStorageProvidersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInstallationStorageProviders(ctx, request.(ListInstallationStorageProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInstallationStorageProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInstallationStorageProvidersResponseObject); ok {
+		if err := validResponse.VisitListInstallationStorageProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateInstallationStorageProvider operation middleware
+func (sh *strictHandler) CreateInstallationStorageProvider(w http.ResponseWriter, r *http.Request) {
+	var request CreateInstallationStorageProviderRequestObject
+
+	var body CreateInstallationStorageProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInstallationStorageProvider(ctx, request.(CreateInstallationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInstallationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateInstallationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitCreateInstallationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DisableInstallationStorageProvider operation middleware
+func (sh *strictHandler) DisableInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID, params DisableInstallationStorageProviderParams) {
+	var request DisableInstallationStorageProviderRequestObject
+
+	request.ProviderId = providerId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DisableInstallationStorageProvider(ctx, request.(DisableInstallationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DisableInstallationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DisableInstallationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitDisableInstallationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInstallationStorageProvider operation middleware
+func (sh *strictHandler) GetInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID) {
+	var request GetInstallationStorageProviderRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInstallationStorageProvider(ctx, request.(GetInstallationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInstallationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInstallationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitGetInstallationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateInstallationStorageProvider operation middleware
+func (sh *strictHandler) UpdateInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID) {
+	var request UpdateInstallationStorageProviderRequestObject
+
+	request.ProviderId = providerId
+
+	var body UpdateInstallationStorageProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateInstallationStorageProvider(ctx, request.(UpdateInstallationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateInstallationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateInstallationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitUpdateInstallationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EnableInstallationStorageProvider operation middleware
+func (sh *strictHandler) EnableInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID) {
+	var request EnableInstallationStorageProviderRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EnableInstallationStorageProvider(ctx, request.(EnableInstallationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EnableInstallationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EnableInstallationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitEnableInstallationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// VerifyInstallationStorageProvider operation middleware
+func (sh *strictHandler) VerifyInstallationStorageProvider(w http.ResponseWriter, r *http.Request, providerId ProviderID) {
+	var request VerifyInstallationStorageProviderRequestObject
+
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VerifyInstallationStorageProvider(ctx, request.(VerifyInstallationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VerifyInstallationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VerifyInstallationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitVerifyInstallationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateInstallationStorageUpload operation middleware
+func (sh *strictHandler) CreateInstallationStorageUpload(w http.ResponseWriter, r *http.Request, params CreateInstallationStorageUploadParams) {
+	var request CreateInstallationStorageUploadRequestObject
+
+	request.Params = params
+
+	var body CreateInstallationStorageUploadJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInstallationStorageUpload(ctx, request.(CreateInstallationStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInstallationStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateInstallationStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCreateInstallationStorageUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteInstallationStorageUpload operation middleware
+func (sh *strictHandler) CompleteInstallationStorageUpload(w http.ResponseWriter, r *http.Request, objectId ObjectID) {
+	var request CompleteInstallationStorageUploadRequestObject
+
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteInstallationStorageUpload(ctx, request.(CompleteInstallationStorageUploadRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteInstallationStorageUpload")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteInstallationStorageUploadResponseObject); ok {
+		if err := validResponse.VisitCompleteInstallationStorageUploadResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // AcceptOrganizationInvitation operation middleware
 func (sh *strictHandler) AcceptOrganizationInvitation(w http.ResponseWriter, r *http.Request) {
 	var request AcceptOrganizationInvitationRequestObject
@@ -37332,6 +43220,316 @@ func (sh *strictHandler) RestoreOrganization(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// ListOrganizationStorageObjects operation middleware
+func (sh *strictHandler) ListOrganizationStorageObjects(w http.ResponseWriter, r *http.Request, organizationId OrganizationID) {
+	var request ListOrganizationStorageObjectsRequestObject
+
+	request.OrganizationId = organizationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrganizationStorageObjects(ctx, request.(ListOrganizationStorageObjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrganizationStorageObjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrganizationStorageObjectsResponseObject); ok {
+		if err := validResponse.VisitListOrganizationStorageObjectsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteOrganizationStorageObject operation middleware
+func (sh *strictHandler) DeleteOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID, params DeleteOrganizationStorageObjectParams) {
+	var request DeleteOrganizationStorageObjectRequestObject
+
+	request.OrganizationId = organizationId
+	request.ObjectId = objectId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteOrganizationStorageObject(ctx, request.(DeleteOrganizationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteOrganizationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteOrganizationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDeleteOrganizationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrganizationStorageObject operation middleware
+func (sh *strictHandler) GetOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID) {
+	var request GetOrganizationStorageObjectRequestObject
+
+	request.OrganizationId = organizationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrganizationStorageObject(ctx, request.(GetOrganizationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrganizationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrganizationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitGetOrganizationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DownloadOrganizationStorageObject operation middleware
+func (sh *strictHandler) DownloadOrganizationStorageObject(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, objectId ObjectID) {
+	var request DownloadOrganizationStorageObjectRequestObject
+
+	request.OrganizationId = organizationId
+	request.ObjectId = objectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DownloadOrganizationStorageObject(ctx, request.(DownloadOrganizationStorageObjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DownloadOrganizationStorageObject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DownloadOrganizationStorageObjectResponseObject); ok {
+		if err := validResponse.VisitDownloadOrganizationStorageObjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOrganizationStorageProviders operation middleware
+func (sh *strictHandler) ListOrganizationStorageProviders(w http.ResponseWriter, r *http.Request, organizationId OrganizationID) {
+	var request ListOrganizationStorageProvidersRequestObject
+
+	request.OrganizationId = organizationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrganizationStorageProviders(ctx, request.(ListOrganizationStorageProvidersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrganizationStorageProviders")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrganizationStorageProvidersResponseObject); ok {
+		if err := validResponse.VisitListOrganizationStorageProvidersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateOrganizationStorageProvider operation middleware
+func (sh *strictHandler) CreateOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID) {
+	var request CreateOrganizationStorageProviderRequestObject
+
+	request.OrganizationId = organizationId
+
+	var body CreateOrganizationStorageProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateOrganizationStorageProvider(ctx, request.(CreateOrganizationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateOrganizationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateOrganizationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitCreateOrganizationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DisableOrganizationStorageProvider operation middleware
+func (sh *strictHandler) DisableOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID, params DisableOrganizationStorageProviderParams) {
+	var request DisableOrganizationStorageProviderRequestObject
+
+	request.OrganizationId = organizationId
+	request.ProviderId = providerId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DisableOrganizationStorageProvider(ctx, request.(DisableOrganizationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DisableOrganizationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DisableOrganizationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitDisableOrganizationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrganizationStorageProvider operation middleware
+func (sh *strictHandler) GetOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID) {
+	var request GetOrganizationStorageProviderRequestObject
+
+	request.OrganizationId = organizationId
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrganizationStorageProvider(ctx, request.(GetOrganizationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrganizationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrganizationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitGetOrganizationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateOrganizationStorageProvider operation middleware
+func (sh *strictHandler) UpdateOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID) {
+	var request UpdateOrganizationStorageProviderRequestObject
+
+	request.OrganizationId = organizationId
+	request.ProviderId = providerId
+
+	var body UpdateOrganizationStorageProviderJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateOrganizationStorageProvider(ctx, request.(UpdateOrganizationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateOrganizationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateOrganizationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitUpdateOrganizationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EnableOrganizationStorageProvider operation middleware
+func (sh *strictHandler) EnableOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID) {
+	var request EnableOrganizationStorageProviderRequestObject
+
+	request.OrganizationId = organizationId
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EnableOrganizationStorageProvider(ctx, request.(EnableOrganizationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EnableOrganizationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EnableOrganizationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitEnableOrganizationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// VerifyOrganizationStorageProvider operation middleware
+func (sh *strictHandler) VerifyOrganizationStorageProvider(w http.ResponseWriter, r *http.Request, organizationId OrganizationID, providerId ProviderID) {
+	var request VerifyOrganizationStorageProviderRequestObject
+
+	request.OrganizationId = organizationId
+	request.ProviderId = providerId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VerifyOrganizationStorageProvider(ctx, request.(VerifyOrganizationStorageProviderRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VerifyOrganizationStorageProvider")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VerifyOrganizationStorageProviderResponseObject); ok {
+		if err := validResponse.VisitVerifyOrganizationStorageProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ManagementListOrganizations operation middleware
 func (sh *strictHandler) ManagementListOrganizations(w http.ResponseWriter, r *http.Request, params ManagementListOrganizationsParams) {
 	var request ManagementListOrganizationsRequestObject
@@ -37849,252 +44047,287 @@ func (sh *strictHandler) Version(w http.ResponseWriter, r *http.Request) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"/ZqQB0P9NELcXqNy9X39/PX/BgAA//8=",
+	"7L1tc9s4lij8V1h6tmqfuytFjuPOTGfrfnCcZNfTScdjJ923qjdXBZOQhDEFsEFQjsaV/34LbyRIgiRI",
+	"kZSU7IfuyBIJ4Lzg4OC8Pk18sokIhpjFk1dPkwhQsIEMUvHXZRSFyAcMEXz9hn+B8OTVJAJsPZlOMNjA",
+	"yasJyJ5ZoGAynVD4Z4IoDCavGE3gdBL7a7gB/O1/oXA5eTX5/+bZnHP5azz//Pn6zeTbt+nkiuAlopvL",
+	"5RL6DAYf7/8Bfbm2AMY+RRGfafJqcqum8R7XEHsBisF9iPDKA15EyRYFkHoRwhgG3v3OC9EWekQO9Wwy",
+	"lXD8mUC6ywDx5cQLoGZeqOcnJggBXIIkZJNXSxDGcDphu4i/e09ICAEWALwj1IdvYAgZLK/6NYXgwdsA",
+	"DFYw8OAGoHDG4CYKAYMehUtIIfZh/B+ewmLs/Z/ZZRIgNruFICa4avFLPmnblV4HcBMRBrG/+wXuUvqu",
+	"IQggzcY2Hpvx58xZNuDre4hXbD15df7TT9PJBmH991/TOWNGEV7JKZcfAPPXZcRcJZRCzDwKY5JQH3pv",
+	"P4FVCm1pScuZHKeO3SyzYz9MAngLmXzjyYpLJJ9aUPVYS6x+vEzY+ipEEDNj0xSZTfzetGHKEMjBSQCv",
+	"1iAMIV7ByhlIABd++lTdNAYRn5//NUfEixdTp1V8gGxNAre1LDby4bolQZxsJq/+mNyd//Ry8qVyDbcw",
+	"QBT67PPtddXcVD2ySCiqnXJJ6AawyauJfLByxjgiOIafxM9VU8pnFmIMFzA5gmrAvPNJ9Wyx+LEDG90x",
+	"wKpHFT/Wck3DVpeSu/LckNK1lyPjI10BjP5Zf04R46FeZr0Bu01+j+cnjOTv/cyljrTqydQDvczGj1YY",
+	"V0NG5e+9zcVf73wWOYk1p7PpDsZxHQfF8vdewL5L7tPTr3pC46FeZv2d0Ic4Aj6snPJRP9H3fH8X4qV0",
+	"7L/9yrVHxDzg+xy99yH00jV4j2sSQ29FAWaxByj0NpByvekRsbXH1tDzldaQxJD+a6yerNKRCrC1guXb",
+	"VHP9axIgWNSO5XmIl2jFf/AJZhAz/tHQjuf/iDnIT44T20dPV5JRReg1DFIMQuOd4VajJ6td0a9gIxUs",
+	"59kjSiJImcKtJFnp6JpO4jBZyYsK48uYvJr83z/A7J9f+P/OZj/Pvjw9n748/6b+/PIv1pM8W+4fciY1",
+	"bnYCy9OpAjhxevL/CFUHyhvooxhJkCog/jp7fHyccSVjltAQYn7kB3UoyFREGx4K6l3zI1rralauppPA",
+	"AEc/LPbWhP+Gd5Mv36YTTLBvnzincjVqVtOCvtSsFk2VzmPlD63U1FM9r38XNMS89qb1K60RlRTrKu02",
+	"xWIbtvpEHuCYbCR/jaFPISs/MZ08UsTgRxzu0mUKolTy2xZStESQWp8QPFSiMjB30kIMz7GzpDBeL5jA",
+	"R7pQn8IAYoZAGAsmbM9q5rBWBqpgrQIDGaC0Ju9VCsRRE7oCR5WPCmws1kjCklJXHOwpHfME+FJEq/ra",
+	"EaPyxzanjNOwjxjSeI2iTxTgeCl5uZdTtDyyfQWpuo/XkCIGlKB1XgMIAsR/AuGNwSLKZJHnGqSmuA8t",
+	"1qrLMCSPnr9GYeCJfRF7jAgTTbiFHlujODW2PZtYjSEmbc2pHCl8k9yHyN9PrbEjQ+qzeXA/cYD4xqTa",
+	"WOih2KOQJVTZEbnOmWAusPhjPmAw8GiCGdrAmbAfrjyIg4ggzJ55d2KvScV1Seg9CgKIDTzVQn4LtQo0",
+	"BNX12DVXpOdOipMjHW9JCC/jGK3wRoHSy34qDGuf++7Dpxu9ofbQSNckZlbJWtpB9RbCabVuG4E4fiQ0",
+	"cJO5EaFM0RBtuKx9+dNPLyQN5d8ZBRFmcMWlzXQSQxxAuhCW59yBKb+x6VryjcpVszBebJROoIV+zABl",
+	"LIz5TWwjb3gLpo5sflerGMyumgvMK3iN6QqwOHLiHSMUrGAnhqhjxSsKAYPF0WvX8DkKCQiGWYEa2za/",
+	"oXALxi4dSrcwFgw81KGnxhdrywvg1F7gEf2Sx9RbFAYeYGSDfBCGu4kwwK1gb6sUg1mWdJXQmFAvEj+L",
+	"k/k+hJuaaSP5xL+3nF6Na1nB7bsr7+eLn/7iRfqZ6USokXFvwIvhtGXbugbCAEN4JQwtnjKEif2qhhD2",
+	"EN+HEcsZY/EWMcDUTbLF+RSgOArBbmE7p87OpjYhrGfKVPu6w6wsUEvKSmHAsnyZVluAWoC6DMlj3ML8",
+	"8i4kj6nppX5NxqNtlcIU+LYXLMKVo0XuLlKrVEwn/PheoLYzFchVnLZi2GklaA3kLRi9WnIzDOFKzgkx",
+	"1xPME95QDPT57/ZUyK9V9U9CGvMFLkCEFg9w1/A4hSsUMyoXWjzRI6GJawTCBeE7x+qxKqHxNSGMjxsp",
+	"v4Ll6pq7EDerPkXxUOIpZ/WmaBbKFqIHsTGGPGpfozBEeGWqEnmwONq3kBYtaedn5y9nZxez8/NnAViH",
+	"CAi1qLUaGRnzZnoXRREU47W56T/C+zUhDy2sAwW8pWtJ561G29Ua+g8ksbEBv+iGrpJG+9ekvU3KLQY3",
+	"cc6ACCiXBewRYSawokYBlIKdRCKS/gAnN8A052dzfCVOUk9nyzeKhjJ++HJaaC1J0jmRBpYuUjOFPj/M",
+	"1KRENSHfbiFm2g/eRhwCBhZd7ud/u/v4q3cnXvTOz87PZs/PpSsIYH1fp4QwyxW7MFJOofjJqlDAr2AT",
+	"hXDBF9tulR+SmHlbEKIAMOiBFUA4Zp4BtHV9ej5Fe9saG85Ri670/OXZtMpTsph9+bf//7//+1nxu//1",
+	"7/9ivQWKpZviLJVQk+fPzib5eZ7Pfv7yx9ns5y//xmfgH/7d2RNjskcZLwXKVHPnOwhYQtvy5pJCuOB7",
+	"aKE3Un3c2RaEifQUeCj20rc9gIPM5uMRtob0EcWQk17vZga/cnD8eDuZToS+bvN0PEhneAPtN5ABF04t",
+	"4SplmvrxMzBNeaQPo+nkzwRghthuMs0waNcOTII/wNQ7m5uimqgfROAcF/sywKoldUEYkkcYLKQtM8fE",
+	"f0zmm3TwuRksEs//ja+odLY0PF+2kxSOnryOXNi07ff6eaOIqHGBVdjyNNpvlCJ5eXOtgjPyeIVfI0Rh",
+	"zNXtAOzyiH3x8qdpZqN68fJlk4UqBPcwtBkn7a6a/MHfgPVv1SDyo9Ciwm1IwnUMhAlV+0Qu/cy2dF+p",
+	"Ngs/vSaUppMhC/6uAOGLHPFeWKDVLy7gV6k45NB8blsPV2VZKFjUWFIrAbGUYjSP5TolRsnd3/h2trH9",
+	"igIfck2TYKm01aOUf6RbEC58Tojc889rn08wyvmhAsCFzSOED5PpZEOwiHrZQUCFFqXEbFmwFq5BFHIy",
+	"SJ2YYLhgSAivkPgglAom+Lq4h2uwRSSnmYug0hhtoTjBss8JjiPooyWCgXhfKA6I7awYskBsFanKPppj",
+	"XoPzajY6JUHiW1TzgvpUVpeOkNOqaBqiuHzNyi3KuGWZJ2vl6WmNQkhyp0VAwZIf98BnkvCA+mu0FVSv",
+	"PharKWWxY9cehADvPi4nr/54yl8AxK1+cZ/4D1BckJ6K94MtYDD7/UvpRJW3hge4czD22K6e4khe6Im0",
+	"88x2A86rYdc4ZiAMxYk7EwdB4JGIzRDmepcnNqRHqKdGnmHI+L3Ju3uReuhim8+Ss3K2hsJtKn/c2q4N",
+	"Ig5/EQG2XsRs53qVb33334CvCzPx4n7HCvrM87O/vPjLxfO/nl+cTTMwEGYvLyZNJ3BxdGLmYKTjnwkM",
+	"dBha2FUWaANW0LLw87Of//L8p/NOI6uYYsugL8+fX1x0WG8nRWta3DjNCrbeiCCGi4SGTvaP3N5tnoLC",
+	"Vfny+9wBGGnRWWRbfW/julL5052WLm5aECi2yRtlYuZXa3E1UH6U9I7TyjM+nSxRCC284nJv73x3ixIa",
+	"kTinnhhbSxqH0D+NPdaS97coRvco5Nc6myFY8Xj5/EpxMc1jNbec3PA2kr7loNwxQK3aSIi2Kp44FyvI",
+	"D3fMFbx7wtYCAy0c3Sj1pKXmVOlD0N6EJOIMmjCyAQz5HeLPCojSK1ETTzO4KhHyG6RoabmBZeGH7mZG",
+	"Hchn8Otf66PkbQc4R/jCOVSseAc1l20Fegsxe4u3MCSt7YzAZ4Q27SqchKE8dyt2WSG/0RW3IInNdzK+",
+	"SOSF2z6tGUyJGQU+W8h0uNwODAHj4/38YpJbntXq4BNKYbjXUjoJpxbW7pJlsb0lcTrJ0NR0bvL7lsUr",
+	"8/zZmT3UODPINmJK3AbNJQRc9VR3xArTRFMQjLlcgdYUVjVCmVfUQqbl3NwCrhVtKzfep10E38Alwkhf",
+	"/Ep+O8BgsADMHeoW1v8mI375FrqV98+koL3r885iIWlh5q+02Ytpm9g9L8nsFv/ykeS8i0IQswXxxR2/",
+	"liCNTFx9qS1t1Jpd2ElYla/Nluuy5b0kClrzoQFGI58UY0OCzGxtsmTF/nJ2ZhQ5ytjpCjPZsm17NmcQ",
+	"aXdWqrvlYqvfLd85lX2mxSGYOVPSYQvxxZ6kh7iyM/iV8Rv71d1vnrYFTfkXAO+kP80TDkAxlnhD/Kkf",
+	"fcZn1H6IbMI662JRb80AtGH3PfFBWO28BkFA+RWlxZblAy7SpH97SGhL//SgzuYq73EltiwkvwKYYOSD",
+	"0Ht9deNd/MULAV4lYAU9BlZenPhrD8QexFMvgLOr/xIMELHZ69tn3ttNxHbeBgIce5jIULQoRd+zvH3m",
+	"hc1hkLmPLm+u71Jh006nRFuoAo0czNcgQuJS76KY+AAvpE/JvgFrg3dkBkaN7arhKqLGzq1iWgS3NI0B",
+	"oI0JPkaQAkbojQpZuloDlazW5mYuczwXZnR0zoJxfuFyT8HwsX4I85p+3t6kYQ7vgov3ZIXahkW2uMwO",
+	"CKqesx5cwyP6VjLXHWQM4VXrLWcosWn4DdlCSlEAY/tu8JOYkY08RiseyYLy7L/n6gW4zptG8BkpIpUz",
+	"5AL5nF4oxvNVPCYNg2Y4n/1BFfZlHaYo6y1jVoNbD5sNkBw9mpE/beKKIgsYwDZxqw4rL4bEZv6GBSW2",
+	"o+2TkZBO1G7/19gz35w9ogB6/HVxsHFdXGgyJrwzgsOdyoc340VESDyHPNgIkxRIAsQInUz5KF8cFPvU",
+	"qZZ+aHXbKbrXMPzKFr4Ij3e4HBdVaLGE/CBTC5IbiUVCJH3pIAyVg6tW6xE3BcsI36ZFihcLhjjqU0kM",
+	"Wh9xBjM76BRc8Ylb6ra5GfQQNuTWXYta+KHL1VYkXuouMF+qci/bJLbBx4XYKAsOYqvATrhFJInV2wGK",
+	"IxKnZo8s1m0DN/diG+ptmX5B4YZsLWpyeUlWpq7OwimwZf/QVYNSerPlvLmSG65VQ0zkFWp25BdRubpa",
+	"gG3Yr5D5RYE5hhS0L0+epndoha8tdrgT0gtNUD5H7oK7gIKyuF4iGrPqjABhH6v+Nb2t1q1B3WktUWRf",
+	"8qlhRddiRcGEADJFN4uzNi2xVB9fUj4eRCBOTSxc/mY4y+wPTdyqrM1yfMMkVajSYdCaK43x+kpoYm+3",
+	"7eM1i14UN69W0eHh8lYn+2/3WG2Ll7m3WG071TKTY6XJ/+8JTOCvhKGlcQtpo8UwBvz1Rl+5GrTMWi/8",
+	"PYjhy4scr97vmNWOW3Tc17rm61FV7bgurOuLg3rcTqTwhfgo0jHNzXJcFw1N4zFMWf68MZi05Tm+BRTx",
+	"Y63traHIi+aiK1kw2IMHlyAM74H/wFWBCkuZO9RKCMNg0Z6YokRG+xfLHpA/BUrEDo4iCuPYFjIonXta",
+	"IJfWXV7QtIApGzHKRRtqCUEwtEQYpjpvMbYwCz+3hBXmYuOdSEVC2OqSNq4aq5dnRbOsH3KQBOL+c05z",
+	"SaRjpJvm0FwasmJBFrgrgKyhWEatctqnq82/W3QJSNi6sTZKia247IvjRN6pHaMLO8Zyu7iKZbCeIxgq",
+	"tM9IfM/FSBTdrikJUpAtwRB5EBVWs4XVUD6/mnbbtTIC1iFagb+rQ0uLsa6ur0ugO7ytJ06trWmltCzH",
+	"ITPfFYy4Ree/MV4iwjWbUtnlsnubWw7nMLXdDl58sRoaGxcp9snKl3X0huwRWlarMXcJ64EMrJxipGrU",
+	"8dbxLpBSJ7PLHkG20n7UEdPy5aJnvcCqJm9O7TneHbLONaNaY8kbF04hCHZ7RRE1RB5bClOVNN8I4kAa",
+	"nsRylI+Iya+WAIUqZapL9I/cpguduLgPpG0CiboHVSurplnl2+Cu3LhT1wjsdFNY4otyUiCH4xqJJiPv",
+	"c5VxW4o3ksrEOibPC1ADUwtZL7zmmlqdIppB484cVXzlksLRaE8l2mJjDGpbnAV8G43yRZ7KWqtZp9Op",
+	"akiW9Ws3RDbUWq2vI2rujtcQUEjLe6K2tGhusNxibcgRYtMi4ksElg7EEUpfjFrBYoByFD2FdbtEhFrT",
+	"uis9vS1DbqQet4iN4JXaanc1cS/l1DpLX6NfkzBUQW4JDtEGMRg8M52vZ5VnUkHVT/3EzRN4wKckjj0Q",
+	"hp65PA9hUfPUVKfbLqawaUsYMBc7LeP7SyVtjWTlVsW4Ti+T2cxYPliKcgUVPseQ3lDCVY62hqvxPHb5",
+	"qqPNTtoyrLG9wFen3CAZmQQYo+g+YbB9KE4Lf680Naiq7BWX6wZCuEOG4gWhq4bZ+qVrzQERJzG/Qsjr",
+	"ubxLLOQNQt67MMG7DfonDPTNQt8n3Fll/zSCklVKUzI11BcoWMZyioQvNv9LDP2EIrYTdbNUsL/Qpy6V",
+	"EVH+9U4v/m+/f5oROru5/KTzGQT9pAqWTrBmLJLnjI6oVkpaecCbNANklj09+9vvnybFnP67NaFsFnKR",
+	"40kPwMyo9+8JfU4V/PIZkVef/52NqcKURe0lkAQIYh96Wf7JK5EmRcJnLnDp+L1KqOT6nce5IuQBZc22",
+	"fPln1r7p5xcL/ajKdc7GAhH6Be5kWVaEl6R8pMsy6Z7OAxMhhUIX9jLk5+IQRWBhiHyorgJIIFn2bZhc",
+	"RsBfw9m5qOqlFmh8l4UYGKT1Lm+ujdvjq8nZs+fyWRJBDCI0eTV58ezs2QtZKGwt+HC+hiBk63/yzyuZ",
+	"wy6RgAi+DiavJv8lfp8UChafn51ZUEAJx5qHuBLD97/J+5NXf/C9Abj69sfkbhczuJGH2pygwJ8/e4Rh",
+	"OHvA5BHP+XpRoKq5J1n4rHWBH1Hgv0GxT7ay01DzOj9GEF+/8XTdDi89vKvXey2Iw3bminXPDFi5tNdw",
+	"hfDH6zdX+ev4NNfisyLoJntknu9m+G3q9oLZl8/9HaOznutLsjOe89OihYvr0/k2i53eUm0Rv31xYY3/",
+	"gkD4nvg+jrkgE7WM+HFGxMH54uzckkJlUtfTk3g6L92NraaTSFW3z/PQG+ijANqYKGuGtas6q3P9suY1",
+	"PZO+tUIOsAPMZR9AGOFVCvuCEVmkT+SJiU4Oyi/eFzbzR+kfwpFdt2sRP4DiSF2o7Ti/Tp/heP+U2ja6",
+	"4LvYbcYJ07fvrry/vHx5rs5b2faonXT6x+ND/EyXIK8UnH/7/Zc7J5l5KTQ6ca6LnqycyIKmv8N77xe4",
+	"i1suj8IteYDVJLgVvx8I/eIlTy4xEOmPoTB/ewgrzbYdsKn1zQ7r26++SMrqCVo3GMXzir9oWnZ+Ormo",
+	"fli4eoyHW+GAa/Rac6pkx8/6oRbH+BXBGPrM80OANrEE4Xk1ztSoRrX/ruJEewJmOq1lLks/z598uSSR",
+	"FyN9QCj4Vk3/O/Ha73KUsnZgaRFpm6Bd+9mK3p5yKbM7tMKydGubQb+U2Na1M4K9R0czCwgbsBczIjpT",
+	"4MCLpAoqjxfFyp34wCC7qjGuqC4EQbW6fAtBgLC8O7TSmKV/7dt08tPZiz5WndOwt8/npr1v/pS/8n4T",
+	"uuxc3HLncVrvp5WSmu9TL8LJ7MIuqynUmV3qizxkEzixlUUFeYuTjVrzLAZL6KU1ckROWCTUF1fp1wb3",
+	"26y00HDIV/WLBsS+msF9V9czu+q00jPGQ7LSRQQGwfV7Mb7qqa/6GpeFwkV1G/706rGFut2L1kmkgXQf",
+	"6I2K/cOAzw/QD2qSLuqM4VduPAWK21U5MLx80qunYe6ZkTZLMPjGlTvqw7vL/nHptvf206r6QPEjvOef",
+	"8ZxEqdtuGGQLs83v8J6zsGgqlEuc7g/9z8usrGf1QBxDKrhWgSvUGxKBPxPo+ZDCDcE7z7AZDonxobn7",
+	"HcIoXo+A8ZNheB0HzWeCbGidTCf23fLJKnSzPbDuomEJOEfQswqIHZqzc5itUrzGYeiB8BijFZ4hPDwK",
+	"VdbpMGprMbW1Z831SISJoFUSjUOrz9EItPocDUKrF4ejlTIqxZUWhvcoZvyIvEmf7AKt6rXp5pjYi1c6",
+	"wC4ehnNfpccNeEnh8wiPkZ7KlWXbt4avykBPA+it4UH2d5LY2t3/m6X/bnEvWH0u2lcoPfsEy+Ba03MN",
+	"lY3aM9rzDcX6ivx6ygHNIWqGlA2+k7O5gMiBtUehMA6DQssNSUxU8EB+vn0vOVfsGHFTwgT7cDjErghZ",
+	"FSSUVVj/p3iuJGEOuB8PIc4Vtsbb0Bnav7cdrVA5xpYeCImWPS1nqt3UU7mjp2Jz353/9NK7+eXqbd94",
+	"Fu7QuUpiGA69t2qC7vpxXrdoneVRytk233fs4n8Ee+NeeubmuufbTJnJB7QN5vvnZmb9drNdB3ATEQax",
+	"vxNhhV+GuSkVmv060fG51UspA+U0nj2Vl5ZzQ+TdpN1pN39Sn7TT3H6wQlYmQrOrQL/jyXBdFc+iDlsR",
+	"KWeFaM9DszlsTcHgfsJq9EWEMhCOxvi637aYdTju7/d4kcWvIPUkslJnWg9c7AMGQrLiB3SQqP5cVn6V",
+	"4cFX8vEhbux66JE0vKxUbDx/Mprr89960/Om1uCX3Gy1ASoONWIaVck3Zk3cQd2YvxI8UycxuA+hp+AU",
+	"mWEiSkQez/0dn1lp5oGsgeXac215U3d6HunAtKzYPYakn/iJfIuSb8WkUyXMPEE7cXwxCnAsI5RB6JGE",
+	"3ZOvHoU+oYHhRWlr1ZxOLs7P21lBNRu+lWzlyIQix2ZmZPzNtEYQDxmb4YPwbTZnqiIdqSKX73vRWY+T",
+	"CViqMaeBch2VnSdj9rszMTeqJHcIpeGyGMrOv/+wu/RleyCXYBj1rKeSwwTHmwlJDQEx02rtUUbZfI5V",
+	"td2ydO6FcmJ86zaWQT5JrHz3A5hqRJqPvy6DL7NGixjon23L2alOrHthvYLw9z1VA2Ov+KcNnKtGMbDe",
+	"y/Jhd5k+t5fGNgxta9T0dOWDW2PlNFZVeh+6zJ+yXj7fnGSKAW8TM12rKH5PzaGFy0C0smuxRq+iHlTY",
+	"un0+DDNcVDOD2qTKeB0xtEExk7mRaf/zQRhlLuiqnGZHTzO7R1JB0I6jNeYBIxvkgzDceTEMoS9OzNgz",
+	"klb2wblO1h7QH6unaKck3KheJlzfldoCYMDLksvbag3OGInQTPeAqTxF9OIub65/kW1Wup4kHSITRj95",
+	"8tBOhrRrFqbqqhX/Anf6+BJ8IrtdexSyhGIYeKkjsQdGmT/Jptq1R5pMfbMg0nkbXN5cew9w16wcDyAj",
+	"067h+8lHZ8wmbD2XYbDaG1Kjz11nDx6bQtcR4PmT+tzIVp9xiPBDigM3lnqP8AMMPD2HJ7uSBN7jmmvj",
+	"EYUxpFt+pwReEgurVUhWSIfaj8p4Bh7G5b5iuIVofz5CtMV72WZ9WP0+i8WGgadiL+QhO+Nwln22e4tK",
+	"q797BJxKJ/T4SNXO70GxqtxFde60Dzvl+7hLNhvgWEpDmzHU+B6Fsl2uJ4CJh3GnfWkJ9SzKamM1Qq8t",
+	"FW2gF21QNQqi1NQxBOiNdz0LGANe+eowYDXWtPSvbaDMjJxJZ8woyamyQ+o4aRB8Pk9HctmTH/bY9TnU",
+	"jZJbKnE3QKLDRT3ypOpO2BpS7d7t7ZYnsShLfanryhhs+JsxYcaMTRxlvjUYR+VwMV7Osnp6TO5KC7zt",
+	"izfTmVJ/R8n5XZzSX5dLKO2ZQgqbU01V9qCwCG0gXaVWOQyVVxlxpT0tdS620TIJQy7EtxCD4uW34BUa",
+	"PDDmd72y6zd/TyDdtTj94deIyF1qxfZb8XONoclWr4FQUQQ0NTSpOQ58J0R4S5DffPvVj/Vy9x1fnSu7",
+	"itX2bgK86O691a/1goh+t0QP2Jg/Za0Lv9UrvRWYcau/84iVK1lNJ0UL2mwSuUliDKJ4TZgMs5MhCt4a",
+	"xYzQ3UGFioJyCHTPfS4ywz4cEC2AqLTJisW0IPNFddSAJrIEsHAkdgsWUDU4ZiAMh67DcRmGbp6UMJTH",
+	"aN9a5GYJzKIbNdLqw7tLs3DGKRopDWDnT/JDoyMXCfthCrwTtT68u1SmRi+Q749rc0xBG83iyDFLoSx2",
+	"OvNJADnpVxBzVMIhMxb0HLdq8isSQDf99BZGIfB1oJF82xNL79fJwlHDCIsGthN++vjp5i2mJAw3ELOh",
+	"bYUfde4Xn1b7plSls62o3cllczFyfQ/smft1aH96f9unyZ0+INFs9SM5rTTuApVkMCzjH6g6zq3R2XG0",
+	"2jiZJ186bltWyekL0+NWxRkM02dumHZnZ1nwt6eIMGz0IZ5FaaP0Jh3KbF98Y7zVz4VvO/JVrwoJ8ycf",
+	"MLgidPdtIAmtx68V0LrrQy4SfTKdaKeTaDoi2sRMJxtAH2T/uC9SbCes2pdhp+I4lr8MzdqP8R+eTrvw",
+	"KNwAhGNvA3AAytfZbctrEOECZaZKjjextqpwrp491RtCHuT5U9pt2iE0Jo8Dp4vCx0eclnTXxogt9FYU",
+	"YBYfJE4ma6891tUhLQM0dBa+LtAjnUFDb1c92wieoAjsXCz4N/qxE7WzRpBukErGFck4A2aV8uE/7G6y",
+	"GYfWbbKpvEB1P4il4ZKSEHrwaxQCrNqimWS4kp1rWnCLmZNbwy130AD8FEV5ZeJ2kxRvUxT3zq0A7iCi",
+	"OgNrNFmtGqDPZQWGRhYye7H2xEh3ugX7eHyUh3n+pBqkO2aA5BvSuvDUG9WIzPszgUmBp0zwq90nDXNa",
+	"xM/nGFJPApbvO9Q73h165Yhl9EWjeUAecUhAMILvw1h5Zd8ctZouRFK9vAj1YqMdmuoLXQrHyyjWFouq",
+	"Uf3QRRtSFMje0AMmYTcf1fmVOJYfgTFaYRgIx8yMPIqPaoA+6ZDjZg6BFjiH5+YrtZoyKR1EjnjUHsrS",
+	"AWfJfTp447mUe/ZEteE0NmaG8BYx4AJ4FrVivNIL/JkaelD450/ZH8pT4MOIDWSFys01oK+Ag2Al3uAG",
+	"1zT+KgM1jdkzsvr2vJGkpHTm36Pj2qaTLl354N6IlGQ6eUxcItkaer4ZFA1ij59YdB/SyR5Ps6wVdl2J",
+	"IfnQgCUNbhPM0AaqiSy1De6El3K2pBB6VD7s5Xt51pQxGle+tblnGRN8BxeuvW5bVagY5drlPvmZvXys",
+	"Do8+0WvY6d3B9qLYoJexkW9iZUSc+pXMQGhvN7PTu5bV0HXU+1mm4M2f0s9NIv2S+mu0LelODi41rvRk",
+	"mQNymKBS8as2o9VMbG1Fa8lbCCADKIyH0TrttxITwcPXcBlGsb2oU2xt+XstNddKhnQswZQupudKTH2W",
+	"dh2BNWqOlCKGxrv36HRPUFMDqmW6pwO7tKwMZUWPc4Gox0pgbSWjToipDl2TalCuvWjDtT0kKbfl2qHD",
+	"ak+NUWojdztt4GpyN5TF6o3yLUoPpIvtUIGgDOig5QcOrwjVIWtU+dFjkYNqLip4HE5bUxnesv7c0bJu",
+	"01R6U2w3cHPf1L/NQMUH9fhx2dlHYJZ+0Dx/SmJImyOONiR3w5VYb3mWyCl1DaxTRbx9BoXFPkRAYs0f",
+	"EzlgJQrckhDG43nXNAX5rB6VaxpWDKxRVMeY7yHYwnZ2F11yJ5vg1DlyX1Eg/GszkX2wlH0RT/Wg/KRg",
+	"MPbJRw6cYKMuu0S/rAfu1tSsNMwtjJOQDbNx2rjkUiwdtUOuVZWTyd7bYS/Pnh2jo/j1XKeulfBH4tPL",
+	"EbR/F2An4o/pHOwOf5MvcQ8uGdST2EySvnyMbcWJo/34O3FIZuFqfbkjnSl7KEdl/5tN+zUrmaNnr6Yv",
+	"lYd6QtTZ0AyctQ4DMV2HRlCSnoXQ1xBQrlf+8YVjV397RcgDguLbIeOXnFAzB0mA2ExWIxs+ioFPJsun",
+	"DW2+eYt9uhNBkATD2Zok1BOgqsJrOUvO3rQr5u12QP38SX5o5NcCCpv49Q3UeMiBfw+XhIqkNaRykPtD",
+	"wiDXxhQ7fd0Z29AoJKuGCD/+2Hv+VF8NGg9Lg65Imj+Jz05M/L6ynWWx6DXnW9WXTorcU2BYjYix+VUm",
+	"x6tw30FLRqtUeh003FKYG5MZA7m1C8rKoAujvBkhLJK4b365emsGmKWdevNe2x7P7NZEyirVu4YOc6hv",
+	"0pcOK2cOpqyUuyb0wuaJVZWVbCVi9KDG/NAmZ9kpQdZ4SDlbNyICYXgP/Afv8+11WjnniDhZ9VwYniKy",
+	"88FYJFF9Fk6UJk/6o0sRxQpx41YA05C3IC+h9RLytRaPRwrZT/Aoz1/1JYwU608nUijxVe4iUQOAUYRX",
+	"rQ9y3aY9QHGUsIZgxzf6ocOeCr2nWHZD1fxJfWpSQxXaJm49tukGhKInnBq93+v/wJE2GUbG1Uc1bZwK",
+	"jfdTZvzU2VijSmTK8k9NbKzQ1paN1egnxcYZRg7Dxk51nPqp4nTqbKxRNX9Sn5rYWKGtLRur0Y+XjRte",
+	"UGD3jOg5hcsEj+IzMgCYdml7X2cwvhVQDG0rfpeEoUeoFwEqKpZK3PVrIi5FdrYkstJFZ3DbKH+yAFfx",
+	"ijJz/djCKI+++ZP4V22UKAS7gWJ/9DSDxf2I8LidjeJuxdEYoTDI7mdivTK+bXdknN+K578fdq+XjwWw",
+	"B+2aXJyra9vk11kcvGS6zKJyXAyXmU4cW1DYqNFYhLRsGplOLs5+btetu1eGrVLQGsE7s1VfzCp6mATH",
+	"0LfV8zh+bU3B4OIfadycPZezTdFr9KsnNI1o69f1McwmEx1KsI9CJAsD0ASPosIaVO1dh1WYus1Bdptg",
+	"p66M+bdUgKSXq5ce7o6aoj01O2i/Na0kkS0g9xLU5vbKBSkdmgIVe6dJZyox5g9+V7Cgcf5Ek8ZIMvd9",
+	"fta4z5dItE6Lp1wXB4jGU+FsihlgyWlY6iTCDmOlM2wflcx/q575wVldIGH+JD80cbhhjWlhoFPWlFMy",
+	"M6foOAz/8m2OYob82EHe3GUPuxDmNUlwIKiyhTiBU0UeKV9CtIT+zg+hZyzhOAn2p+jpm1JsSclmYhJn",
+	"yRmQTV5NuM4rGqFNyi7ZisEYaT9UR0o718TtsSLuqUutHNLmT+afTRLMxKLb/dV44WRdDCYQg6F9vP61",
+	"RXD6vLEJGEpcMuCtPcdgEoWh1AG5AAqSEAb8Ei+IciT3jEZGEO10ZhFFPjxxdhCQmBPcUGQrpOZsZo0o",
+	"n4EhyRECRVzNcNImRDc0ubrFPVyDLSJUMtQSJCE/oKTHapE+xg8KHaBk+w2Ej2AXL1AaQIAJVsk1mdrz",
+	"R7bMLKqJKBZ3sQE3iVUxfK4JU7zD/poSzPXHk2B5CuNkc+LMfitgqD8hbQIsFVM56WVWFjgU9WTEZr1e",
+	"daWe+V7iqettkRLaof3pVypSVpU3Fzta9h+2tPtURLsP4UGjZhWvuPYTVB4fA5+N1TckUowegqIXoe4k",
+	"eFKRsW4tCEtXpAZ/yQDMWU2HY8gDsfDcnBLGb5lyvwzVm7Uz+ewHh1iyxKv097Xu7q5i621S4qAU4tt/",
+	"5dC45Y3x3GFPkh7b+NUfJRnIQx8nd0bNBaK72meU8eBXqTsanpnecdmVa+ZP2R+N4eh5jDZn9qYYUIYJ",
+	"iw3v6LiqIjzdRNK4RtcaYs1lz8iBpHC/MFdr9RyEOta6qGUtIEz34k8Y2PviHm6fEdFM2zWB8o16/MdQ",
+	"9UuADy2m5SweCAKl87/59c6LKCHLYzrQJQ/Mn+SH1k1rDFQ2biKJj14vwgPr9SlSRhbBZaL0GDYyKJz1",
+	"cSYdGefXO9n5S5Ro7DfEpOO2EfI5hM25L2/NBw9cC8NcytDS1phs+Mo26VTSeNBzLZs82jqzyfzJ+KtJ",
+	"9S2ir0n3LeFg6sHlEkq7itB7pUMbRBHEwYzgcOfJeLn4GJmrInkgh79xRXItJfl2ZYQOpRj3DHeNvZsD",
+	"MdTOtWfIp9woUaht5T6hwdFv4GGvQ6NRncNwMKJviX90NN9CzGZsFzVkZ4usok/ise+kyFXDka7hHTSr",
+	"Jpulaz6NWXdD5m9xWnoUrlDMID1URkm3mngGM+okPf6HYye6PMnaFCwxEJdrR9cns1YqP9Wr7q/3bjrJ",
+	"G7hEGKnkm1IH3t8gjRHhV3WJEUE14DPZoxh4ujip9wjv14Q8ePAr4N+cRAlBk52GbjcztPQozuIkPSyb",
+	"4G3G+EHKGZl37MQkh8MJ9mOWaCzlPdfexrbV97D+hNFbvIUh0axbdNKSJJCYmvH3ARNdO6VMOp0akL2l",
+	"f7ei9RICltAGbe6dfujA1nDAQEiGT5RW4A6qyuk5uipy6v3MnDOdXJyfjyx8M4K04jmEGaQYhGPVHr1W",
+	"8xmvdS9FWj3YN7emn/L1XMXRiITI3+mDVLrRVIhPLoMwdaRNJxfPRyd2N2twSHwQzowL+0zhs17kvOev",
+	"GTfVW/3Sd2Un7gmT8yf1qemwrsCqkxlVvOupiaSKjzabhHE29WIMonhNWJzGrBHsrVHMSG8Vw/s2ojq0",
+	"moAxG4xMfBRKtmPEAZugVDZClaupY5ABq6aqaTyFk4DfFH0W7nr0Ae9j9XIlKYUC5OOg6K1YzBgEvagm",
+	"qMTIMVgu3WlIIoiPhoZ8MQejoaSdR6gK1xepoJqwfGUw8JaEcr0EwcfD0xgThpbqi5lbLahfjVeOpSDU",
+	"SDZrG+hdeOruw6ebrNCTU5Dmh083WYUf4Vk7aHMVO9+0LulUidCmnWa+OFT9awfbstv6rcd3AISkKJXp",
+	"yuIC1xCEbH0KhhiD6kMbfvvagu10LUUsfd20E+3Y9+OcwXionIceOaDHnLtPMGaDM8x5dTGjWRxBn8/u",
+	"cdR7JpHMZpzHzDODBgr2LDdqQgU7HzTi4NUV9baI7eR1Pd+AIQsinE5+Ojs/CYdOjvoMbqIQMDjbAor4",
+	"EequAn5Sr/6WvulUJyVBIZshnN8TehleugyZ3Sh8oN4WhAmMT9lNZMV5e1T/gNq2Bn3o6M/r1D4XULBk",
+	"BkdKz/0xNDa0c9H8SX9sMmlW4rVp034qIoNvzsyiqb/t14g5qOJqoGxMxXUsbv4VPhr0kRx9Yow8V/FC",
+	"A2kgPTOA3VAsIXDbdhcu226YEKr+aRcpM9fp0u5GQjD45rUVcQFLKIJacQBlFXmxFOFHIgnzAhiiLexd",
+	"zg7ABcl9iOL1KXOBhKC/HaxQojzXEYUB9GEcE3p0e9tdO/3utdK/8xu7CXHrZvzNTfh7iZcpL9QpZua8",
+	"3wUE5RUUzWpKsglHE5yBR0BhpnFrB7muyk2oFydRRGEcw8C73/Fts4QU9ufv3H+zONYWNTHTssBozvAt",
+	"TBGMY4yp4sUeIwyE380lOZ4/mX+2udm0x6au5D/lOAX+WqS/GV9myI7TQximffAjsAsJCE7h1lNA6bjh",
+	"kw3knVPI6FD2xr4Br3ZCM7qrZ8Ymn5YSetJXzA6r5RHd9jxujAH/qJqNx0cQCt5jrZ490DV/SmJlS88V",
+	"ohoy2U/N2IMnpnN5q/2TCE1WcisBJ581a8Cp6m9HUU4loiRI/KbmlvqhHyNuXIE7aNy4nqNr3Lh6v1+D",
+	"Wcc4cM1DwknHPzV2/TQQ3KQMaUB7rcPdGydVehAVGoa23w7Lqvk5umabaQr2W32xR1adi2LETSLwCJpU",
+	"nxTb1grY/Qpqu4hX5HdPysn8bapM9TEI2eQ+RP5YqTbCtuj3kmhTNZRbpupX/hpi4U5aJ32PJljUgsxH",
+	"plFZV/S0UmooCeEMxDFa4eYiS7ckhJfGsz9GQbs81F3YrzCC0/7/HEMquigCf40wnKlKtZxeXkavnsVC",
+	"Pzw0f8r+cCt0Z0FxY0R5ARFygtMod5dDz7hGJk6r5k3+I23toUMNBKMeyzaN50/8H/dd6bQXP2PJ0TDw",
+	"/CRmZCPFVLolD1HMwWShyr5yVgDPKmiY3v44OBcHBGeIxnOSKYa+Kva+36oOhoPWEem4P2Ph9ZshaUVD",
+	"DWL6Tjx9nT38Q0Q+5qDeDV4AXszmKYrsjiEyrMQk8yf5laoprjoyDWI8Tyca7Gp+B9kbCYKF0M3Fw8Wb",
+	"nlymF8Owz3TRbtRycnobyG/p8zYriWkunXq+vN1PPdVFaqqLqYuoKM8nCQflyBS1lnglFKzgXHYDa2i0",
+	"JEfMIVm8/VG9fFjBqRZzYAzOn+QHN8WwAaWto3/eEepDObQK/XFpFNB7spBJiqq92gx6u10r0Z4GUxwZ",
+	"TzVnnEmwe+W/eUAesYgYGT5x3lh+1Zn0Rq2mD8pLO6QI2DJ6y0QUbQGD3ufb933TvxNN3LLdy4g4lpz3",
+	"/kSqc6eLAgY6pb4Xhmhdg1WRzyNbSCkKYK/J8H2xVOtE+Fokt6OuMPrTzaUo2A4Dff67nTg3xVR6D2Hv",
+	"JgRsSejm5xeHuWm6nFgNXNoYbC9ao82WFMKUw6KUR0/stNKQu7if+t3drfIbCmjOFXPbAPoAAy/B/fbn",
+	"GGZ/zyEWDTaHP8iLlLWK7be4UaI4BYNIqlA4k+AdNwn6y1PvgwSl/jSNJLDFsxl1DPmeuE/8B8i8LYrR",
+	"PQoR23lHtTmSiOuPcS8O87oeu1UK6mcxf+vj8laZeJpzM5yVG7USx+gyqHwKZnlLEMeQeUnUX0R5P8TN",
+	"XWB0sfLjuMBcqdU080ez8JOPHsf2SuKmK8rn+PCXkdH6onJghzaIi6CEXq3gXWOGBfGzCPI682qKmEbm",
+	"5tD1GuM5dPvSnsLZm1Th3lnrogL5vYZn9sRacxAEIrWuWdZcpk9+LzJnWLbbiyzD9gLrcWfVNQEbY2fd",
+	"JXEEccAvjbG4tki7UJqpJ79AeOWRMOu0e1x7MF1V0xa80w/+zw4cfAdqopxEylZDTpUD7xQsr2Goc6nE",
+	"tjquDtUlUkkZcKIkUhJsNDUkTiXmkWbMFcmrrIG7GdwAFJ4olT8rIDgJ3go4xqC1wJi60KYtEnvsnN07",
+	"iQldAYz+KbOnT5/SH01wxiC4ib8ToPt3sLF/O9i2BsEGYRQzvpgtDPu2C/dM4+9gZ/92JPv6SAmvmlfO",
+	"VCxeU4zv7/LxN9nTP2ILwTLS5k86mLHJ9pfH4M5Js1fvZAGTqmxn2v/vEPH/w9a9MdA57pWyibZzkVQ5",
+	"VNWbPsGuvl5yABr50B7jKPkvV/FGoOOAIc2KYk6C6wdJSlDQDu180XJJ+V9kAXARneNRyBKKYdBnj6u9",
+	"uGP+pD45RnmZKGzaF6l8HrunSeUiaw4RiIOIIFV7Jz1RjLyA7/A0yUg/tGNqiJ134UDME2xTbd2Zc0oY",
+	"YHAmxchAp2y/7GA/ZAUYikwyYrHVLtViVAwjJetxi9QhO9b0R6+eG9ZUyl9Lo5lPgK4gp6WKIRJtZoK8",
+	"RnVg2duOCwh9iCPgwxnCW8QcKhD/rt+4Nl74MdL6LaAPrpzpKb2MPjlNLeu9PIRo6ZhybOWq+VP2R5P6",
+	"Jp1nVfhujKmHOEB45T3akNero2Xg9Pkcwka+QWvcOUqDH04GjLfzj6HIR8YO86f0s1tWZx5jjTpxCjaF",
+	"jPO6zE6Am3tI4zWK4sydcuh6GZX3uWqAz+oA7rcM5LCSyeSBwW9jg2y5Wt7rt55jz1turnaDm2D+oB7+",
+	"TsTzCOzYL5XywcSOolISraXAzIRkvy7nE6Ld4N7JpMoU7xeJl9U7GzClr0h8USArTktGeoCRDfJBGO6O",
+	"VJSRRwzpjFGA4yVfxNMpHFYVDhmfbCFNKfKRQ8Y3Yyce0C9/0pj51kV+l4a5hXESsqF5IWHruQiUmMcM",
+	"UGlPsgfg8Z8/qllEEMd7skJ4j/K5EeUz6CpXaceuV08TiJMNX7ZPAq5IhAg/TKaTe8LWQrClgTBLQjeA",
+	"TV6pb6YTtotElSJGEV5N8mV3/1BPfUkfI2r3Ovf/KRSFxclGYWgWgyX0NA08fw3CEOIV9IDvw8iinbgF",
+	"EmTEMTI4a4IueiVP3QYTE8g53dBnkYcfU2wJltXRs1VXKHeMhWRFkhpOfi9+19M7HdzpWvUixwoBzeCZ",
+	"gTBsgukyDPVKqwOZL+yBzKQAYjwqjBtYF8Khgbr0ReEqp7vaVUIpxCyDK6JkiUIofaZohWdIdDVak2CY",
+	"TK+aW5INnm6bFAQB4j+B8MaQpksQxnBaFLAojkKwW8iD9mmyAV/fQ7xi68mr87Oz6WSDsP77eZMkzY3V",
+	"TaDW7TJNqrFywTgHRiCOHwkNavcYwnqNvyO2vtGvDCNk9VR6GinQBxO308mFtG11MtFU7gObFn61BngF",
+	"i/CNhEY5efc2EmoYVVpHiBPC1pDWSdBD+Igb+N0pnar5NDlUSlUdSPMn9cnNdVEA8rgUgtI13lqUU0Pb",
+	"uz2Fo5WRB4jnFC4pVI1qKy5V4oFGbJ45YNP0lEmH/NAMhHDMQBhKASMPBKcSaNfGe5cJWx9LAbTKG18N",
+	"oFnVGJd4rSrInfaP+bLHV8HponIwomKZrcFNY/YmNGahJ/uO0vfUFSErUdWan1KmQpSqT01281pktu10",
+	"oovw4DWkiAHhYe6NKCgbNR8DddBy6FYtQ7Vm6RW5bSx+TvjUDWQG92DkNr4qC9xByL2Wbx6LnFPLkVxQ",
+	"4wuuAWHQDlDFuTr3gjJ5SVFvOCbKsNqKiVpXdmyiSiuJVcJKv+eHyWlVhopW8DRUWkR1sA2weVrZ8ttU",
+	"UWy19fr1EtfzR6/mhV62TOdKfS0K7w2753yjLl+/CXduCN4ADFZwAzGbgQjVGRU/pE9e3lzfiQbxFXu0",
+	"l+PANp2l73/2mHd5c50XArF+qwdsZvM0myurMDW4yVLX1nz1pBXqe0JCCHDZtaOe7GaLtEjiAh0k6vuV",
+	"GDkSOPK0bAFXr61l416ppw+rohVZrUZLKy59UNWsNFlX3czgFdWirzk/6xAWwT0Ybv6UfbfIOrU7qHhW",
+	"kjadMWWMpiW3RTmWMPTI0kMs9oRxKvYQ3oIQDbU5XQwGNvz0bY7rRqTGDJ+xoKlP3SkySoscnjK7jJPN",
+	"47yhMGFpjZFZ+zv3r8brR9NhAbIkanXttkHRqUvCh0837Vok5FRW/nqmr/baIEGhpD0n7HVxrsRrK03e",
+	"XJjtCn0IE1/GYy4Xbjc8nHXCQ9ac57B4cDdcjxDsPcTm7mxftdPtoBbqvuRBVabnsNTvOXNzVGY5dzkD",
+	"RD7oIdNAe+OPSqvR8PLB0dDU+YwSlPIJxtBnaIvYrpBJaVqZppOfzs6PnYYMbqKQq+NbQBE/W7upgZ/U",
+	"ML+lo7SWmHolXroSeV8Fm4iPN2imczN+9kPLMZWd6aAeazCGTly080NAwZKN0+nWgQ/mT/pjU6UvJ2x2",
+	"2yJ8Y6DNJmF8n+hqYEMXYrFIbwMVh9LuxuLNX+Fj3vxd4M8tpHXx4gfm0zmg/hptoduh3DNZrRLnUi6o",
+	"/Sa5cN4kcoajI0VE4RbBx+MhxY1c0Kg7zOZtBksY7jwqmmWLboY2qmrsHRtRk/sQqXjE4yCqXNCA+0uB",
+	"POoG00O4q2Mf0zeOKI3ZUQfLJQWNpXelcePCSk3CsapI2Ok8f9If3fKgK9HXiscF2CoTWnnNhshCahcD",
+	"aiBiTGVrECZ0IsA4pRTyfGeUbOa8Z/wpxTwJkd8hIMasPa2DYmxBoiohy3j6Rs7YNiLqevlBENjSG7EX",
+	"n3XlQrsmspjkn5FH4Rkz62dLzOcsqM/Pj9VjHaMVRng1e4C7+pPqTj74C3/uFCL0TcCUI7cmBUP8noE4",
+	"6XTPUlN6D3AnG5+MLRN0X02iunO7ah65ZvzH04G+BahmC9F2R28O9tbC6x2hPpSDOvZCFw9zbtEG9LF6",
+	"mdcB3TYkXzSSzVx7h+1kbrRx7cgx84A8YtHHtf1x2dxD9o0afD8CiFuS7xHqxWtC2SxEXOOLqJAy3ufb",
+	"94fYfe0jMgotq49H2LjfdXroaF8cwunuU2ptX+hFCL9GJObnj+HkOShT7BWcUcZyu40pkpjo5nK5hD6D",
+	"gT7b3IT0TTGMw0PYuwkBWxK6+fnFYaIQOwr5znkUcYHfDi3nu6ZO9LBfWxkHi9tUXQRkjUdAH2DgqYZk",
+	"w3cBb7NB5zIWfKAcire4eYc7nIIaqRTOdOj6EWFw5CyURgxaRNuVEQHAOfI+8R8g87YoRvcoRGx36LiA",
+	"VoRIRE/9uPpmV3l8p43721HqVtkLLCE8XbUAtZIKHaAXG0hupsuErQnV7cUsqTQ3FKrK76is9SdqtQej",
+	"dU5x57BqlaJ3xf1KDV7HPQ6d8cWj3kgC37RE5QqTy4Jq1RvlUvyes/7VFIDvhStrp+yaf5QNkdaQk6Vm",
+	"CmV8UBwnvVbvqTTR5Cy19VVjck+2NqRiP0wCeCtLSts03f6S8nLmVKCrAhWKo/k+jGN0H8KcfVQeO2wN",
+	"PV9VGkNFe/q4fqx9uy3+CjYwcLvCmVPlC0j9fLAiEHXcWvYr1FcF4pxXQmdjSaBc88msaTR/CuJAdY5W",
+	"TD1WffN6KM4aoDiSKuc2X05teb09d8ItFA7Ab62pTsWLB/KVdN0KuXrAtXL90nxwILF+/EXObdxYI5YN",
+	"pA0slY2ZRoogaMNZ+UrTFMYkoc1tKSS7FHHYWM/UwITZmiLk8tiMHT+SBjNFlrKXxq7A39ChCXsycBth",
+	"mqfbqcvSao7ny2aEwv3DGkbnlIrSfwKc/bZpwQ0gv0B4pTdp//6A7lROAsRmIVm534Mu+Svv+Rsn2g+3",
+	"dOy1xplzTcU83o6xpuJhkdeuTmMVNjtcag5dp7EX4ThyZcda9I9V2dGJjCdY2bFP5LZxjjnhc7TKjk3S",
+	"o12xRxO2Yy72OOSlrQYHJ1EtMsefh6sW2ZoxW4daNBGqlWA8ggKSreBpCHwgdbAd24ac9ho30Wr/9htV",
+	"X89R45Sc3HPfdfb/70/UuuZGg271A9StbKKSa5dvu+fxO7osuZ/V4zX7NvyzMgL6kB2+W3BS+87eNfh1",
+	"be59fC293a6Kg/b03oNofMNCHAxlPuwX7BqjIcSBK3fVh0iU+4WI7ah7CvaapNB5F7q0AjbRcerdgPc1",
+	"eqVNeeUHt5yYMgLbKwe6P+txNOZ127MpjoZ2B1UgeCyNesQ81Sb+7FDU0wTlGIt69ucdcNfZDlcWNMdY",
+	"w5UFraqz0I2/9jKRdC7DVoOqfo0kBge62Eg61/y8hQHwWTHnOQfZkW2p6aHLfQ6xaTsb3fM82OuBMOR+",
+	"rSrleWy80HPxz1FZ59yFdXLFP4+ea3o0yB20JOjQZ1G/lruuJM1qlrgcYWm9kXGi3I2iITVoVcU/hE1L",
+	"hbcn8WAdQUa9VvYWe9UUDrVfBLkOiPqPQgD5BiA8VBx5S0y2qdNhwnakdTrGZsS9an9U4vN7rv1RB3RL",
+	"/VHi+niKf7T2nFWXC9mD7/apILIPBE01R/Yj/KFrjrgSpL0N6ZjLkIxlPzpUHZOcONFFJsgWUooC2G9f",
+	"md4Yay/j0f+UMunpzPpuSpmMF8TzIxc/2XOXd66HMlA0j6ygsu+2GL+Cyr5kOPqgqqHLsAxCnaxRoWOB",
+	"gsz2MFqpgi7qVwaXgZ62TVWNlooHLREg9kGMCDbyu4BR+Fp5+tco2hMRDUzRrg5ANnIfFQEqTTYtKd3A",
+	"1MPl/LflyIFS/LNprMn+vRVtHqNMwLi87pbon5ePx5ryPzozOsnXw+T6G9J1/2vQiCzYrSJAUSr3UBvg",
+	"wOx1JNn+RcGaR+yRylVrxYCj5OnvLeff3Ie9Zf+PTrsGV22lXnXsTtsKZ+3ox2bC2mlwP0rzjY91nTZG",
+	"3gPDO8RLsqIf13g/mIohS6L5PSEsZhRE1aUlX6ePDMNk6fi3cvDO2b+iJ+2M4HCXXbFVP6UeC0UWOt9K",
+	"NOYKmdZWI5Wvu1nAWRJ5euQDFRq0QlsdAV7nvBJDHS7qudwIe5CoZyvCYgZYUn33FO/cyWf2PFojyodm",
+	"SL4NtgCF2gquKnjcExJCIHZE2ugLbgAKFyFZIbyofSe3Mf8wxm8cLCshQpRDonyqS47PlXsVw3hqGGFZ",
+	"dd2ask1qJc5/U7/vie9GmF4nKAw8hJeEbnRp3Mr172IGNxyAIifeCw68TNha81sM6VafVwkNJ68m84nB",
+	"hxa/gQ/j2FtDELK1slkXVvYs06rVSji7Fw4kDGcMbWC+6mt6iphDCGKUR7D2AIyn+SKzU1lJ1LhhGCPr",
+	"wK3y2B+Av0YYyjMgt8LUWIDwSnKYebKuyBZSDLAPjWmMQ7M8k6HFz5IY0mI1FD5FRMkShdBc+rXwGnAm",
+	"Lo34DgKWUBhP+XtB4jOFhKz9ckSRnxvtCjAQkpVlsP+kImxOFP8jPgg9MW0ooPGUJDVHepv9HFuGuzFK",
+	"aIiO9LoOsM4nD9ES+js/NPGnE8AtTCQ+gNBjEAPMZuARUOjdvZhxcQ+YrDksA5WUd8nkK+UKKQ/7hogg",
+	"QSjCV6ceSdiK8MU9wvs1IQ+aqZIAMRN0Ge367cu3/xcAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

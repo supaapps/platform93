@@ -77,6 +77,7 @@ func (r *Runner) RunWorker(ctx context.Context) error {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &deliverySweepWorker{runner: r})
 	river.AddWorker(workers, &billingReconciliationWorker{runner: r})
+	river.AddWorker(workers, &storageSweepWorker{runner: r})
 	client, err := river.NewClient(riverpgxv5.New(r.app.DB), &river.Config{
 		ID:              r.instanceID,
 		Workers:         workers,
@@ -88,6 +89,9 @@ func (r *Runner) RunWorker(ctx context.Context) error {
 			river.NewPeriodicJob(river.PeriodicInterval(time.Second), func() (river.JobArgs, *river.InsertOpts) {
 				return deliverySweepArgs{}, nil
 			}, &river.PeriodicJobOpts{ID: "platform93-delivery-sweep", RunOnStart: true}),
+			river.NewPeriodicJob(river.PeriodicInterval(30*time.Second), func() (river.JobArgs, *river.InsertOpts) {
+				return storageSweepArgs{}, nil
+			}, &river.PeriodicJobOpts{ID: "platform93-storage-sweep", RunOnStart: true}),
 		},
 	})
 	if err != nil {
@@ -112,6 +116,19 @@ func (w *billingReconciliationWorker) Work(ctx context.Context, job *river.Job[j
 type deliverySweepArgs struct{}
 
 func (deliverySweepArgs) Kind() string { return "platform93_delivery_sweep" }
+
+type storageSweepArgs struct{}
+
+func (storageSweepArgs) Kind() string { return "platform93_storage_sweep" }
+
+type storageSweepWorker struct {
+	river.WorkerDefaults[storageSweepArgs]
+	runner *Runner
+}
+
+func (w *storageSweepWorker) Work(ctx context.Context, _ *river.Job[storageSweepArgs]) error {
+	return httpapi.RunStorageSweep(ctx, w.runner.app)
+}
 
 type deliverySweepWorker struct {
 	river.WorkerDefaults[deliverySweepArgs]

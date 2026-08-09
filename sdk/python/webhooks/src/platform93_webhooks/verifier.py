@@ -27,6 +27,8 @@ PLATFORM_EVENT_VERSIONS = dict.fromkeys((
     "delegation.created", "delegation.exchanged", "delegation.revoked",
     "entitlement.granted", "local_entitlement_request.created", "local_entitlement_request.approved",
     "oauth.consent_revoked", "platform93.webhook.test", "user.created",
+    "storage.object.upload_requested", "storage.object.ready", "storage.object.deleted",
+    "storage.provider.verified", "storage.provider.disabled",
     "user.email_verified", "user.email_unverified", "user.organization_verified",
     "user.organization_unverified", "user.email_changed", "user.password_reset",
     "user.pending_deletion", "user.anonymized", "user.deleted", "user.suspended", "user.restored",

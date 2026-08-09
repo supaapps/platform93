@@ -121,11 +121,28 @@ export class ApplicationClient {
   listInvoices() { return this.client.request<Page<Record<string, unknown>>>("GET", this.path("/me/invoices")); }
   listPayments() { return this.client.request<Page<Record<string, unknown>>>("GET", this.path("/me/payments")); }
   publishEvent<T extends Record<string, unknown>>(input: PublishCustomEvent<T>, idempotencyKey: string) { return this.client.request<PublishedEvent<T>>("POST", this.path("/events"), input, { idempotencyKey }); }
+  listStorageObjects(workspaceId?: string) { return this.client.request<Page<StorageObject>>("GET", this.path(workspaceId ? `/workspaces/${encodeURIComponent(workspaceId)}/storage/objects` : "/me/storage/objects")); }
+  createStorageUpload(input: CreateStorageUpload, idempotencyKey: string, workspaceId?: string) { return this.client.request<StorageUploadAuthorization>("POST", this.path(workspaceId ? `/workspaces/${encodeURIComponent(workspaceId)}/storage/uploads` : "/me/storage/uploads"), input, { idempotencyKey }); }
+  async putStorageUpload(authorization: StorageUploadAuthorization, body: BodyInit, signal?: AbortSignal) {
+    const headers = new Headers(authorization.required_headers);
+    headers.delete("authorization");
+    headers.delete("content-length");
+    const response = await fetch(authorization.upload_url, { method: "PUT", headers, body, signal });
+    if (!response.ok) throw new Error(`Storage upload returned HTTP ${response.status}`);
+  }
+  completeStorageUpload(objectId: string, workspaceId?: string) { return this.client.request<StorageObject>("POST", this.path(workspaceId ? `/workspaces/${encodeURIComponent(workspaceId)}/storage/uploads/${encodeURIComponent(objectId)}/complete` : `/me/storage/uploads/${encodeURIComponent(objectId)}/complete`)); }
+  storageDownload(objectId: string, workspaceId?: string) { return this.client.request<StorageDownload>("POST", this.path(workspaceId ? `/workspaces/${encodeURIComponent(workspaceId)}/storage/objects/${encodeURIComponent(objectId)}/download` : `/me/storage/objects/${encodeURIComponent(objectId)}/download`)); }
+  deleteStorageObject(objectId: string, workspaceId?: string) { return this.client.request<void>("DELETE", this.path(workspaceId ? `/workspaces/${encodeURIComponent(workspaceId)}/storage/objects/${encodeURIComponent(objectId)}` : `/me/storage/objects/${encodeURIComponent(objectId)}`)); }
 }
 
 export type Page<T> = { items: T[]; next_cursor: string | null };
 export type ApplicationFlowConfig = { oauth_client_id: string; sign_in_redirect_uri: string; invitation_redirect_uri: string };
-export type RuntimeConfig = { schema_version: string; api_base: string; issuer: string; application_id: string; public_config: Record<string, unknown>; auth: { registration_mode: "public" | "invite_only"; registration_enabled: boolean; password_enabled: boolean; passwordless_enabled: boolean; flows?: ApplicationFlowConfig } };
+export type RuntimeStorageConfig = { public_uploads_enabled: boolean; private_uploads_enabled: boolean; max_public_object_bytes?: number; max_private_object_bytes?: number; max_email_image_bytes?: number; public_provider_scope?: "installation" | "organization" | "application"; private_provider_scope?: "installation" | "organization" | "application" };
+export type RuntimeConfig = { schema_version: string; api_base: string; issuer: string; application_id: string; public_config: Record<string, unknown>; auth: { registration_mode: "public" | "invite_only"; registration_enabled: boolean; password_enabled: boolean; passwordless_enabled: boolean; flows?: ApplicationFlowConfig }; storage: RuntimeStorageConfig };
+export type CreateStorageUpload = { filename: string; content_type: string; size_bytes: number; visibility: "public" | "private"; purpose?: "email_image"; metadata?: Record<string, unknown> };
+export type StorageObject = { id: string; application_id: string | null; provider_id: string; owner_type: "installation" | "application" | "user" | "workspace"; owner_id: string | null; visibility: "public" | "private"; filename: string; content_type: string; size_bytes: number; etag: string | null; metadata: Record<string, unknown>; status: "pending" | "ready" | "deleting" | "failed"; public_url: string | null; upload_expires_at: string | null; ready_at: string | null; last_error: string | null; version: number; created_at: string; updated_at: string };
+export type StorageUploadAuthorization = { object: StorageObject; upload_url: string; upload_expires_at: string; required_headers: Record<string, string> };
+export type StorageDownload = { url: string; expires_at: string | null; visibility: "public" | "private" };
 export type User = { id: string; application_id: string; email: string; first_name: string; last_name: string; username: string | null; locale: string; email_verified: boolean; is_org_verified: boolean; status: string; custom_attributes: Record<string, unknown>; version: number };
 export type FeatureValue = {
   feature_id: string;

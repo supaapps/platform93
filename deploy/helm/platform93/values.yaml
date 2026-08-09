@@ -29,6 +29,8 @@ networkPolicy:
   enabled: true
   databasePorts: [5432]
   smtpPorts: [465, 587]
+  # HTTPS S3 uses the built-in port 443 allowance. Add private/custom endpoint ports here.
+  storagePorts: []
 telemetry:
   otlpEndpoint: ""
 backup:

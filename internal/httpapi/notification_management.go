@@ -52,8 +52,13 @@ func (s *Server) createNotificationTemplateForScope(w http.ResponseWriter, r *ht
 	}
 	request.Locale = normalizedLocale
 	if !validNotificationCategory(request.Category) || !notificationKeyPattern.MatchString(request.Key) || len(request.Locale) > 35 ||
-		request.Subject == "" || len(request.Subject) > 500 || request.Text == "" || len(request.Text) > 100_000 || len(request.HTML) > 200_000 || unsafeEmailHTML(request.HTML) {
+		request.Subject == "" || len(request.Subject) > 500 || request.Text == "" || len(request.Text) > 100_000 || len(request.HTML) > 200_000 {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_notification_template", "Template key, locale, category, content, or HTML safety policy is invalid.")
+		return
+	}
+	assetIDs, htmlErr := validateEmailHTML(request.HTML)
+	if htmlErr != nil {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_notification_template_html", htmlErr.Error())
 		return
 	}
 	if err := validateTemplatePlaceholders(request.Subject+request.Text+request.HTML, request.VariableSchema); err != nil {
@@ -63,11 +68,22 @@ func (s *Server) createNotificationTemplateForScope(w http.ResponseWriter, r *ht
 	schema, _ := json.Marshal(request.VariableSchema)
 	id := kernel.NewID()
 	var version int
-	err = s.app.DB.QueryRow(r.Context(), `INSERT INTO notification_templates
+	tx, err := s.app.DB.Begin(r.Context())
+	if err == nil {
+		err = tx.QueryRow(r.Context(), `INSERT INTO notification_templates
 (id,application_id,key,locale,category,version,subject_template,text_template,html_template,variable_schema)
 SELECT $1,$2,$3,$4,$5,COALESCE(max(version),0)+1,$6,$7,NULLIF($8,''),$9 FROM notification_templates
 WHERE application_id IS NOT DISTINCT FROM $2 AND key=$3 AND locale=$4 RETURNING version`, id, applicationID, request.Key,
-		request.Locale, request.Category, request.Subject, request.Text, request.HTML, schema).Scan(&version)
+			request.Locale, request.Category, request.Subject, request.Text, request.HTML, schema).Scan(&version)
+	}
+	if err == nil {
+		err = syncNotificationTemplateAssets(r.Context(), tx, id.String(), assetIDs)
+	}
+	if err == nil {
+		err = tx.Commit(r.Context())
+	} else if tx != nil {
+		_ = tx.Rollback(r.Context())
+	}
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusConflict, "notification_template_creation_failed", "The template version could not be created.")
 		return
@@ -346,11 +362,6 @@ VALUES($1,$2,$3,$4) ON CONFLICT(application_id,user_id,category) DO UPDATE SET e
 
 func validNotificationCategory(value string) bool {
 	return value == "security" || value == "transactional" || value == "billing" || value == "product" || value == "marketing"
-}
-
-func unsafeEmailHTML(value string) bool {
-	lower := strings.ToLower(value)
-	return strings.Contains(lower, "<script") || strings.Contains(lower, "<iframe") || strings.Contains(lower, "javascript:") || strings.Contains(lower, "data:text/html")
 }
 
 func validateTemplatePlaceholders(template string, schema map[string]any) error {

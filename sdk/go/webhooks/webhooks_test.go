@@ -23,3 +23,15 @@ func TestVerify(t *testing.T) {
 		t.Fatal("tampered body accepted")
 	}
 }
+
+func TestStorageEventsAreVersionedPlatformContracts(t *testing.T) {
+	for _, eventType := range []string{
+		"storage.object.upload_requested", "storage.object.ready", "storage.object.deleted",
+		"storage.provider.verified", "storage.provider.disabled",
+	} {
+		event := Event{Type: eventType, ContractSource: "platform93", SchemaVersion: "1.1"}
+		if !event.SupportsKnownVersion() {
+			t.Errorf("storage event %q is not recognized", eventType)
+		}
+	}
+}

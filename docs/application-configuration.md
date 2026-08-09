@@ -29,6 +29,11 @@ The runtime response also contains a derived `auth` capability object. This lets
 an application render only the authentication methods currently allowed without
 exposing internal-only policy such as delegation or personal-key controls.
 
+The derived `storage` object reports only safe runtime capabilities and limits:
+whether public/private uploads resolve, their maximum object sizes, the managed
+email-image limit, and the source scope. It never exposes provider endpoints,
+credentials, bucket names, or private object metadata.
+
 ## Internal Access Policy
 
 `internal_config` is visible only through the authenticated control API. Platform93

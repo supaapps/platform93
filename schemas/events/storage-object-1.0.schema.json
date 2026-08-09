@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform93.dev/schemas/events/storage-object/1.0",
+  "title": "Platform93 Storage Object Event Data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["object_id", "owner_type", "visibility", "size_bytes"],
+  "properties": {
+    "object_id": { "type": "string", "format": "uuid" },
+    "owner_type": { "enum": ["installation", "application", "user", "workspace"] },
+    "visibility": { "enum": ["public", "private"] },
+    "size_bytes": { "type": "integer", "minimum": 1 }
+  }
+}

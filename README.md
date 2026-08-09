@@ -2,7 +2,8 @@
 
 Platform93 is an Apache-2.0 self-hosted control plane for application identity,
 authorization, workspaces, billing, entitlements, transactional email, events, and
-outgoing webhooks. PostgreSQL is the only required runtime service.
+outgoing webhooks, with optional S3-compatible light object storage. PostgreSQL is
+the only required runtime service.
 
 It keeps authoritative security and commercial state outside application code and
 exposes it through versioned APIs, events, and generated SDKs.
@@ -62,7 +63,7 @@ go build ./cmd/platform93
 - `supaapps/platform93`: Composer authentication/webhook package with optional Laravel guard.
 - `supaapps-platform93-auth`: Python verifier with FastAPI, Django, and Flask adapters.
 - `supaapps-platform93-webhooks`: Python webhook signature verification.
-- `github.com/supaapps/platform93/sdk/go`: Go authentication and webhook packages.
+- `github.com/supaapps/platform93/sdk/go`: Go authentication, webhook, and direct-storage packages.
 
 ## Principles
 
@@ -80,6 +81,7 @@ See [Architecture Principles](docs/architecture.md),
 [Provider Inheritance](docs/provider-inheritance.md),
 [Organization Management And Governance](docs/organization-management.md),
 [Events And Webhooks](docs/events-webhooks.md),
+[Optional Object Storage](docs/object-storage.md),
 [Contributing](CONTRIBUTING.md), and [Security Policy](SECURITY.md).
 
 ## License
