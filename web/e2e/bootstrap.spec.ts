@@ -701,7 +701,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await expect(installationAccess.getByRole("heading", { name: "Installation operators" })).toBeVisible();
   await installationAccess.getByLabel("Email", { exact: true }).fill("installation-admin@platform93.test");
   await installationAccess.getByLabel("Display name").fill("Installation Admin");
-  await installationAccess.getByLabel("Role").selectOption("admin");
+  await installationAccess.getByRole("combobox").selectOption("admin");
   await installationAccess.getByRole("button", { name: "Add installation operator" }).click();
   await expect(page.getByRole("status")).toContainText("Installation operator created.");
   await expect(installationAccess.getByText("Installation Admin", { exact: true })).toBeVisible();
@@ -713,7 +713,8 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByLabel("Application slug").fill("development");
   await page.getByRole("button", { name: "Create organization and application" }).click();
 
-  await expect(page.getByRole("heading", { name: "Development" })).toBeVisible();
+  await expect(page.locator(".context-header").getByText("Development", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByText("Active users")).toBeVisible();
   await expect(page.getByText("Events / 24h")).toBeVisible();
   await expect(page.getByRole("button", { name: "Operators", exact: true })).toHaveCount(0);
@@ -724,7 +725,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByRole("button", { name: "Operators", exact: true }).click();
   const organizationAccess = page.locator(".control-scope").first();
   await organizationAccess.getByLabel("Email", { exact: true }).fill("organization-admin@platform93.test");
-  await organizationAccess.getByLabel("Role").selectOption("admin");
+  await organizationAccess.getByRole("combobox").selectOption("admin");
   await organizationAccess.getByRole("button", { name: "Invite organization operator" }).click();
   await expect(page.getByRole("status")).toContainText("Invitation queued.");
   const invitationResult = await page.getByRole("status").textContent();
@@ -778,14 +779,17 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByPlaceholder("application-slug").fill("testing");
   await page.getByRole("button", { name: "Create application", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Application created.");
-  await expect(page.getByRole("heading", { name: "Testing" })).toBeVisible();
+  await expect(page.locator(".context-header").getByText("Testing", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByLabel("Access context").selectOption({ label: "Platform93 Test" });
-  await page.locator(".application-list > div").filter({ hasText: "Development" }).getByRole("button", { name: "Retire", exact: true }).click();
+  const developmentCard = page.locator(".application-list > article").filter({ hasText: "Development" });
+  await developmentCard.getByRole("button", { name: "Retire Development", exact: true }).click();
   await expect(page.getByText("Application retired and live credentials revoked.")).toBeVisible();
-  await page.getByText("Restore retired application").click();
+  await developmentCard.getByRole("button", { name: "Restore Development", exact: true }).click();
   await expect(page.getByText("Application restored. Previously revoked credentials remain revoked.")).toBeVisible();
   await page.getByLabel("Access context").selectOption({ label: "Development" });
-  await expect(page.getByRole("heading", { name: "Development" })).toBeVisible();
+  await expect(page.locator(".context-header").getByText("Development", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 
   await context.clearCookies();
@@ -796,5 +800,6 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByLabel("Invitation credential").fill(invitationCredential!);
   await page.getByLabel("Display name").fill("Organization Admin");
   await page.getByRole("button", { name: "Accept invitation" }).click();
-  await expect(page.getByRole("heading", { name: "Platform93 Test", exact: true })).toBeVisible();
+  await expect(page.locator(".context-header").getByText("Platform93 Test", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 });
