@@ -33,6 +33,8 @@ var PlatformEventVersions = map[string]string{
 	"delegation.created": "1.0", "delegation.exchanged": "1.0", "delegation.revoked": "1.0",
 	"entitlement.granted": "1.0", "local_entitlement_request.created": "1.0", "local_entitlement_request.approved": "1.0",
 	"oauth.consent_revoked": "1.0", "platform93.webhook.test": "1.0", "user.created": "1.0",
+	"storage.object.upload_requested": "1.0", "storage.object.ready": "1.0", "storage.object.deleted": "1.0",
+	"storage.provider.verified": "1.0", "storage.provider.disabled": "1.0",
 	"user.email_verified": "1.0", "user.email_unverified": "1.0", "user.organization_verified": "1.0",
 	"user.organization_unverified": "1.0", "user.email_changed": "1.0", "user.password_reset": "1.0",
 	"user.pending_deletion": "1.0", "user.anonymized": "1.0", "user.deleted": "1.0",

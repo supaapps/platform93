@@ -32,13 +32,16 @@ clean-install prerelease and must not be tagged `v1.0.0` yet.
   publication, CloudEvents records, transactional outbox, signed SSRF-protected
   webhooks, endpoint update/test/rotation, replay, delivery details, audit search/export,
   HTTP and worker Prometheus metrics, and OTLP HTTP traces.
+- Optional inherited S3-compatible public/private storage with provider pinning,
+  transactional quotas, direct presigned transfers, asynchronous cleanup, managed
+  email images, encrypted credentials, SSRF controls, and MinIO integration coverage.
 - Static administrator workflows for control, identity, workspaces, catalog, billing,
   entitlements, local requests, notifications, webhooks, events, audit, and operations.
 - Clean-install Playwright coverage includes bootstrap, boundary creation,
   application retirement/recovery, and serious/critical Axe accessibility checks.
-- Generated 3.1/3.0 OpenAPI contracts with 332 mounted-operation parity, five npm
+- Generated 3.1/3.0 OpenAPI contracts with 410 mounted-operation parity, five npm
   packages, one root Composer package with optional Laravel guard, two Python packages
-  with FastAPI/Django/Flask adapters, and Go authentication/webhook packages.
+  with FastAPI/Django/Flask adapters, and Go authentication/webhook/storage packages.
 - Rootless multi-architecture image, Compose, Helm with migration/backup jobs and
   network policy, synchronized trusted-publishing workflow, SBOM/provenance/signing,
   shared cross-language conformance, and a real clean-install Playwright flow.

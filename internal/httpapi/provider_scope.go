@@ -37,6 +37,20 @@ func (scope providerScope) inheritable(requested bool) bool {
 
 func (s *Server) authorizeProviderScope(w http.ResponseWriter, r *http.Request, scope providerScope, write bool) bool {
 	if scope.ApplicationID != nil {
+		var organizationID string
+		if err := s.app.DB.QueryRow(r.Context(), "SELECT organization_id FROM applications WHERE id=$1 AND deleted_at IS NULL", *scope.ApplicationID).Scan(&organizationID); err != nil {
+			kernel.WriteProblem(w, r, http.StatusNotFound, "application_not_found", "The application was not found.")
+			return false
+		}
+		if write {
+			if _, allowed := s.organizationManagementRole(r, organizationID); !allowed {
+				kernel.WriteProblem(w, r, http.StatusForbidden, "organization_permission_required", "An organization owner or administrator is required to manage application providers.")
+				return false
+			}
+		} else if !s.operatorBelongsToOrganization(r, organizationID) {
+			kernel.WriteProblem(w, r, http.StatusNotFound, "application_not_found", "The application was not found.")
+			return false
+		}
 		if write && !s.organizationSettingEnabled(r.Context(), *scope.ApplicationID, settingApplicationProviderOverrides) {
 			kernel.WriteProblem(w, r, http.StatusForbidden, "organization_setting_disabled", "Application-level provider overrides are disabled by the organization policy.")
 			return false

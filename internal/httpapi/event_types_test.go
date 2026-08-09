@@ -89,8 +89,8 @@ FROM event_type_definitions WHERE application_id IS NULL AND source='platform93'
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if count != 29 {
-		t.Fatalf("expected 29 built-in event contracts, got %d", count)
+	if count != 34 {
+		t.Fatalf("expected 34 built-in event contracts, got %d", count)
 	}
 }
 

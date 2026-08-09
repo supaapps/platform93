@@ -33,7 +33,7 @@ RUN apk add --no-cache ca-certificates postgresql16-client \
     && adduser -u 65532 -S nonroot -G nonroot
 WORKDIR /app
 COPY --from=backend /out/platform93 /app/platform93
-COPY --from=web /src/web/out /app/admin
+COPY --from=web --chown=nonroot:nonroot /src/web/out /app/admin
 ENV PLATFORM93_ADMIN_ASSETS=/app/admin
 EXPOSE 8093
 USER 65532:65532

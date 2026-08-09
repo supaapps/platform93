@@ -28,6 +28,8 @@ type NamedData = { name: string; slug: string };
 type UserIDData = { user_id: ID };
 type UserStateData = UserIDData & { reason: string };
 type VerificationData<Verified extends boolean> = UserIDData & { verified: Verified; reason: string };
+type StorageObjectData = { object_id: ID; owner_type: "installation" | "application" | "user" | "workspace"; visibility: "public" | "private"; size_bytes: number };
+type StorageProviderData = { provider_id: ID; scope: "installation" | "organization" | "application"; public_enabled: boolean; private_enabled: boolean };
 
 export interface Platform93EventDataMap {
   "organization.created": NamedData;
@@ -44,6 +46,11 @@ export interface Platform93EventDataMap {
   "local_entitlement_request.approved": { request_id: ID; grant_id: ID };
   "oauth.consent_revoked": { user_id: ID; client_id: ID; client_key: string };
   "platform93.webhook.test": { webhook_endpoint_id: ID; test: true };
+  "storage.object.upload_requested": StorageObjectData;
+  "storage.object.ready": StorageObjectData;
+  "storage.object.deleted": StorageObjectData;
+  "storage.provider.verified": StorageProviderData;
+  "storage.provider.disabled": StorageProviderData;
   "user.created": UserIDData & { email_verified: boolean; is_org_verified: boolean };
   "user.email_verified": VerificationData<true>;
   "user.email_unverified": VerificationData<false>;
@@ -74,6 +81,8 @@ export const platform93EventVersions: Readonly<Record<Platform93EventType, strin
   "delegation.created": "1.0", "delegation.exchanged": "1.0", "delegation.revoked": "1.0",
   "entitlement.granted": "1.0", "local_entitlement_request.created": "1.0", "local_entitlement_request.approved": "1.0",
   "oauth.consent_revoked": "1.0", "platform93.webhook.test": "1.0", "user.created": "1.0",
+  "storage.object.upload_requested": "1.0", "storage.object.ready": "1.0", "storage.object.deleted": "1.0",
+  "storage.provider.verified": "1.0", "storage.provider.disabled": "1.0",
   "user.email_verified": "1.0", "user.email_unverified": "1.0", "user.organization_verified": "1.0",
   "user.organization_unverified": "1.0", "user.email_changed": "1.0", "user.password_reset": "1.0",
   "user.pending_deletion": "1.0", "user.anonymized": "1.0", "user.deleted": "1.0",

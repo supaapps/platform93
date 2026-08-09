@@ -1,6 +1,6 @@
 # Provider inheritance
 
-Platform93 supports authentication, notification, and billing providers at three scopes:
+Platform93 supports authentication, notification, billing, and object-storage providers at three scopes:
 
 1. Installation providers can serve the control plane and, when marked inheritable, every organization and application.
 2. Organization providers can serve applications in that organization when marked inheritable.
@@ -44,6 +44,13 @@ https://platform.example/provider-webhooks/stripe/{connection_public_id}
 A shared Stripe account can serve many applications, but Platform93 billing customers, Checkout sessions, subscriptions, invoices, payments, refunds, disputes, and entitlements remain application-owned. Platform93 writes application and subject metadata to Stripe objects and also resolves later metadata-light events through stored provider object identifiers.
 
 Checkout and portal requests may omit `provider_id`; Platform93 then resolves the newest active application, organization, or installation connection in that order. Supplying `provider_id` explicitly pins an allowed connection. Existing subscriptions remain attached to their original connection so lifecycle operations continue using the correct credentials.
+
+## Object Storage
+
+Public and private storage resolve independently, which allows an application to
+override one bucket role and inherit the other. Objects remain pinned to their
+original provider when inheritance changes. See [Optional Object Storage](object-storage.md)
+for direct uploads, verification, CORS, lifecycle, and quota behavior.
 
 ## Access control
 

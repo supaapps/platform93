@@ -53,6 +53,78 @@ export type OrganizationPolicy = UpdateOrganizationPolicy & {
 
 export type Uuid = string;
 
+export type CreateStorageProvider = unknown & {
+    name: string;
+    endpoint: string;
+    region: string;
+    force_path_style?: boolean;
+    public_bucket?: string;
+    private_bucket?: string;
+    public_base_url?: string;
+    inheritable?: boolean;
+    /**
+     * Installation-scoped opt-in for local or private-network S3 endpoints.
+     */
+    allow_private_endpoint?: boolean;
+    max_object_bytes?: number;
+    max_email_image_bytes?: number;
+    max_application_bytes?: number;
+    max_application_objects?: number;
+};
+
+export type CreateStorageUpload = {
+    filename: string;
+    content_type: string;
+    size_bytes: number;
+    visibility: 'public' | 'private';
+    purpose?: 'email_image';
+    metadata?: {
+        [key: string]: unknown;
+    };
+};
+
+export type StorageObject = {
+    id: Uuid;
+    application_id?: string | null;
+    provider_id: Uuid;
+    owner_type: 'installation' | 'application' | 'user' | 'workspace';
+    owner_id?: string | null;
+    visibility: 'public' | 'private';
+    filename: string;
+    content_type: string;
+    size_bytes: number;
+    etag?: string | null;
+    metadata: {
+        [key: string]: unknown;
+    };
+    status: 'pending' | 'ready' | 'deleting' | 'failed';
+    public_url?: string | null;
+    upload_expires_at?: string | null;
+    ready_at?: string | null;
+    last_error?: string | null;
+    version: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type StorageUploadAuthorization = {
+    object: StorageObject;
+    upload_expires_at: string;
+    required_headers: {
+        [key: string]: string;
+    };
+};
+
+export type RuntimeStorageConfig = {
+    public_uploads_enabled: boolean;
+    private_uploads_enabled: boolean;
+    max_public_object_bytes?: number;
+    max_private_object_bytes?: number;
+    max_email_image_bytes?: number;
+    public_provider_scope?: 'installation' | 'organization' | 'application';
+    private_provider_scope?: 'installation' | 'organization' | 'application';
+};
+
 /**
  * Canonical BCP 47 language tag such as en, de-CH, or pt-BR. Empty means no user preference.
  */
@@ -127,6 +199,7 @@ export type RuntimeConfig = {
         [key: string]: unknown;
     };
     auth: RuntimeAuthConfig;
+    storage: RuntimeStorageConfig;
 };
 
 export type PasswordSignIn = {
@@ -422,6 +495,36 @@ export type CreateCheckout = {
     cancel_uri: string;
 };
 
+export type CreateStorageProviderWritable = unknown & {
+    name: string;
+    endpoint: string;
+    region: string;
+    access_key_id: string;
+    secret_access_key: string;
+    force_path_style?: boolean;
+    public_bucket?: string;
+    private_bucket?: string;
+    public_base_url?: string;
+    inheritable?: boolean;
+    /**
+     * Installation-scoped opt-in for local or private-network S3 endpoints.
+     */
+    allow_private_endpoint?: boolean;
+    max_object_bytes?: number;
+    max_email_image_bytes?: number;
+    max_application_bytes?: number;
+    max_application_objects?: number;
+};
+
+export type StorageUploadAuthorizationWritable = {
+    object: StorageObject;
+    upload_url: string;
+    upload_expires_at: string;
+    required_headers: {
+        [key: string]: string;
+    };
+};
+
 export type BootstrapRequestWritable = {
     credential: string;
     email: string;
@@ -471,6 +574,20 @@ export type CreateBillingProviderWritable = {
 };
 
 export type ApplicationId = Uuid;
+
+export type WorkspaceId = Uuid;
+
+export type ObjectId = Uuid;
+
+/**
+ * Required when disabling a provider pinned by live objects.
+ */
+export type ConfirmAffectedObjects = boolean;
+
+/**
+ * Break managed email-template references; requires X-Audit-Reason.
+ */
+export type ForceDelete = boolean;
 
 /**
  * Explicit accessible workspace whose grants are merged with the current user's grants.
@@ -560,6 +677,10 @@ export type SmtpProvider = {
     sender_name?: string;
     inheritable?: boolean;
 };
+
+export type StorageProvider = CreateStorageProviderWritable;
+
+export type StorageUpload = CreateStorageUpload;
 
 export type OAuthAuthorizationDecision = {
     client_id: string;
@@ -6804,6 +6925,1038 @@ export type UpdateMyNotificationPreferenceResponses = {
 };
 
 export type UpdateMyNotificationPreferenceResponse = UpdateMyNotificationPreferenceResponses[keyof UpdateMyNotificationPreferenceResponses];
+
+export type ListInstallationStorageProvidersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/storage/providers';
+};
+
+export type ListInstallationStorageProvidersResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListInstallationStorageProvidersResponse = ListInstallationStorageProvidersResponses[keyof ListInstallationStorageProvidersResponses];
+
+export type CreateInstallationStorageProviderData = {
+    body: StorageProvider;
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/storage/providers';
+};
+
+export type CreateInstallationStorageProviderResponses = {
+    /**
+     * Storage provider stored without exposing credentials
+     */
+    201: unknown;
+};
+
+export type DisableInstallationStorageProviderData = {
+    body?: never;
+    path: {
+        provider_id: Uuid;
+    };
+    query?: {
+        /**
+         * Required when disabling a provider pinned by live objects.
+         */
+        confirm_affected_objects?: boolean;
+    };
+    url: '/v1/control/installation/storage/providers/{provider_id}';
+};
+
+export type DisableInstallationStorageProviderErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+};
+
+export type DisableInstallationStorageProviderError = DisableInstallationStorageProviderErrors[keyof DisableInstallationStorageProviderErrors];
+
+export type DisableInstallationStorageProviderResponses = {
+    /**
+     * Provider disabled in Platform93
+     */
+    204: void;
+};
+
+export type DisableInstallationStorageProviderResponse = DisableInstallationStorageProviderResponses[keyof DisableInstallationStorageProviderResponses];
+
+export type GetInstallationStorageProviderData = {
+    body?: never;
+    path: {
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/storage/providers/{provider_id}';
+};
+
+export type GetInstallationStorageProviderResponses = {
+    /**
+     * Secret-free storage provider
+     */
+    200: unknown;
+};
+
+export type UpdateInstallationStorageProviderData = {
+    body: Object;
+    path: {
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/storage/providers/{provider_id}';
+};
+
+export type UpdateInstallationStorageProviderResponses = {
+    /**
+     * Storage provider updated and marked unverified
+     */
+    200: unknown;
+};
+
+export type VerifyInstallationStorageProviderData = {
+    body?: never;
+    path: {
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/storage/providers/{provider_id}/verify';
+};
+
+export type VerifyInstallationStorageProviderErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    502: Problem;
+};
+
+export type VerifyInstallationStorageProviderError = VerifyInstallationStorageProviderErrors[keyof VerifyInstallationStorageProviderErrors];
+
+export type VerifyInstallationStorageProviderResponses = {
+    /**
+     * Credentials and bucket visibility verified
+     */
+    204: void;
+};
+
+export type VerifyInstallationStorageProviderResponse = VerifyInstallationStorageProviderResponses[keyof VerifyInstallationStorageProviderResponses];
+
+export type EnableInstallationStorageProviderData = {
+    body?: never;
+    path: {
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/storage/providers/{provider_id}/enable';
+};
+
+export type EnableInstallationStorageProviderResponses = {
+    /**
+     * Provider re-enabled
+     */
+    200: unknown;
+};
+
+export type ListOrganizationStorageProvidersData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/providers';
+};
+
+export type ListOrganizationStorageProvidersResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListOrganizationStorageProvidersResponse = ListOrganizationStorageProvidersResponses[keyof ListOrganizationStorageProvidersResponses];
+
+export type CreateOrganizationStorageProviderData = {
+    body: StorageProvider;
+    path: {
+        organization_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/providers';
+};
+
+export type CreateOrganizationStorageProviderResponses = {
+    /**
+     * Organization storage override stored
+     */
+    201: unknown;
+};
+
+export type DisableOrganizationStorageProviderData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: {
+        /**
+         * Required when disabling a provider pinned by live objects.
+         */
+        confirm_affected_objects?: boolean;
+    };
+    url: '/v1/control/organizations/{organization_id}/storage/providers/{provider_id}';
+};
+
+export type DisableOrganizationStorageProviderErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+};
+
+export type DisableOrganizationStorageProviderError = DisableOrganizationStorageProviderErrors[keyof DisableOrganizationStorageProviderErrors];
+
+export type DisableOrganizationStorageProviderResponses = {
+    /**
+     * Provider disabled in Platform93
+     */
+    204: void;
+};
+
+export type DisableOrganizationStorageProviderResponse = DisableOrganizationStorageProviderResponses[keyof DisableOrganizationStorageProviderResponses];
+
+export type GetOrganizationStorageProviderData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/providers/{provider_id}';
+};
+
+export type GetOrganizationStorageProviderResponses = {
+    /**
+     * Secret-free storage provider
+     */
+    200: unknown;
+};
+
+export type UpdateOrganizationStorageProviderData = {
+    body: Object;
+    path: {
+        organization_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/providers/{provider_id}';
+};
+
+export type UpdateOrganizationStorageProviderResponses = {
+    /**
+     * Storage provider updated and marked unverified
+     */
+    200: unknown;
+};
+
+export type VerifyOrganizationStorageProviderData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/providers/{provider_id}/verify';
+};
+
+export type VerifyOrganizationStorageProviderResponses = {
+    /**
+     * Credentials and bucket visibility verified
+     */
+    204: void;
+};
+
+export type VerifyOrganizationStorageProviderResponse = VerifyOrganizationStorageProviderResponses[keyof VerifyOrganizationStorageProviderResponses];
+
+export type EnableOrganizationStorageProviderData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/providers/{provider_id}/enable';
+};
+
+export type EnableOrganizationStorageProviderResponses = {
+    /**
+     * Provider re-enabled
+     */
+    200: unknown;
+};
+
+export type ListApplicationStorageProvidersData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/providers';
+};
+
+export type ListApplicationStorageProvidersResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListApplicationStorageProvidersResponse = ListApplicationStorageProvidersResponses[keyof ListApplicationStorageProvidersResponses];
+
+export type CreateApplicationStorageProviderData = {
+    body: StorageProvider;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/providers';
+};
+
+export type CreateApplicationStorageProviderResponses = {
+    /**
+     * Application storage override stored
+     */
+    201: unknown;
+};
+
+export type DisableApplicationStorageProviderData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: {
+        /**
+         * Required when disabling a provider pinned by live objects.
+         */
+        confirm_affected_objects?: boolean;
+    };
+    url: '/v1/control/applications/{application_id}/storage/providers/{provider_id}';
+};
+
+export type DisableApplicationStorageProviderErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+};
+
+export type DisableApplicationStorageProviderError = DisableApplicationStorageProviderErrors[keyof DisableApplicationStorageProviderErrors];
+
+export type DisableApplicationStorageProviderResponses = {
+    /**
+     * Provider disabled in Platform93
+     */
+    204: void;
+};
+
+export type DisableApplicationStorageProviderResponse = DisableApplicationStorageProviderResponses[keyof DisableApplicationStorageProviderResponses];
+
+export type GetApplicationStorageProviderData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/providers/{provider_id}';
+};
+
+export type GetApplicationStorageProviderResponses = {
+    /**
+     * Secret-free storage provider
+     */
+    200: unknown;
+};
+
+export type UpdateApplicationStorageProviderData = {
+    body: Object;
+    path: {
+        application_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/providers/{provider_id}';
+};
+
+export type UpdateApplicationStorageProviderResponses = {
+    /**
+     * Storage provider updated and marked unverified
+     */
+    200: unknown;
+};
+
+export type VerifyApplicationStorageProviderData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/providers/{provider_id}/verify';
+};
+
+export type VerifyApplicationStorageProviderResponses = {
+    /**
+     * Credentials and bucket visibility verified
+     */
+    204: void;
+};
+
+export type VerifyApplicationStorageProviderResponse = VerifyApplicationStorageProviderResponses[keyof VerifyApplicationStorageProviderResponses];
+
+export type EnableApplicationStorageProviderData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        provider_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/providers/{provider_id}/enable';
+};
+
+export type EnableApplicationStorageProviderResponses = {
+    /**
+     * Provider re-enabled
+     */
+    200: unknown;
+};
+
+export type CreateInstallationStorageUploadData = {
+    body: StorageUpload;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/storage/uploads';
+};
+
+export type CreateInstallationStorageUploadResponses = {
+    /**
+     * Presigned installation asset upload
+     */
+    201: StorageUploadAuthorization;
+};
+
+export type CreateInstallationStorageUploadResponse = CreateInstallationStorageUploadResponses[keyof CreateInstallationStorageUploadResponses];
+
+export type CompleteInstallationStorageUploadData = {
+    body?: never;
+    path: {
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/storage/uploads/{object_id}/complete';
+};
+
+export type CompleteInstallationStorageUploadResponses = {
+    /**
+     * Upload verified
+     */
+    200: unknown;
+};
+
+export type ListInstallationStorageObjectsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/storage/objects';
+};
+
+export type ListInstallationStorageObjectsResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListInstallationStorageObjectsResponse = ListInstallationStorageObjectsResponses[keyof ListInstallationStorageObjectsResponses];
+
+export type DeleteInstallationStorageObjectData = {
+    body?: never;
+    path: {
+        object_id: Uuid;
+    };
+    query?: {
+        /**
+         * Break managed email-template references; requires X-Audit-Reason.
+         */
+        force?: boolean;
+    };
+    url: '/v1/control/installation/storage/objects/{object_id}';
+};
+
+export type DeleteInstallationStorageObjectResponses = {
+    /**
+     * Deletion queued
+     */
+    204: void;
+};
+
+export type DeleteInstallationStorageObjectResponse = DeleteInstallationStorageObjectResponses[keyof DeleteInstallationStorageObjectResponses];
+
+export type GetInstallationStorageObjectData = {
+    body?: never;
+    path: {
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/storage/objects/{object_id}';
+};
+
+export type GetInstallationStorageObjectResponses = {
+    /**
+     * Installation asset metadata
+     */
+    200: unknown;
+};
+
+export type DownloadInstallationStorageObjectData = {
+    body?: never;
+    path: {
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/storage/objects/{object_id}/download';
+};
+
+export type DownloadInstallationStorageObjectResponses = {
+    /**
+     * Public or short-lived private URL
+     */
+    200: unknown;
+};
+
+export type ListOrganizationStorageObjectsData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/objects';
+};
+
+export type ListOrganizationStorageObjectsResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListOrganizationStorageObjectsResponse = ListOrganizationStorageObjectsResponses[keyof ListOrganizationStorageObjectsResponses];
+
+export type DeleteOrganizationStorageObjectData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: {
+        /**
+         * Break managed email-template references; requires X-Audit-Reason.
+         */
+        force?: boolean;
+    };
+    url: '/v1/control/organizations/{organization_id}/storage/objects/{object_id}';
+};
+
+export type DeleteOrganizationStorageObjectResponses = {
+    /**
+     * Deletion queued
+     */
+    204: void;
+};
+
+export type DeleteOrganizationStorageObjectResponse = DeleteOrganizationStorageObjectResponses[keyof DeleteOrganizationStorageObjectResponses];
+
+export type GetOrganizationStorageObjectData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/objects/{object_id}';
+};
+
+export type GetOrganizationStorageObjectResponses = {
+    /**
+     * Organization object metadata
+     */
+    200: unknown;
+};
+
+export type DownloadOrganizationStorageObjectData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/storage/objects/{object_id}/download';
+};
+
+export type DownloadOrganizationStorageObjectResponses = {
+    /**
+     * Public or short-lived private URL
+     */
+    200: unknown;
+};
+
+export type CreateControlApplicationStorageUploadData = {
+    body: StorageUpload;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/uploads';
+};
+
+export type CreateControlApplicationStorageUploadResponses = {
+    /**
+     * Presigned application asset upload
+     */
+    201: unknown;
+};
+
+export type CompleteControlApplicationStorageUploadData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/uploads/{object_id}/complete';
+};
+
+export type CompleteControlApplicationStorageUploadResponses = {
+    /**
+     * Upload verified
+     */
+    200: unknown;
+};
+
+export type ListControlApplicationStorageObjectsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/objects';
+};
+
+export type ListControlApplicationStorageObjectsResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListControlApplicationStorageObjectsResponse = ListControlApplicationStorageObjectsResponses[keyof ListControlApplicationStorageObjectsResponses];
+
+export type DeleteControlApplicationStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: {
+        /**
+         * Break managed email-template references; requires X-Audit-Reason.
+         */
+        force?: boolean;
+    };
+    url: '/v1/control/applications/{application_id}/storage/objects/{object_id}';
+};
+
+export type DeleteControlApplicationStorageObjectResponses = {
+    /**
+     * Deletion queued
+     */
+    204: void;
+};
+
+export type DeleteControlApplicationStorageObjectResponse = DeleteControlApplicationStorageObjectResponses[keyof DeleteControlApplicationStorageObjectResponses];
+
+export type GetControlApplicationStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/objects/{object_id}';
+};
+
+export type GetControlApplicationStorageObjectResponses = {
+    /**
+     * Application object metadata
+     */
+    200: unknown;
+};
+
+export type DownloadControlApplicationStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/storage/objects/{object_id}/download';
+};
+
+export type DownloadControlApplicationStorageObjectResponses = {
+    /**
+     * Public or short-lived private URL
+     */
+    200: unknown;
+};
+
+export type CreateApplicationStorageUploadData = {
+    body: StorageUpload;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/storage/uploads';
+};
+
+export type CreateApplicationStorageUploadResponses = {
+    /**
+     * Presigned application-owned upload
+     */
+    201: unknown;
+};
+
+export type CompleteApplicationStorageUploadData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/storage/uploads/{object_id}/complete';
+};
+
+export type CompleteApplicationStorageUploadResponses = {
+    /**
+     * Upload verified
+     */
+    200: unknown;
+};
+
+export type ListApplicationStorageObjectsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/storage/objects';
+};
+
+export type ListApplicationStorageObjectsResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListApplicationStorageObjectsResponse = ListApplicationStorageObjectsResponses[keyof ListApplicationStorageObjectsResponses];
+
+export type DeleteApplicationStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/storage/objects/{object_id}';
+};
+
+export type DeleteApplicationStorageObjectResponses = {
+    /**
+     * Deletion queued
+     */
+    204: void;
+};
+
+export type DeleteApplicationStorageObjectResponse = DeleteApplicationStorageObjectResponses[keyof DeleteApplicationStorageObjectResponses];
+
+export type GetApplicationStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/storage/objects/{object_id}';
+};
+
+export type GetApplicationStorageObjectResponses = {
+    /**
+     * Application object metadata
+     */
+    200: unknown;
+};
+
+export type DownloadApplicationStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/storage/objects/{object_id}/download';
+};
+
+export type DownloadApplicationStorageObjectResponses = {
+    /**
+     * Public or short-lived private URL
+     */
+    200: unknown;
+};
+
+export type CreateMyStorageUploadData = {
+    body: StorageUpload;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/storage/uploads';
+};
+
+export type CreateMyStorageUploadResponses = {
+    /**
+     * Presigned user-owned upload
+     */
+    201: unknown;
+};
+
+export type CompleteMyStorageUploadData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/storage/uploads/{object_id}/complete';
+};
+
+export type CompleteMyStorageUploadResponses = {
+    /**
+     * Upload verified
+     */
+    200: unknown;
+};
+
+export type ListMyStorageObjectsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/storage/objects';
+};
+
+export type ListMyStorageObjectsResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListMyStorageObjectsResponse = ListMyStorageObjectsResponses[keyof ListMyStorageObjectsResponses];
+
+export type DeleteMyStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/storage/objects/{object_id}';
+};
+
+export type DeleteMyStorageObjectResponses = {
+    /**
+     * Deletion queued
+     */
+    204: void;
+};
+
+export type DeleteMyStorageObjectResponse = DeleteMyStorageObjectResponses[keyof DeleteMyStorageObjectResponses];
+
+export type GetMyStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/storage/objects/{object_id}';
+};
+
+export type GetMyStorageObjectResponses = {
+    /**
+     * User object metadata
+     */
+    200: unknown;
+};
+
+export type DownloadMyStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/storage/objects/{object_id}/download';
+};
+
+export type DownloadMyStorageObjectResponses = {
+    /**
+     * Public or short-lived private URL
+     */
+    200: unknown;
+};
+
+export type CreateWorkspaceStorageUploadData = {
+    body: StorageUpload;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads';
+};
+
+export type CreateWorkspaceStorageUploadResponses = {
+    /**
+     * Presigned workspace-owned upload
+     */
+    201: unknown;
+};
+
+export type CompleteWorkspaceStorageUploadData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads/{object_id}/complete';
+};
+
+export type CompleteWorkspaceStorageUploadResponses = {
+    /**
+     * Upload verified
+     */
+    200: unknown;
+};
+
+export type ListWorkspaceStorageObjectsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects';
+};
+
+export type ListWorkspaceStorageObjectsResponses = {
+    /**
+     * Cursor page
+     */
+    200: Page;
+};
+
+export type ListWorkspaceStorageObjectsResponse = ListWorkspaceStorageObjectsResponses[keyof ListWorkspaceStorageObjectsResponses];
+
+export type DeleteWorkspaceStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}';
+};
+
+export type DeleteWorkspaceStorageObjectResponses = {
+    /**
+     * Deletion queued
+     */
+    204: void;
+};
+
+export type DeleteWorkspaceStorageObjectResponse = DeleteWorkspaceStorageObjectResponses[keyof DeleteWorkspaceStorageObjectResponses];
+
+export type GetWorkspaceStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}';
+};
+
+export type GetWorkspaceStorageObjectResponses = {
+    /**
+     * Workspace object metadata
+     */
+    200: unknown;
+};
+
+export type DownloadWorkspaceStorageObjectData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        object_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}/download';
+};
+
+export type DownloadWorkspaceStorageObjectResponses = {
+    /**
+     * Public or short-lived private URL
+     */
+    200: unknown;
+};
 
 export type OidcDiscoveryData = {
     body?: never;

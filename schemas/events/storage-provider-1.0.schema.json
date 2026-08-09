@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform93.dev/schemas/events/storage-provider/1.0",
+  "title": "Platform93 Storage Provider Event Data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["provider_id", "scope", "public_enabled", "private_enabled"],
+  "properties": {
+    "provider_id": { "type": "string", "format": "uuid" },
+    "scope": { "enum": ["installation", "organization", "application"] },
+    "public_enabled": { "type": "boolean" },
+    "private_enabled": { "type": "boolean" }
+  }
+}

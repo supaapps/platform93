@@ -32,7 +32,7 @@ func TestProviderInheritanceUpdatesPreserveHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
-	operatorID, smtpID, stripeID := kernel.NewID(), kernel.NewID(), kernel.NewID()
+	operatorID, smtpID, stripeID, storageID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
 	suffix := smtpID.String()
 	if _, err = db.Exec(context.Background(), `INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, operatorID, "provider-health-"+suffix+"@example.test"); err != nil {
 		t.Fatal(err)
@@ -55,6 +55,15 @@ VALUES($1,'smtp','Installation SMTP',$2,'mail@example.test','Platform93',$3,true
 	}
 	if _, err = db.Exec(context.Background(), `INSERT INTO provider_connections(id,provider,public_id,api_version,secret_ciphertext,status,inheritable)
 VALUES($1,'stripe',$2,'2026-04-22.dahlia',$3,'error',true)`, stripeID, "p93_provider_health_"+suffix, stripeCiphertext); err != nil {
+		t.Fatal(err)
+	}
+	storageCiphertext, err := vault.Encrypt([]byte(`{"access_key_id":"access","secret_access_key":"secret"}`), "storage-provider:"+storageID.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(context.Background(), `INSERT INTO storage_providers
+(id,name,endpoint,region,public_bucket,credentials_ciphertext,inheritable,allow_private_endpoint,status,verified_at)
+VALUES($1,'Installation storage','http://127.0.0.1:9000','local','public',$2,true,true,'active',$3)`, storageID, storageCiphertext, verifiedAt); err != nil {
 		t.Fatal(err)
 	}
 
@@ -86,5 +95,21 @@ VALUES($1,'stripe',$2,'2026-04-22.dahlia',$3,'error',true)`, stripeID, "p93_prov
 	}
 	if stripeStatus != "error" || stripeInheritable {
 		t.Fatalf("Stripe health changed with inheritance: status=%s inheritable=%v", stripeStatus, stripeInheritable)
+	}
+
+	storageRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": false}, map[string]string{"provider_id": storageID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	storageResponse := httptest.NewRecorder()
+	server.updateInstallationStorageProvider(storageResponse, storageRequest)
+	if storageResponse.Code != http.StatusOK {
+		t.Fatalf("storage inheritance update failed: %d %s", storageResponse.Code, storageResponse.Body.String())
+	}
+	var storageStatus string
+	var storedStorageVerifiedAt *time.Time
+	var storageInheritable bool
+	if err = db.QueryRow(context.Background(), `SELECT status,verified_at,inheritable FROM storage_providers WHERE id=$1`, storageID).Scan(&storageStatus, &storedStorageVerifiedAt, &storageInheritable); err != nil {
+		t.Fatal(err)
+	}
+	if storageStatus != "active" || storedStorageVerifiedAt == nil || !storedStorageVerifiedAt.Equal(verifiedAt) || storageInheritable {
+		t.Fatalf("storage health changed with inheritance: status=%s verified=%v inheritable=%v", storageStatus, storedStorageVerifiedAt, storageInheritable)
 	}
 }

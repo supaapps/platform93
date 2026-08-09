@@ -15,6 +15,7 @@ tags:
   - { name: Catalog, description: "Features, products, and immutable prices." }
   - { name: Entitlements, description: Grants and local entitlement requests. }
   - { name: Billing, description: Provider connections and billing lifecycle. }
+  - { name: Storage, description: Optional tenant-aware S3-compatible object storage. }
   - { name: Events, description: "Domain events, outgoing webhooks, and audit." }
 paths:
   /healthz:
@@ -834,6 +835,138 @@ paths:
   /v1/applications/{application_id}/me/notification-preferences/{category}:
     parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: category, in: path, required: true, schema: { enum: [transactional, billing, product, marketing] } }]
     put: { operationId: updateMyNotificationPreference, tags: [Events], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Email preference updated; security remains mandatory } } }
+  /v1/control/installation/storage/providers:
+    get: { operationId: listInstallationStorageProviders, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createInstallationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/StorageProvider" }, responses: { "201": { description: Storage provider stored without exposing credentials } } }
+  /v1/control/installation/storage/providers/{provider_id}:
+    parameters: [{ $ref: "#/components/parameters/ProviderID" }]
+    get: { operationId: getInstallationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Secret-free storage provider } } }
+    patch: { operationId: updateInstallationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Storage provider updated and marked unverified } } }
+    delete: { operationId: disableInstallationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/ConfirmAffectedObjects" }], responses: { "204": { description: Provider disabled in Platform93 }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/installation/storage/providers/{provider_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: verifyInstallationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Credentials and bucket visibility verified }, "502": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/installation/storage/providers/{provider_id}/enable:
+    parameters: [{ $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: enableInstallationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Provider re-enabled } } }
+  /v1/control/organizations/{organization_id}/storage/providers:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listOrganizationStorageProviders, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createOrganizationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/StorageProvider" }, responses: { "201": { description: Organization storage override stored } } }
+  /v1/control/organizations/{organization_id}/storage/providers/{provider_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    get: { operationId: getOrganizationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Secret-free storage provider } } }
+    patch: { operationId: updateOrganizationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Storage provider updated and marked unverified } } }
+    delete: { operationId: disableOrganizationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/ConfirmAffectedObjects" }], responses: { "204": { description: Provider disabled in Platform93 }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/organizations/{organization_id}/storage/providers/{provider_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: verifyOrganizationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Credentials and bucket visibility verified } } }
+  /v1/control/organizations/{organization_id}/storage/providers/{provider_id}/enable:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: enableOrganizationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Provider re-enabled } } }
+  /v1/control/applications/{application_id}/storage/providers:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listApplicationStorageProviders, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createApplicationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/StorageProvider" }, responses: { "201": { description: Application storage override stored } } }
+  /v1/control/applications/{application_id}/storage/providers/{provider_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    get: { operationId: getApplicationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Secret-free storage provider } } }
+    patch: { operationId: updateApplicationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Storage provider updated and marked unverified } } }
+    delete: { operationId: disableApplicationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/ConfirmAffectedObjects" }], responses: { "204": { description: Provider disabled in Platform93 }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/storage/providers/{provider_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: verifyApplicationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Credentials and bucket visibility verified } } }
+  /v1/control/applications/{application_id}/storage/providers/{provider_id}/enable:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: enableApplicationStorageProvider, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Provider re-enabled } } }
+  /v1/control/installation/storage/uploads:
+    post: { operationId: createInstallationStorageUpload, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/RequiredIdempotencyKey" }], requestBody: { $ref: "#/components/requestBodies/StorageUpload" }, responses: { "201": { description: Presigned installation asset upload, content: { application/json: { schema: { $ref: "#/components/schemas/StorageUploadAuthorization" } } } } } }
+  /v1/control/installation/storage/uploads/{object_id}/complete:
+    parameters: [{ $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: completeInstallationStorageUpload, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Upload verified } } }
+  /v1/control/installation/storage/objects:
+    get: { operationId: listInstallationStorageObjects, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/installation/storage/objects/{object_id}:
+    parameters: [{ $ref: "#/components/parameters/ObjectID" }]
+    get: { operationId: getInstallationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Installation asset metadata } } }
+    delete: { operationId: deleteInstallationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/ForceDelete" }], responses: { "204": { description: Deletion queued } } }
+  /v1/control/installation/storage/objects/{object_id}/download:
+    parameters: [{ $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: downloadInstallationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Public or short-lived private URL } } }
+  /v1/control/organizations/{organization_id}/storage/objects:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listOrganizationStorageObjects, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/organizations/{organization_id}/storage/objects/{object_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    get: { operationId: getOrganizationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Organization object metadata } } }
+    delete: { operationId: deleteOrganizationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/ForceDelete" }], responses: { "204": { description: Deletion queued } } }
+  /v1/control/organizations/{organization_id}/storage/objects/{object_id}/download:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: downloadOrganizationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Public or short-lived private URL } } }
+  /v1/control/applications/{application_id}/storage/uploads:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: createControlApplicationStorageUpload, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/RequiredIdempotencyKey" }], requestBody: { $ref: "#/components/requestBodies/StorageUpload" }, responses: { "201": { description: Presigned application asset upload } } }
+  /v1/control/applications/{application_id}/storage/uploads/{object_id}/complete:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: completeControlApplicationStorageUpload, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Upload verified } } }
+  /v1/control/applications/{application_id}/storage/objects:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listControlApplicationStorageObjects, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/storage/objects/{object_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    get: { operationId: getControlApplicationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Application object metadata } } }
+    delete: { operationId: deleteControlApplicationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/ForceDelete" }], responses: { "204": { description: Deletion queued } } }
+  /v1/control/applications/{application_id}/storage/objects/{object_id}/download:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: downloadControlApplicationStorageObject, tags: [Storage], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Public or short-lived private URL } } }
+  /v1/applications/{application_id}/storage/uploads:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: createApplicationStorageUpload, tags: [Storage], parameters: [{ $ref: "#/components/parameters/RequiredIdempotencyKey" }], requestBody: { $ref: "#/components/requestBodies/StorageUpload" }, responses: { "201": { description: Presigned application-owned upload } } }
+  /v1/applications/{application_id}/storage/uploads/{object_id}/complete:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: completeApplicationStorageUpload, tags: [Storage], responses: { "200": { description: Upload verified } } }
+  /v1/applications/{application_id}/storage/objects:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listApplicationStorageObjects, tags: [Storage], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/storage/objects/{object_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    get: { operationId: getApplicationStorageObject, tags: [Storage], responses: { "200": { description: Application object metadata } } }
+    delete: { operationId: deleteApplicationStorageObject, tags: [Storage], responses: { "204": { description: Deletion queued } } }
+  /v1/applications/{application_id}/storage/objects/{object_id}/download:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: downloadApplicationStorageObject, tags: [Storage], responses: { "200": { description: Public or short-lived private URL } } }
+  /v1/applications/{application_id}/me/storage/uploads:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: createMyStorageUpload, tags: [Storage], parameters: [{ $ref: "#/components/parameters/RequiredIdempotencyKey" }], requestBody: { $ref: "#/components/requestBodies/StorageUpload" }, responses: { "201": { description: Presigned user-owned upload } } }
+  /v1/applications/{application_id}/me/storage/uploads/{object_id}/complete:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: completeMyStorageUpload, tags: [Storage], responses: { "200": { description: Upload verified } } }
+  /v1/applications/{application_id}/me/storage/objects:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyStorageObjects, tags: [Storage], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/storage/objects/{object_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    get: { operationId: getMyStorageObject, tags: [Storage], responses: { "200": { description: User object metadata } } }
+    delete: { operationId: deleteMyStorageObject, tags: [Storage], responses: { "204": { description: Deletion queued } } }
+  /v1/applications/{application_id}/me/storage/objects/{object_id}/download:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: downloadMyStorageObject, tags: [Storage], responses: { "200": { description: Public or short-lived private URL } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/WorkspaceID" }]
+    post: { operationId: createWorkspaceStorageUpload, tags: [Storage], parameters: [{ $ref: "#/components/parameters/RequiredIdempotencyKey" }], requestBody: { $ref: "#/components/requestBodies/StorageUpload" }, responses: { "201": { description: Presigned workspace-owned upload } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/storage/uploads/{object_id}/complete:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/WorkspaceID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: completeWorkspaceStorageUpload, tags: [Storage], responses: { "200": { description: Upload verified } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/WorkspaceID" }]
+    get: { operationId: listWorkspaceStorageObjects, tags: [Storage], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/WorkspaceID" }, { $ref: "#/components/parameters/ObjectID" }]
+    get: { operationId: getWorkspaceStorageObject, tags: [Storage], responses: { "200": { description: Workspace object metadata } } }
+    delete: { operationId: deleteWorkspaceStorageObject, tags: [Storage], responses: { "204": { description: Deletion queued } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/storage/objects/{object_id}/download:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/WorkspaceID" }, { $ref: "#/components/parameters/ObjectID" }]
+    post: { operationId: downloadWorkspaceStorageObject, tags: [Storage], responses: { "200": { description: Public or short-lived private URL } } }
   /oidc/.well-known/openid-configuration:
     get: { operationId: oidcDiscovery, tags: [Identity], security: [], responses: { "200": { description: OpenID Provider metadata } } }
   /oidc/jwks.json:
@@ -885,6 +1018,10 @@ components:
     managementBearer: { type: http, scheme: bearer, bearerFormat: Platform93-management-JWT, description: "Short-lived client-credentials token with actor_type=management_client and audience platform93:control." }
   parameters:
     ApplicationID: { name: application_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    WorkspaceID: { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    ObjectID: { name: object_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    ConfirmAffectedObjects: { name: confirm_affected_objects, in: query, required: false, schema: { type: boolean, default: false }, description: Required when disabling a provider pinned by live objects. }
+    ForceDelete: { name: force, in: query, required: false, schema: { type: boolean, default: false }, description: Break managed email-template references; requires X-Audit-Reason. }
     WorkspaceIDQuery: { name: workspace_id, in: query, required: false, description: Explicit accessible workspace whose grants are merged with the current user's grants., schema: { $ref: "#/components/schemas/UUID" } }
     OrganizationID: { name: organization_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
     IncludeRetired: { name: include_retired, in: query, schema: { type: boolean, default: false } }
@@ -914,6 +1051,8 @@ components:
     RoleAssignment: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/RoleAssignment" } } } }
     OwnershipTransfer: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/OwnershipTransfer" } } } }
     SMTPProvider: { required: true, content: { application/json: { schema: { type: object, required: [name, host, port, tls_mode, sender_email], properties: { name: { type: string }, host: { type: string }, port: { type: integer, minimum: 1, maximum: 65535 }, username: { type: string }, password: { type: string, writeOnly: true }, tls_mode: { enum: [starttls, implicit_tls] }, sender_email: { type: string, format: email }, sender_name: { type: string }, inheritable: { type: boolean, default: false } } } } } }
+    StorageProvider: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateStorageProvider" } } } }
+    StorageUpload: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateStorageUpload" } } } }
     OAuthAuthorizationDecision: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object, required: [client_id, redirect_uri, response_type, scope, state, code_challenge, code_challenge_method, decision], properties: { client_id: { type: string }, redirect_uri: { type: string, format: uri }, response_type: { type: string, const: code }, scope: { type: string }, state: { type: string }, nonce: { type: string }, code_challenge: { type: string }, code_challenge_method: { type: string, const: S256 }, decision: { enum: [grant, deny] } } } } } }
     OAuthToken: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object, required: [grant_type], properties: { grant_type: { enum: [authorization_code, refresh_token, client_credentials] }, code: { type: string }, redirect_uri: { type: string, format: uri }, code_verifier: { type: string }, refresh_token: { type: string }, client_id: { type: string }, client_secret: { type: string, writeOnly: true }, scope: { type: string } } } } } }
     OAuthTokenCredential: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object, required: [token], properties: { token: { type: string, writeOnly: true }, token_type_hint: { enum: [access_token, refresh_token] }, client_id: { type: string }, client_secret: { type: string, writeOnly: true } } } } } }
@@ -979,6 +1118,83 @@ components:
               additionalProperties: false
             version: { type: integer, format: int64, minimum: 1 }
     UUID: { type: string, format: uuid }
+    CreateStorageProvider:
+      type: object
+      required: [name, endpoint, region, access_key_id, secret_access_key]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        endpoint: { type: string, format: uri, maxLength: 2000 }
+        region: { type: string, minLength: 1, maxLength: 100 }
+        access_key_id: { type: string, minLength: 1, writeOnly: true }
+        secret_access_key: { type: string, minLength: 1, writeOnly: true }
+        force_path_style: { type: boolean, default: false }
+        public_bucket: { type: string, minLength: 1 }
+        private_bucket: { type: string, minLength: 1 }
+        public_base_url: { type: string, format: uri }
+        inheritable: { type: boolean, default: false }
+        allow_private_endpoint: { type: boolean, default: false, description: Installation-scoped opt-in for local or private-network S3 endpoints. }
+        max_object_bytes: { type: integer, format: int64, minimum: 1, default: 26214400 }
+        max_email_image_bytes: { type: integer, format: int64, minimum: 1, default: 2097152 }
+        max_application_bytes: { type: integer, format: int64, minimum: 1, default: 10737418240 }
+        max_application_objects: { type: integer, format: int64, minimum: 1, default: 100000 }
+      anyOf: [{ required: [public_bucket] }, { required: [private_bucket] }]
+      additionalProperties: false
+    CreateStorageUpload:
+      type: object
+      required: [filename, content_type, size_bytes, visibility]
+      properties:
+        filename: { type: string, minLength: 1, maxLength: 500 }
+        content_type: { type: string, minLength: 1, maxLength: 255 }
+        size_bytes: { type: integer, format: int64, minimum: 1 }
+        visibility: { enum: [public, private] }
+        purpose: { enum: [email_image] }
+        metadata: { type: object, additionalProperties: true }
+      additionalProperties: false
+    StorageObject:
+      type: object
+      required: [id, provider_id, owner_type, visibility, filename, content_type, size_bytes, metadata, status, version, created_at, updated_at]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        application_id: { type: [string, "null"], format: uuid }
+        provider_id: { $ref: "#/components/schemas/UUID" }
+        owner_type: { enum: [installation, application, user, workspace] }
+        owner_id: { type: [string, "null"], format: uuid }
+        visibility: { enum: [public, private] }
+        filename: { type: string }
+        content_type: { type: string }
+        size_bytes: { type: integer, format: int64 }
+        etag: { type: [string, "null"] }
+        metadata: { type: object, additionalProperties: true }
+        status: { enum: [pending, ready, deleting, failed] }
+        public_url: { type: [string, "null"], format: uri }
+        upload_expires_at: { type: [string, "null"], format: date-time }
+        ready_at: { type: [string, "null"], format: date-time }
+        last_error: { type: [string, "null"] }
+        version: { type: integer, format: int64 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+      additionalProperties: false
+    StorageUploadAuthorization:
+      type: object
+      required: [object, upload_url, upload_expires_at, required_headers]
+      properties:
+        object: { $ref: "#/components/schemas/StorageObject" }
+        upload_url: { type: string, format: uri, writeOnly: true }
+        upload_expires_at: { type: string, format: date-time }
+        required_headers: { type: object, additionalProperties: { type: string } }
+      additionalProperties: false
+    RuntimeStorageConfig:
+      type: object
+      required: [public_uploads_enabled, private_uploads_enabled]
+      properties:
+        public_uploads_enabled: { type: boolean }
+        private_uploads_enabled: { type: boolean }
+        max_public_object_bytes: { type: integer, format: int64 }
+        max_private_object_bytes: { type: integer, format: int64 }
+        max_email_image_bytes: { type: integer, format: int64 }
+        public_provider_scope: { enum: [installation, organization, application] }
+        private_provider_scope: { enum: [installation, organization, application] }
+      additionalProperties: false
     Locale: { type: string, maxLength: 35, description: "Canonical BCP 47 language tag such as en, de-CH, or pt-BR. Empty means no user preference." }
     Problem: { type: object, required: [type, title, status, code], properties: { type: { type: string, format: uri-reference }, title: { type: string }, status: { type: integer }, detail: { type: string }, code: { type: string }, request_id: { type: string } } }
     Page: { type: object, required: [items, next_cursor], properties: { items: { type: array, items: {} }, next_cursor: { type: [string, "null"] } } }
@@ -989,7 +1205,7 @@ components:
     ApplicationAuthConfig: { type: object, additionalProperties: false, properties: { flows: { $ref: "#/components/schemas/ApplicationFlowConfig" } } }
     ApplicationInternalConfig: { type: object, additionalProperties: false, properties: { registration_mode: { type: string, enum: [public, invite_only] }, password_enabled: { type: boolean }, passwordless_enabled: { type: boolean }, personal_api_keys_enabled: { type: boolean }, delegation_enabled: { type: boolean } } }
     RuntimeAuthConfig: { type: object, required: [registration_mode, registration_enabled, password_enabled, passwordless_enabled], additionalProperties: false, properties: { registration_mode: { type: string, enum: [public, invite_only] }, registration_enabled: { type: boolean }, password_enabled: { type: boolean }, passwordless_enabled: { type: boolean }, flows: { $ref: "#/components/schemas/ApplicationFlowConfig" } } }
-    RuntimeConfig: { type: object, required: [schema_version, api_base, issuer, application_id, public_config, auth], properties: { schema_version: { type: string }, api_base: { type: string, format: uri }, issuer: { type: string, format: uri }, application_id: { $ref: "#/components/schemas/UUID" }, public_config: { type: object, additionalProperties: true }, auth: { $ref: "#/components/schemas/RuntimeAuthConfig" } } }
+    RuntimeConfig: { type: object, required: [schema_version, api_base, issuer, application_id, public_config, auth, storage], properties: { schema_version: { type: string }, api_base: { type: string, format: uri }, issuer: { type: string, format: uri }, application_id: { $ref: "#/components/schemas/UUID" }, public_config: { type: object, additionalProperties: true }, auth: { $ref: "#/components/schemas/RuntimeAuthConfig" }, storage: { $ref: "#/components/schemas/RuntimeStorageConfig" } } }
     PasswordSignIn: { type: object, required: [email, password], properties: { email: { type: string, format: email }, password: { type: string, writeOnly: true, minLength: 12, maxLength: 1024 } } }
     PasswordSignUp: { allOf: [{ $ref: "#/components/schemas/PasswordSignIn" }, { type: object, properties: { first_name: { type: string }, last_name: { type: string }, locale: { $ref: "#/components/schemas/Locale" } } }] }
     EmailStart: { type: object, required: [email, intent, delivery], properties: { email: { type: string, format: email }, intent: { enum: [sign_in, sign_up, automatic] }, delivery: { enum: [code, link, both] }, redirect_uri: { type: string, format: uri } } }
