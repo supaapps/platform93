@@ -7,18 +7,32 @@
 *.p12
 *.pfx
 
+# Local Compose credentials
+deploy/compose/secrets/
+
 # Editors and operating systems
 .DS_Store
 .idea/
 .vscode/
+
+# Dependencies
+node_modules/
+**/node_modules/
+vendor/
 
 # Build and test output
 dist/
 build/
 coverage/
 tmp/
+**/.next/
+**/out/
+**/test-results/
+**/playwright-report/
 *.log
-
-# Dependencies
-node_modules/
-vendor/
+*.test
+*.prof
+*.tsbuildinfo
+/platform93
+__pycache__/
+*.py[cod]

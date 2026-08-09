@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "supaapps-platform93-webhooks"
+version = "0.1.0"
+description = "Platform93 webhook signature verification"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+
+[project.urls]
+Homepage = "https://github.com/supaapps/platform93"
+Repository = "https://github.com/supaapps/platform93"
+Issues = "https://github.com/supaapps/platform93/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/platform93_webhooks"]

@@ -1,0 +1,73 @@
+name: platform93
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: platform93
+      POSTGRES_USER: platform93
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [platform93_postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform93 -d platform93"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    image: ${PLATFORM93_IMAGE:-ghcr.io/supaapps/platform93:latest}
+    command: ["migrate"]
+    environment: &platform93_application
+      PLATFORM93_DATABASE_URL_FILE: /run/secrets/database_url
+      PLATFORM93_PUBLIC_URL: ${PLATFORM93_PUBLIC_URL:-http://localhost:8093}
+      PLATFORM93_MASTER_KEY_FILE: /run/secrets/platform93_master_key
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    secrets: [platform93_master_key, database_url]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+  api:
+    image: ${PLATFORM93_IMAGE:-ghcr.io/supaapps/platform93:latest}
+    command: ["serve"]
+    environment: *platform93_application
+    secrets: [platform93_master_key, database_url]
+    ports: ["8093:8093"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8093/readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs: [/tmp]
+    restart: unless-stopped
+  worker:
+    image: ${PLATFORM93_IMAGE:-ghcr.io/supaapps/platform93:latest}
+    command: ["worker"]
+    environment: *platform93_application
+    secrets: [platform93_master_key, database_url]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    read_only: true
+    tmpfs: [/tmp]
+    restart: unless-stopped
+  dispatcher:
+    image: ${PLATFORM93_IMAGE:-ghcr.io/supaapps/platform93:latest}
+    command: ["dispatcher"]
+    environment: *platform93_application
+    secrets: [platform93_master_key, database_url]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    read_only: true
+    tmpfs: [/tmp]
+    restart: unless-stopped
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  platform93_master_key:
+    file: ./secrets/platform93_master_key
+  database_url:
+    file: ./secrets/database_url
+volumes:
+  platform93_postgres:

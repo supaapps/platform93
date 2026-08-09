@@ -1,0 +1,39 @@
+image:
+  repository: ghcr.io/supaapps/platform93
+  tag: ""
+  pullPolicy: IfNotPresent
+publicUrl: https://platform93.example.com
+database:
+  existingSecret: platform93-database
+  urlKey: database-url
+masterKey:
+  existingSecret: platform93-master-key
+  key: master-key
+replicas:
+  api: 2
+  worker: 2
+  dispatcher: 1
+service:
+  port: 80
+ingress:
+  enabled: false
+  className: ""
+  host: platform93.example.com
+  tlsSecret: ""
+  annotations: {}
+resources:
+  api: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 512Mi } }
+  worker: { requests: { cpu: 100m, memory: 128Mi }, limits: { memory: 512Mi } }
+  dispatcher: { requests: { cpu: 50m, memory: 64Mi }, limits: { memory: 256Mi } }
+networkPolicy:
+  enabled: true
+  databasePorts: [5432]
+  smtpPorts: [465, 587]
+telemetry:
+  otlpEndpoint: ""
+backup:
+  enabled: false
+  schedule: "17 2 * * *"
+  existingClaim: ""
+  retentionSuccessfulJobs: 3
+  retentionFailedJobs: 3

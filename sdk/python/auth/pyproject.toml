@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "supaapps-platform93-auth"
+version = "0.1.0"
+description = "Strict Platform93 JWT verification"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = ["PyJWT[crypto]>=2.10,<3", "httpx>=0.28,<1"]
+
+[project.urls]
+Homepage = "https://github.com/supaapps/platform93"
+Repository = "https://github.com/supaapps/platform93"
+Issues = "https://github.com/supaapps/platform93/issues"
+
+[project.optional-dependencies]
+fastapi = ["fastapi>=0.115"]
+django = ["django>=5.1"]
+flask = ["flask>=3.1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/platform93_auth"]

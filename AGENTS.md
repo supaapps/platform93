@@ -8,7 +8,7 @@ This is the public Platform93 source repository.
 - Public contracts must be represented in OpenAPI or versioned JSON Schema.
 - Preserve explicit separation between installation operators and application users.
 - Add migrations for schema changes; never rely on automatic production synchronization.
-- Add tests for authorization, environment isolation, idempotency, and public contract changes.
+- Add tests for authorization, application isolation, idempotency, and public contract changes.
 - Refer to integrations generically as existing applications or other applications.
 - Follow conventional commits once implementation begins.
 

@@ -1,0 +1,1153 @@
+# Generated from platform93.yaml; do not edit.
+openapi: 3.0.3
+info:
+  title: Platform93 API
+  version: 0.1.0
+  license: { name: Apache-2.0, identifier: Apache-2.0 }
+  description: Public contract for fresh Platform93 installations.
+servers: [{ url: / }]
+security: [{ bearerAuth: [] }]
+tags:
+  - { name: System, description: Process health and build information. }
+  - { name: Setup, description: One-time installation bootstrap. }
+  - { name: Control, description: "Installation operators, organizations, and applications." }
+  - { name: Management, description: "Machine-only installation provisioning and organization governance." }
+  - { name: Identity, description: Application-user authentication and profiles. }
+  - { name: Catalog, description: "Features, products, and immutable prices." }
+  - { name: Entitlements, description: Grants and local entitlement requests. }
+  - { name: Billing, description: Provider connections and billing lifecycle. }
+  - { name: Events, description: "Domain events, outgoing webhooks, and audit." }
+paths:
+  /healthz:
+    get: { operationId: health, tags: [System], security: [], responses: { "200": { description: Process is alive } } }
+  /readyz:
+    get: { operationId: readiness, tags: [System], security: [], responses: { "200": { description: Process is ready }, "503": { $ref: "#/components/responses/Problem" } } }
+  /version:
+    get: { operationId: version, tags: [System], security: [], responses: { "200": { description: Build information, content: { application/json: { schema: { type: object } } } } } }
+  /v1/setup/status:
+    get: { operationId: setupStatus, tags: [Setup], security: [], responses: { "200": { description: Setup and operator login availability, content: { application/json: { schema: { type: object, required: [available, operator_email_login_available], properties: { available: { type: boolean }, operator_email_login_available: { type: boolean } } } } } } } }
+  /v1/setup/bootstrap:
+    post:
+      operationId: bootstrap
+      tags: [Setup]
+      security: []
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BootstrapRequest" } } } }
+      responses: { "201": { description: Setup-only operator session }, "401": { $ref: "#/components/responses/Problem" } }
+  /v1/setup/complete:
+    post: { operationId: completeSetup, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Setup completed }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/setup/notification-providers:
+    post: { operationId: createSetupNotificationProvider, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/SMTPProvider" }, responses: { "201": { description: Installation SMTP provider stored } } }
+  /v1/control/auth/email/start:
+    post: { operationId: startOperatorEmailLogin, tags: [Identity], security: [], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email], properties: { email: { type: string, format: email }, delivery: { enum: [code, link, both] } } } } } }, responses: { "202": { description: Enumeration-safe operator challenge accepted } } }
+  /v1/control/auth/email/verify:
+    post: { operationId: verifyOperatorEmailLogin, tags: [Identity], security: [], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/EmailVerify" } } } }, responses: { "200": { description: Operator cookie session created } } }
+  /v1/control/auth/password:
+    post: { operationId: loginOperatorWithPassword, tags: [Identity], security: [], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/OperatorPasswordLogin" } } } }, responses: { "200": { description: Operator cookie session created }, "401": { $ref: "#/components/responses/Problem" } } }
+    put: { operationId: changeOperatorPassword, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/OperatorPasswordChange" } } } }, responses: { "204": { description: Password stored and other operator sessions revoked }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/auth/me:
+    get: { operationId: getOperatorAccount, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Current operator profile and sign-in methods } } }
+    patch: { operationId: updateOperatorAccount, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [display_name], properties: { display_name: { type: string, minLength: 1, maxLength: 200 } }, additionalProperties: false } } } }, responses: { "204": { description: Operator profile updated } } }
+  /v1/control/auth/logout:
+    post: { operationId: logoutOperator, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Operator session revoked } } }
+  /v1/control/auth/token/refresh:
+    post: { operationId: refreshOperatorSession, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Operator session credential rotated } } }
+  /v1/control/auth/sessions:
+    get: { operationId: listOperatorSessions, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/auth/sessions/{session_id}:
+    parameters: [{ name: session_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: revokeOperatorSession, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Operator session revoked } } }
+  /v1/control/auth/logout-all:
+    post: { operationId: logoutAllOperatorSessions, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: All operator sessions revoked } } }
+  /v1/control/organization-invitations/accept:
+    post: { operationId: acceptOrganizationInvitation, tags: [Control], security: [], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AcceptOrganizationInvitation" } } } }, responses: { "200": { description: Invitation accepted and operator cookie issued }, "401": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/installation/notification-providers:
+    get: { operationId: listInstallationNotificationProviders, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createInstallationNotificationProvider, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/SMTPProvider" }, responses: { "201": { description: Installation SMTP provider stored } } }
+  /v1/control/installation/notification-providers/{provider_id}:
+    parameters: [{ name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getInstallationNotificationProvider, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Installation notification provider metadata }, "404": { $ref: "#/components/responses/Problem" } } }
+    patch: { operationId: updateInstallationNotificationProvider, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Installation notification provider updated }, "404": { $ref: "#/components/responses/Problem" } } }
+    delete: { operationId: disableInstallationNotificationProvider, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Installation notification provider disabled }, "404": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/installation/notification-providers/{provider_id}/verify:
+    parameters: [{ name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: verifyInstallationNotificationProvider, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: SMTP connectivity and credentials verified }, "502": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/installation/notification-providers/{provider_id}/test:
+    parameters: [{ name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: testInstallationNotificationProvider, tags: [Setup], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "202": { description: Installation SMTP test queued }, "404": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/installation/auth/providers:
+    get: { operationId: listInstallationAuthProviders, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/installation/auth/providers/{provider}:
+    parameters: [{ name: provider, in: path, required: true, schema: { type: string, enum: [google, apple] } }]
+    put: { operationId: configureInstallationAuthProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Installation authentication provider configured } } }
+    patch: { operationId: updateInstallationAuthProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/ProviderInheritance" }, responses: { "204": { description: Installation authentication provider inheritance updated }, "404": { $ref: "#/components/responses/Problem" } } }
+    delete: { operationId: disableInstallationAuthProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Installation authentication provider disabled } } }
+  /v1/control/installation/billing/providers:
+    get: { operationId: listInstallationBillingProviders, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createInstallationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateBillingProvider" } } } }, responses: { "201": { description: Installation billing provider configured } } }
+  /v1/control/installation/billing/providers/{provider_id}:
+    parameters: [{ $ref: "#/components/parameters/ProviderID" }]
+    get: { operationId: getInstallationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Secret-free installation billing provider } } }
+    patch: { operationId: updateInstallationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Installation billing provider updated } } }
+    delete: { operationId: disableInstallationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Installation billing provider disabled } } }
+  /v1/control/installation/billing/providers/{provider_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: verifyInstallationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Installation billing provider credentials verified } } }
+  /v1/control/installation/operators:
+    get: { operationId: listInstallationOperators, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createInstallationOperator, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Installation operator and role created } } }
+  /v1/control/installation/operators/{operator_id}:
+    parameters: [{ name: operator_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    patch: { operationId: updateInstallationOperator, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Installation role updated } } }
+    delete: { operationId: deleteInstallationOperator, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Installation role removed and sessions revoked } } }
+  /v1/control/installation/signing-keys:
+    get: { operationId: listSigningKeys, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/installation/signing-keys/rotate:
+    post: { operationId: rotateSigningKey, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "201": { description: New installation signing key activated } } }
+  /v1/control/installation/management-api:
+    get: { operationId: getManagementAPIStatus, tags: [Management], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Management API installation status, content: { application/json: { schema: { $ref: "#/components/schemas/ManagementAPIStatus" } } } } } }
+    patch: { operationId: updateManagementAPIStatus, tags: [Management], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [enabled], properties: { enabled: { type: boolean } }, additionalProperties: false } } } }, responses: { "200": { description: Management API status updated } } }
+  /v1/control/installation/management-clients:
+    get: { operationId: listManagementClients, tags: [Management], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createManagementClient, tags: [Management], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateManagementClient" } } } }, responses: { "201": { description: Management client created and secret returned once }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/installation/management-clients/{management_client_id}/rotate-secret:
+    parameters: [{ name: management_client_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: rotateManagementClientSecret, tags: [Management], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Management client secret rotated and returned once } } }
+  /v1/control/installation/management-clients/{management_client_id}:
+    parameters: [{ name: management_client_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: disableManagementClient, tags: [Management], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Management client disabled and all of its tokens invalidated } } }
+  /v1/control/installation/organizations/{organization_id}/policy:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    put: { operationId: updateOrganizationPolicy, tags: [Management], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/IfMatch" }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateOrganizationPolicy" } } } }, responses: { "204": { description: Installation-owned organization policy updated }, "412": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/organizations:
+    get: { operationId: listOrganizations, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/IncludeRetired" }], responses: { "200": { description: Accessible organizations and the current installation role, content: { application/json: { schema: { $ref: "#/components/schemas/OrganizationPage" } } } } } }
+    post: { operationId: createOrganization, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Named" }, responses: { "201": { description: Organization created }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/organizations/{organization_id}/applications:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listApplications, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/IncludeRetired" }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createApplication, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Named" }, responses: { "201": { description: Application created } } }
+  /v1/control/organizations/{organization_id}/applications/{application_resource_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: application_resource_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    patch: { operationId: updateApplication, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Rename" }, responses: { "204": { description: Application renamed }, "412": { $ref: "#/components/responses/Problem" } } }
+    delete: { operationId: retireApplication, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Application retired and live credentials revoked } } }
+  /v1/control/organizations/{organization_id}/applications/{application_resource_id}/restore:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: application_resource_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: restoreApplication, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Application restored without restoring revoked credentials } } }
+  /v1/control/organizations/{organization_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: getOrganization, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Organization details } } }
+    patch: { operationId: updateOrganization, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Rename" }, responses: { "204": { description: Organization renamed }, "412": { $ref: "#/components/responses/Problem" } } }
+    delete: { operationId: retireOrganization, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Organization and active descendants retired } } }
+  /v1/control/organizations/{organization_id}/policy:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: getOrganizationPolicy, tags: [Management], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Organization policy and current usage, content: { application/json: { schema: { $ref: "#/components/schemas/OrganizationPolicy" } } } } } }
+  /v1/control/organizations/{organization_id}/restore:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    post: { operationId: restoreOrganization, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Organization restored; descendants remain retired } } }
+  /v1/control/organizations/{organization_id}/members:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listOrganizationMembers, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/organizations/{organization_id}/members/{member_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: member_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    patch: { operationId: updateOrganizationMember, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Organization role updated } } }
+    delete: { operationId: deleteOrganizationMember, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Organization member removed } } }
+  /v1/control/organizations/{organization_id}/invitations:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listOrganizationInvitations, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createOrganizationInvitation, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Invitation queued and credential returned once } } }
+  /v1/control/organizations/{organization_id}/invitations/{invitation_id}/resend:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: invitation_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: resendOrganizationInvitation, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Invitation credential rotated and delivery queued } } }
+  /v1/control/organizations/{organization_id}/invitations/{invitation_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: invitation_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: revokeOrganizationInvitation, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Pending invitation revoked } } }
+  /v1/control/organizations/{organization_id}/audit-logs:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listOrganizationAuditLogs, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/organizations/{organization_id}/auth/providers:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listOrganizationAuthProviders, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/organizations/{organization_id}/auth/providers/{provider}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: provider, in: path, required: true, schema: { type: string, enum: [google, apple] } }]
+    put: { operationId: configureOrganizationAuthProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Organization authentication provider configured } } }
+    patch: { operationId: updateOrganizationAuthProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/ProviderInheritance" }, responses: { "204": { description: Organization authentication provider inheritance updated }, "404": { $ref: "#/components/responses/Problem" } } }
+    delete: { operationId: disableOrganizationAuthProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Organization authentication provider disabled } } }
+  /v1/control/organizations/{organization_id}/notification-providers:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listOrganizationNotificationProviders, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createOrganizationNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/SMTPProvider" }, responses: { "201": { description: Organization SMTP provider stored } } }
+  /v1/control/organizations/{organization_id}/notification-providers/{provider_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getOrganizationNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Redacted organization SMTP provider } } }
+    patch: { operationId: updateOrganizationNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Organization SMTP provider updated } } }
+    delete: { operationId: disableOrganizationNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Organization SMTP provider disabled } } }
+  /v1/control/organizations/{organization_id}/notification-providers/{provider_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: verifyOrganizationNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Organization SMTP provider verified } } }
+  /v1/control/organizations/{organization_id}/notification-providers/{provider_id}/test:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: testOrganizationNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "202": { description: Organization SMTP test queued } } }
+  /v1/control/organizations/{organization_id}/billing/providers:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: listOrganizationBillingProviders, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createOrganizationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateBillingProvider" } } } }, responses: { "201": { description: Organization billing provider configured } } }
+  /v1/control/organizations/{organization_id}/billing/providers/{provider_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    get: { operationId: getOrganizationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Secret-free organization billing provider } } }
+    patch: { operationId: updateOrganizationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Organization billing provider updated } } }
+    delete: { operationId: disableOrganizationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Organization billing provider disabled } } }
+  /v1/control/organizations/{organization_id}/billing/providers/{provider_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: verifyOrganizationBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Organization billing provider credentials verified } } }
+  /v1/applications/{application_id}/public-config:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: publicConfig, tags: [Control], security: [], responses: { "200": { description: Secret-free runtime configuration, content: { application/json: { schema: { $ref: "#/components/schemas/RuntimeConfig" } } } } } }
+  /v1/control/applications/{application_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: getApplication, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Application details } } }
+  /v1/control/applications/{application_id}/statistics:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: getApplicationStatistics, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: "Application identity, catalog, billing, and delivery counts" } } }
+  /v1/control/applications/{application_id}/public-config:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    patch: { operationId: updatePublicApplicationConfig, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/PublicApplicationConfig" }, responses: { "204": { description: Explicitly public runtime configuration replaced }, "412": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/internal-config:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    patch: { operationId: updateInternalApplicationConfig, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/InternalApplicationConfig" }, responses: { "204": { description: Internal application policy updated and disabled credentials revoked }, "412": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/auth-config:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    patch: { operationId: updateAuthConfig, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/ApplicationAuthConfig" }, responses: { "204": { description: Authentication configuration and PKCE application redirects updated } } }
+  /v1/control/applications/{application_id}/auth/providers/google:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    put: { operationId: configureGoogleProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Google client configured and callback URI returned } } }
+  /v1/control/applications/{application_id}/auth/providers/apple:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    put: { operationId: configureAppleProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Apple client configured and callback URI returned } } }
+  /v1/control/applications/{application_id}/auth/providers:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listApplicationAuthProviders, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/auth/providers/{provider}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: provider, in: path, required: true, schema: { type: string, enum: [google, apple] } }]
+    delete: { operationId: disableApplicationAuthProvider, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Application authentication provider disabled } } }
+  /v1/control/applications/{application_id}/domains:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listApplicationDomains, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createApplicationDomain, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Domain added and DNS proof returned once } } }
+  /v1/control/applications/{application_id}/domains/{domain_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: domain_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: deleteApplicationDomain, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Domain removed } } }
+  /v1/control/applications/{application_id}/domains/{domain_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: domain_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: verifyApplicationDomain, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: DNS ownership verified } } }
+  /v1/control/applications/{application_id}/clients:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listClients, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createClient, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Client created and secret returned once when applicable } } }
+  /v1/control/applications/{application_id}/clients/{client_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: client_id, in: path, required: true, schema: { type: string } }]
+    patch: { operationId: updateClient, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Client updated } } }
+    delete: { operationId: disableClient, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Client and active OAuth grants disabled } } }
+  /v1/control/applications/{application_id}/clients/{client_id}/rotate-secret:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: client_id, in: path, required: true, schema: { type: string } }]
+    post: { operationId: rotateClientSecret, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Replacement client secret returned once } } }
+  /v1/control/applications/{application_id}/roles:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listRoles, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createRole, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Role created } } }
+  /v1/control/applications/{application_id}/roles/{role_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: role_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getRole, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Role details }, "404": { $ref: "#/components/responses/Problem" } } }
+    patch: { operationId: updateRole, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Role updated }, "409": { $ref: "#/components/responses/Problem" } } }
+    delete: { operationId: deleteRole, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Unassigned custom role deleted }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/workspaces:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listWorkspaces, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createWorkspace, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Workspace created } } }
+  /v1/control/applications/{application_id}/workspaces/{workspace_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getWorkspace, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Workspace details } } }
+    patch: { operationId: updateWorkspace, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Workspace updated } } }
+    delete: { operationId: deleteWorkspace, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Workspace retired and memberships removed }, "404": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/workspaces/{workspace_id}/owner-transfer:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: recoverWorkspaceOwnership, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/OwnershipTransfer" }, responses: { "200": { $ref: "#/components/responses/OwnershipTransferResult" } } }
+  /v1/control/applications/{application_id}/workspaces/{workspace_id}/members:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: listWorkspaceMembers, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/workspaces/{workspace_id}/members/{user_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    put: { operationId: replaceWorkspaceMemberRoles, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Workspace member roles replaced atomically } } }
+    delete: { operationId: deleteWorkspaceMember, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Workspace membership removed } } }
+  /v1/control/applications/{application_id}/role-assignments:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listRoleAssignments, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createRoleAssignment, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/RoleAssignment" }, responses: { "201": { description: User or machine-client role assignment created } } }
+  /v1/control/applications/{application_id}/role-assignments/{assignment_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: assignment_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: deleteRoleAssignment, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Role assignment deleted } } }
+  /v1/control/applications/{application_id}/delegations:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listDelegations, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createDelegation, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Short-lived one-time delegation exchange credential } } }
+  /v1/control/applications/{application_id}/delegations/{delegation_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: delegation_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getDelegation, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Delegation details and lifecycle state } } }
+  /v1/applications/{application_id}/delegations/{delegation_id}/exchange:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: delegation_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: exchangeDelegation, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Non-refreshable delegated access token } } }
+  /v1/control/applications/{application_id}/delegations/{delegation_id}/revoke:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: delegation_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: revokeDelegation, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Delegation and delegated sessions revoked } } }
+  /v1/control/applications/{application_id}/workspace-invitations:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listWorkspaceInvitations, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createWorkspaceInvitation, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Workspace invitation created and credential returned once } } }
+  /v1/control/applications/{application_id}/workspace-invitations/{invitation_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: invitation_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: revokeWorkspaceInvitation, tags: [Control], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Pending workspace invitation revoked } } }
+  /v1/control/applications/{application_id}/users:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listUsers, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createUser, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: User created } } }
+  /v1/control/applications/{application_id}/users/{user_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getUser, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: User details } } }
+    patch: { operationId: updateUser, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: User updated } } }
+  /v1/control/applications/{application_id}/users/{user_id}/suspend:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: suspendUser, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: User suspended and active grants revoked } } }
+  /v1/control/applications/{application_id}/users/{user_id}/restore:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: restoreUser, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Suspended user restored without restoring old sessions } } }
+  /v1/control/applications/{application_id}/users/{user_id}/verify-email:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: verifyUserEmail, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: User email administratively verified } } }
+  /v1/control/applications/{application_id}/users/{user_id}/unverify-email:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: unverifyUserEmail, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: User email verification removed } } }
+  /v1/control/applications/{application_id}/users/{user_id}/verify-organization:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: verifyUserOrganization, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: User organization administratively verified } } }
+  /v1/control/applications/{application_id}/users/{user_id}/unverify-organization:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: unverifyUserOrganization, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: User organization verification removed } } }
+  /v1/control/applications/{application_id}/users/{user_id}/sessions:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: listUserSessions, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/users/{user_id}/sessions/revoke:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: revokeUserSessions, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: All active user sessions revoked } } }
+  /v1/control/applications/{application_id}/users/{user_id}/addresses:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: listUserAddresses, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/oauth-consents:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listOAuthConsents, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/oauth-consents/{user_id}/{client_id}/revoke:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { name: client_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: revokeOAuthConsent, tags: [Identity], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Consent and active grants revoked } } }
+  /v1/control/applications/{application_id}/features:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listFeatures, tags: [Catalog], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createFeature, tags: [Catalog], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateFeature" } } } }, responses: { "201": { description: Feature created }, "422": { $ref: "#/components/responses/Problem" } } }
+  /v1/applications/{application_id}/auth/password/sign-up:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: passwordSignUp, tags: [Identity], security: [], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PasswordSignUp" } } } }, responses: { "200": { $ref: "#/components/responses/Tokens" }, "403": { $ref: "#/components/responses/Problem" } } }
+  /v1/applications/{application_id}/auth/password/sign-in:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: passwordSignIn, tags: [Identity], security: [], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PasswordSignIn" } } } }, responses: { "200": { $ref: "#/components/responses/Tokens" }, "401": { $ref: "#/components/responses/Problem" } } }
+  /v1/applications/{application_id}/auth/methods:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: authMethods, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Enumeration-safe enabled authentication methods } } }
+  /v1/applications/{application_id}/auth/email/start:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: emailStart, tags: [Identity], security: [], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/EmailStart" } } } }, responses: { "202": { description: Enumeration-safe challenge accepted } } }
+  /v1/applications/{application_id}/auth/email/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: emailVerify, tags: [Identity], security: [], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/EmailVerify" } } } }, responses: { "200": { $ref: "#/components/responses/Tokens" } } }
+  /v1/applications/{application_id}/auth/token/refresh:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: refresh, tags: [Identity], security: [], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [refresh_token], properties: { refresh_token: { type: string, writeOnly: true } } } } } }, responses: { "200": { $ref: "#/components/responses/Tokens" } } }
+  /v1/applications/{application_id}/auth/password/reset/start:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: passwordResetStart, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "202": { description: Enumeration-safe reset challenge accepted } } }
+  /v1/applications/{application_id}/auth/password/reset/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: passwordResetVerify, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { $ref: "#/components/responses/Tokens" } } }
+  /v1/applications/{application_id}/auth/providers:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listAuthProviders, tags: [Identity], security: [], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/auth/providers/google/start:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: startGoogleAuth, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: "Google authorization URL with state, nonce, and S256 PKCE" } } }
+  /v1/applications/{application_id}/auth/providers/google/callback:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: googleAuthCallback, tags: [Identity], security: [], responses: { "302": { description: Redirect with one-time Platform93 exchange credential } } }
+  /v1/applications/{application_id}/auth/providers/google/exchange:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: exchangeGoogleAuth, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { $ref: "#/components/responses/Tokens" } } }
+  /v1/applications/{application_id}/auth/providers/apple/start:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: startAppleAuth, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Apple authorization URL with state and nonce } } }
+  /v1/applications/{application_id}/auth/providers/apple/callback:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: appleAuthCallback, tags: [Identity], security: [], requestBody: { required: false, content: { application/x-www-form-urlencoded: { schema: { type: object, properties: { code: { type: string }, state: { type: string }, user: { type: string }, error: { type: string } } } } } }, responses: { "302": { description: Redirect with one-time Platform93 exchange credential } } }
+  /v1/applications/{application_id}/auth/providers/apple/exchange:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: exchangeAppleAuth, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { $ref: "#/components/responses/Tokens" } } }
+  /v1/applications/{application_id}/auth/mfa/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: verifyMFA, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { $ref: "#/components/responses/Tokens" }, "401": { $ref: "#/components/responses/Problem" } } }
+  /v1/applications/{application_id}/auth/mfa/webauthn/options:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: beginWebAuthnAuthentication, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: WebAuthn assertion options and opaque ceremony identifier } } }
+  /v1/applications/{application_id}/auth/mfa/webauthn/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: finishWebAuthnAuthentication, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { $ref: "#/components/responses/Tokens" }, "401": { $ref: "#/components/responses/Problem" } } }
+  /v1/applications/{application_id}/me:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: getCurrentUser, tags: [Identity], responses: { "200": { description: Current user, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } } } }
+    patch: { operationId: updateCurrentUser, tags: [Identity], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateUserProfile" } } } }, responses: { "204": { description: Profile updated } } }
+    delete: { operationId: deleteMyAccount, tags: [Identity], responses: { "204": { description: Account deleted and credentials revoked } } }
+  /v1/applications/{application_id}/auth/logout:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: logoutCurrentSession, tags: [Identity], responses: { "204": { description: Current interactive session revoked } } }
+  /v1/applications/{application_id}/me/api-keys:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listPersonalAPIKeys, tags: [Identity], responses: { "200": { $ref: "#/components/responses/Page" }, "403": { $ref: "#/components/responses/Problem" } } }
+    post: { operationId: createPersonalAPIKey, tags: [Identity], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreatePersonalAPIKey" } } } }, responses: { "201": { description: Key created and secret returned once } } }
+  /v1/applications/{application_id}/catalog/products:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: publicCatalog, tags: [Catalog], security: [], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/products:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listProducts, tags: [Catalog], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createProduct, tags: [Catalog], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateProduct" } } } }, responses: { "201": { description: Product created } } }
+  /v1/control/applications/{application_id}/products/{product_id}/prices:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: product_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: listPrices, tags: [Catalog], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createPrice, tags: [Catalog], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreatePrice" } } } }, responses: { "201": { description: Immutable price created } } }
+  /v1/control/applications/{application_id}/products/{product_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: product_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getProduct, tags: [Catalog], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Product details } } }
+    patch: { operationId: updateProduct, tags: [Catalog], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateProduct" } } } }, responses: { "204": { description: Product updated } } }
+  /v1/control/applications/{application_id}/entitlements:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listEntitlements, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createEntitlement, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Entitlement grant created } } }
+  /v1/control/applications/{application_id}/entitlements/{entitlement_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: entitlement_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getEntitlement, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: "Entitlement grant, effective state, and append-only actions" } } }
+  /v1/control/applications/{application_id}/entitlements/{entitlement_id}/revoke:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: entitlement_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: revokeEntitlement, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Append-only revocation recorded } } }
+  /v1/control/applications/{application_id}/entitlements/{entitlement_id}/restore:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: entitlement_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: restoreEntitlement, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Append-only restoration recorded } } }
+  /v1/control/applications/{application_id}/local-entitlement-requests:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listLocalEntitlementRequests, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/local-entitlement-requests/{request_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/RequestID" }]
+    get: { operationId: getLocalEntitlementRequest, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Local request with immutable snapshots and action history } } }
+  /v1/control/applications/{application_id}/local-entitlement-requests/{request_id}/approve:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/RequestID" }]
+    post: { operationId: approveLocalEntitlementRequest, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Request approved exactly once } } }
+  /v1/control/applications/{application_id}/local-entitlement-requests/{request_id}/reject:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/RequestID" }]
+    post: { operationId: rejectLocalEntitlementRequest, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Request rejected } } }
+  /v1/control/applications/{application_id}/local-entitlement-requests/{request_id}/reopen:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/RequestID" }]
+    post: { operationId: reopenLocalEntitlementRequest, tags: [Entitlements], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Rejected or canceled request reopened for review } } }
+  /v1/applications/{application_id}/local-entitlement-checkouts:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: localEntitlementCheckout, tags: [Entitlements], parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/LocalCheckout" } } } }, responses: { "201": { description: Pending local entitlement request } } }
+  /v1/applications/{application_id}/me/local-entitlement-requests:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyLocalEntitlementRequests, tags: [Entitlements], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/local-entitlement-requests/{request_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/RequestID" }]
+    get: { operationId: getMyLocalEntitlementRequest, tags: [Entitlements], responses: { "200": { description: Own local request with immutable snapshots and action history } } }
+  /v1/applications/{application_id}/me/local-entitlement-requests/{request_id}/cancel:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/RequestID" }]
+    post: { operationId: cancelMyLocalEntitlementRequest, tags: [Entitlements], responses: { "204": { description: Pending request canceled } } }
+  /v1/applications/{application_id}/me/entitlements:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/WorkspaceIDQuery" }]
+    get: { operationId: listMyEntitlements, tags: [Entitlements], responses: { "200": { description: "Effective user entitlements, optionally merged with one accessible workspace and full provenance" } } }
+  /v1/control/applications/{application_id}/billing/providers:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listBillingProviders, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateBillingProvider" } } } }, responses: { "201": { description: Billing provider configured } } }
+  /v1/control/applications/{application_id}/billing/providers/{provider_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    get: { operationId: getBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Secret-free provider connection } } }
+    patch: { operationId: updateBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Provider credentials or metadata updated } } }
+    delete: { operationId: disableBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Provider disabled }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/billing/providers/{provider_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ProviderID" }]
+    post: { operationId: verifyBillingProvider, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Provider credentials verified } } }
+  /v1/applications/{application_id}/billing/checkout-sessions:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: createCheckoutSession, tags: [Billing], parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateCheckout" } } } }, responses: { "201": { description: Provider checkout created } } }
+  /v1/applications/{application_id}/billing/checkout-sessions/{session_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/SessionID" }]
+    get: { operationId: getCheckoutSession, tags: [Billing], responses: { "200": { description: Checkout status and redirect URI } } }
+  /v1/applications/{application_id}/billing/portal-sessions:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: createBillingPortalSession, tags: [Billing], parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Customer portal session created } } }
+  /v1/control/applications/{application_id}/billing/subscriptions:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listSubscriptions, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/billing/subscriptions/{subscription_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/SubscriptionID" }]
+    get: { operationId: getSubscription, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Subscription details } } }
+  /v1/control/applications/{application_id}/billing/subscriptions/{subscription_id}/cancel:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/SubscriptionID" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: cancelSubscription, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Subscription cancellation scheduled or applied } } }
+  /v1/control/applications/{application_id}/billing/subscriptions/{subscription_id}/resume:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/SubscriptionID" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: resumeSubscription, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Scheduled cancellation removed } } }
+  /v1/control/applications/{application_id}/billing/subscriptions/{subscription_id}/change-price:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/SubscriptionID" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: changeSubscriptionPrice, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { type: object, required: [price_id], properties: { price_id: { $ref: "#/components/schemas/UUID" }, proration_behavior: { enum: [create_prorations, always_invoice, none], default: create_prorations } } } } } }, responses: { "200": { description: Subscription price changed and synchronized } } }
+  /v1/control/applications/{application_id}/billing/invoices:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listInvoices, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/billing/invoices/{invoice_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: invoice_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getInvoice, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Normalized invoice details } } }
+  /v1/control/applications/{application_id}/billing/payments:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listPayments, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/billing/payments/{payment_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/PaymentID" }]
+    get: { operationId: getPayment, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Normalized payment details } } }
+  /v1/control/applications/{application_id}/billing/payments/{payment_id}/refunds:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/PaymentID" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: createRefund, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Full or partial refund created } } }
+  /v1/control/applications/{application_id}/billing/refunds:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listRefunds, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/billing/refunds/{refund_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: refund_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getRefund, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Normalized refund details } } }
+  /v1/control/applications/{application_id}/billing/disputes:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listDisputes, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/billing/disputes/{dispute_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: dispute_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getDispute, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Normalized dispute details } } }
+  /v1/control/applications/{application_id}/billing/statistics:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: from, in: query, schema: { type: string, format: date-time } }, { name: to, in: query, schema: { type: string, format: date-time } }]
+    get: { operationId: getBillingStatistics, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: "Bounded revenue, refund, and lifecycle statistics" } } }
+  /v1/control/applications/{application_id}/billing/provider-events:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listBillingProviderEvents, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/billing/provider-events/{event_id}/replay:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: event_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: replayBillingProviderEvent, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Stored provider event replayed } } }
+  /v1/control/applications/{application_id}/billing/providers/{provider_id}/reconciliation-runs:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { $ref: "#/components/parameters/ProviderID" }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: createBillingReconciliationRun, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "202": { description: Reconciliation queued transactionally } } }
+  /v1/control/applications/{application_id}/billing/reconciliation-runs:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listBillingReconciliationRuns, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/billing/reconciliation-runs/{run_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: run_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getBillingReconciliationRun, tags: [Billing], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: "Reconciliation findings, repairs, and status" } } }
+  /v1/applications/{application_id}/me/billing:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: getMyBillingSummary, tags: [Billing], responses: { "200": { description: Current billing resource counts } } }
+  /v1/applications/{application_id}/me/subscriptions:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMySubscriptions, tags: [Billing], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/invoices:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyInvoices, tags: [Billing], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/payments:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyPayments, tags: [Billing], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/sessions:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMySessions, tags: [Identity], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/email-verification/start:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: emailVerificationStart, tags: [Identity], responses: { "202": { description: Verification challenge accepted } } }
+  /v1/applications/{application_id}/me/email-verification/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: emailVerificationVerify, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Email verified } } }
+  /v1/applications/{application_id}/me/email-change/start:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: emailChangeStart, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "202": { description: Email change challenge accepted } } }
+  /v1/applications/{application_id}/me/email-change/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: emailChangeVerify, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Email changed and other sessions revoked } } }
+  /v1/applications/{application_id}/me/password/change:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: passwordChange, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Password changed and other sessions revoked } } }
+  /v1/applications/{application_id}/me/export:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: exportMyAccount, tags: [Identity], responses: { "200": { description: Portable account export } } }
+  /v1/applications/{application_id}/me/anonymize:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: anonymizeMyAccount, tags: [Identity], responses: { "204": { description: Personal account data anonymized and credentials revoked } } }
+  /v1/applications/{application_id}/me/mfa/methods:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyMFAMethods, tags: [Identity], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/mfa/totp:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: startTOTPEnrollment, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: One-time TOTP secret and provisioning URI } } }
+  /v1/applications/{application_id}/me/mfa/totp/{method_id}/activate:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: method_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: activateTOTPEnrollment, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: TOTP activated and recovery codes returned once } } }
+  /v1/applications/{application_id}/me/mfa/webauthn/options:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: beginWebAuthnRegistration, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: WebAuthn credential creation options and opaque ceremony identifier } } }
+  /v1/applications/{application_id}/me/mfa/webauthn/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: finishWebAuthnRegistration, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: WebAuthn credential activated and recovery codes returned once when created } } }
+  /v1/applications/{application_id}/me/mfa/methods/{method_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: method_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: disableMFAMethod, tags: [Identity], responses: { "204": { description: MFA method disabled } } }
+  /v1/applications/{application_id}/me/mfa/recovery-codes/regenerate:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: regenerateRecoveryCodes, tags: [Identity], responses: { "200": { description: Replacement recovery codes returned once } } }
+  /v1/applications/{application_id}/me/auth/providers/google/link:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: startGoogleLink, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Authenticated Google account-link authorization URL } } }
+  /v1/applications/{application_id}/me/auth/providers/apple/link:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: startAppleLink, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Authenticated Apple account-link authorization URL } } }
+  /v1/applications/{application_id}/me/auth/identities:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyIdentities, tags: [Identity], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/auth/identities/{identity_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: identity_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: unlinkMyIdentity, tags: [Identity], responses: { "204": { description: Linked identity removed while preserving a usable login method } } }
+  /v1/applications/{application_id}/me/sessions/{session_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: session_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: revokeMySession, tags: [Identity], responses: { "204": { description: Session revoked } } }
+  /v1/applications/{application_id}/me/logout-all:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: logoutAll, tags: [Identity], responses: { "204": { description: All user sessions revoked } } }
+  /v1/applications/{application_id}/me/api-keys/{key_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: key_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: revokePersonalAPIKey, tags: [Identity], responses: { "204": { description: Personal API key revoked } } }
+  /v1/applications/{application_id}/me/addresses:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyAddresses, tags: [Identity], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createMyAddress, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Address created } } }
+  /v1/applications/{application_id}/me/addresses/{address_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: address_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    patch: { operationId: updateMyAddress, tags: [Identity], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Address updated with optimistic concurrency } } }
+    delete: { operationId: deleteMyAddress, tags: [Identity], responses: { "204": { description: Inactive address deleted } } }
+  /v1/applications/{application_id}/me/addresses/{address_id}/activate:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: address_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: activateMyAddress, tags: [Identity], responses: { "204": { description: Address atomically selected as active } } }
+  /v1/applications/{application_id}/me/billing-profile:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: getMyBillingProfile, tags: [Billing], responses: { "200": { description: Current user billing profile } } }
+    patch: { operationId: updateMyBillingProfile, tags: [Billing], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Current user billing profile updated } } }
+  /v1/applications/{application_id}/me/workspaces:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyWorkspaces, tags: [Control], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createMyWorkspace, tags: [Control], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Workspace created with the current user as owner } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getMyWorkspace, tags: [Control], responses: { "200": { description: Accessible workspace details } } }
+    patch: { operationId: updateMyWorkspace, tags: [Control], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Workspace updated } } }
+    delete: { operationId: archiveMyWorkspace, tags: [Control], responses: { "204": { description: Owned workspace archived } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/members:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: listMyWorkspaceMembers, tags: [Control], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/members/{user_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { name: user_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    put: { operationId: replaceMyWorkspaceMemberRoles, tags: [Control], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Workspace member roles replaced } } }
+    delete: { operationId: removeMyWorkspaceMember, tags: [Control], responses: { "204": { description: Workspace member removed } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/owner-transfer:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: transferMyWorkspaceOwnership, tags: [Control], requestBody: { $ref: "#/components/requestBodies/OwnershipTransfer" }, responses: { "200": { $ref: "#/components/responses/OwnershipTransferResult" } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/membership:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: leaveWorkspace, tags: [Control], responses: { "204": { description: Current membership removed } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/invitations:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: createMyWorkspaceInvitation, tags: [Control], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Workspace invitation created } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/billing-profile:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getWorkspaceBillingProfile, tags: [Billing], responses: { "200": { description: Workspace billing profile } } }
+    patch: { operationId: updateWorkspaceBillingProfile, tags: [Billing], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Workspace billing profile updated } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/addresses:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: listWorkspaceAddresses, tags: [Billing], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createWorkspaceAddress, tags: [Billing], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Workspace billing address created } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/addresses/{address_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { name: address_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    patch: { operationId: updateWorkspaceAddress, tags: [Billing], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Workspace billing address updated } } }
+    delete: { operationId: deleteWorkspaceAddress, tags: [Billing], responses: { "204": { description: Inactive workspace billing address deleted } } }
+  /v1/applications/{application_id}/workspaces/{workspace_id}/addresses/{address_id}/activate:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: workspace_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { name: address_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: activateWorkspaceAddress, tags: [Billing], responses: { "204": { description: Workspace billing address selected as active } } }
+  /v1/applications/{application_id}/me/workspace-invitations:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyWorkspaceInvitations, tags: [Control], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/workspace-invitations/{invitation_id}/accept:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: invitation_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: acceptMyWorkspaceInvitation, tags: [Control], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Workspace invitation accepted atomically } } }
+  /v1/applications/{application_id}/me/permissions/check:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: checkMyPermissions, tags: [Control], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Permission decisions with role explanations } } }
+  /v1/applications/{application_id}/me/oauth-consents:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyOAuthConsents, tags: [Identity], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/oauth-consents/{client_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: client_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    delete: { operationId: revokeMyOAuthConsent, tags: [Identity], responses: { "204": { description: Own consent and active grants revoked } } }
+  /v1/applications/{application_id}/events:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: publishCustomEvent, tags: [Events], parameters: [{ $ref: "#/components/parameters/RequiredIdempotencyKey" }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/PublishCustomEvent" } } } }, responses: { "202": { description: Custom event and transactional outbox record accepted, content: { application/json: { schema: { $ref: "#/components/schemas/EventEnvelope" } } } }, "403": { $ref: "#/components/responses/Problem" }, "422": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/events:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listEvents, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/events/{event_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: event_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getEvent, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: CloudEvents-compatible event detail, content: { application/json: { schema: { $ref: "#/components/schemas/EventEnvelope" } } } } } }
+  /v1/control/applications/{application_id}/event-types:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listEventTypes, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createEventType, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CreateEventType" } } } }, responses: { "201": { description: Application event type registered }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/event-types/{event_type_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: event_type_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getEventType, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Versioned event contract with a complete webhook example, content: { application/json: { schema: { $ref: "#/components/schemas/EventTypeDefinition" } } } } } }
+    patch: { operationId: updateEventType, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateEventType" } } } }, responses: { "204": { description: Event type definition updated }, "409": { $ref: "#/components/responses/Problem" } } }
+    delete: { operationId: archiveEventType, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Application event type archived } } }
+  /v1/control/applications/{application_id}/audit-logs:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listAuditLogs, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/audit-logs/{audit_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: audit_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getAuditLog, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Audit record detail } } }
+  /v1/control/applications/{application_id}/audit-exports:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    post: { operationId: createAuditExport, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Encrypted one-hour audit export created } } }
+  /v1/control/applications/{application_id}/audit-exports/{export_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: export_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getAuditExport, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Decrypted audit export before expiry } } }
+  /v1/control/applications/{application_id}/webhooks:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listWebhooks, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createWebhook, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Webhook created and secret returned once } } }
+  /v1/control/applications/{application_id}/webhooks/{webhook_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: webhook_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getWebhook, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Webhook endpoint and delivery statistics }, "404": { $ref: "#/components/responses/Problem" } } }
+    patch: { operationId: updateWebhook, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Webhook endpoint updated }, "409": { $ref: "#/components/responses/Problem" } } }
+    delete: { operationId: disableWebhook, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Webhook disabled } } }
+  /v1/control/applications/{application_id}/webhooks/{webhook_id}/test:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: webhook_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: testWebhook, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "202": { description: Targeted signed test delivery queued }, "404": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/webhooks/{webhook_id}/rotate-secret:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: webhook_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: rotateWebhookSecret, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Webhook secret rotated and returned once } } }
+  /v1/control/applications/{application_id}/webhook-deliveries:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listWebhookDeliveries, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/control/applications/{application_id}/webhook-deliveries/{delivery_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: delivery_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getWebhookDelivery, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Webhook delivery history detail }, "404": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/webhook-deliveries/{delivery_id}/replay:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: delivery_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: replayWebhookDelivery, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Delivery queued for replay } } }
+  /v1/control/applications/{application_id}/notification-providers:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listNotificationProviders, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/SMTPProvider" }, responses: { "201": { description: SMTP provider stored } } }
+  /v1/control/applications/{application_id}/notification-providers/{provider_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Redacted provider configuration and health } } }
+    patch: { operationId: updateNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Redacted updated provider configuration } } }
+    delete: { operationId: disableNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Notification provider disabled } } }
+  /v1/control/applications/{application_id}/notification-providers/{provider_id}/verify:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: verifyNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: SMTP connectivity and authentication verified }, "502": { $ref: "#/components/responses/Problem" } } }
+  /v1/control/applications/{application_id}/notification-providers/{provider_id}/test:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }, { $ref: "#/components/parameters/IdempotencyKey" }]
+    post: { operationId: testNotificationProvider, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "202": { description: Provider-specific test notification queued } } }
+  /v1/control/applications/{application_id}/sender-identities:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listSenderIdentities, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createSenderIdentity, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Sender identity created } } }
+  /v1/control/applications/{application_id}/sender-identities/{sender_id}/default:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: sender_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: setDefaultSenderIdentity, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Default sender selected } } }
+  /v1/control/installation/notification-templates:
+    get: { operationId: listInstallationNotificationTemplates, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createInstallationNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Installation template draft created } } }
+  /v1/control/installation/notification-template-variables:
+    get: { operationId: listInstallationNotificationTemplateVariables, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Installation template variables and samples } } }
+  /v1/control/installation/notification-templates/{template_id}:
+    parameters: [{ name: template_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getInstallationNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Installation template and immutable history } } }
+    patch: { operationId: updateInstallationNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: New installation template draft version created } } }
+  /v1/control/installation/notification-templates/{template_id}/preview:
+    parameters: [{ name: template_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: previewInstallationNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Safely rendered installation template preview } } }
+  /v1/control/installation/notification-templates/{template_id}/publish:
+    parameters: [{ name: template_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: publishInstallationNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Installation template published } } }
+  /v1/control/installation/notification-templates/{template_id}/archive:
+    parameters: [{ name: template_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: archiveInstallationNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Installation template archived } } }
+  /v1/control/applications/{application_id}/notification-templates:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listNotificationTemplates, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: createNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: Immutable draft template version created } } }
+  /v1/control/applications/{application_id}/notification-template-variables:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listNotificationTemplateVariables, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Built-in notification template variables and sample values } } }
+  /v1/control/applications/{application_id}/notification-templates/{template_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: template_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Template version and immutable version history } } }
+    patch: { operationId: updateNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "201": { description: New immutable draft version created } } }
+  /v1/control/applications/{application_id}/notification-templates/{template_id}/preview:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: template_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: previewNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "200": { description: Safely rendered preview without delivery } } }
+  /v1/control/applications/{application_id}/notification-templates/{template_id}/publish:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: template_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: publishNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Template version published and predecessor archived } } }
+  /v1/control/applications/{application_id}/notification-templates/{template_id}/archive:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: template_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: archiveNotificationTemplate, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Template version archived } } }
+  /v1/control/applications/{application_id}/notifications:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listNotifications, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: queueNotification, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/QueueNotification" } } } }, responses: { "202": { description: Rendered locale-aware template snapshot queued or suppressed by preference, content: { application/json: { schema: { $ref: "#/components/schemas/QueuedNotification" } } } } } }
+  /v1/control/applications/{application_id}/notifications/statistics:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: getNotificationStatistics, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: Notification and attempt status totals } } }
+  /v1/control/applications/{application_id}/notifications/{notification_id}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: notification_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    get: { operationId: getNotification, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "200": { description: "Notification metadata, attachment metadata, and attempts without encrypted payload" } } }
+  /v1/control/applications/{application_id}/notifications/{notification_id}/retry:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: notification_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: retryNotification, tags: [Events], security: [{ operatorBearer: [] }, { operatorCookie: [] }], responses: { "204": { description: Notification queued for retry } } }
+  /v1/applications/{application_id}/me/notification-preferences:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }]
+    get: { operationId: listMyNotificationPreferences, tags: [Events], responses: { "200": { $ref: "#/components/responses/Page" } } }
+  /v1/applications/{application_id}/me/notification-preferences/{category}:
+    parameters: [{ $ref: "#/components/parameters/ApplicationID" }, { name: category, in: path, required: true, schema: { enum: [transactional, billing, product, marketing] } }]
+    put: { operationId: updateMyNotificationPreference, tags: [Events], requestBody: { $ref: "#/components/requestBodies/Object" }, responses: { "204": { description: Email preference updated; security remains mandatory } } }
+  /oidc/.well-known/openid-configuration:
+    get: { operationId: oidcDiscovery, tags: [Identity], security: [], responses: { "200": { description: OpenID Provider metadata } } }
+  /oidc/jwks.json:
+    get: { operationId: oidcJWKS, tags: [Identity], security: [], responses: { "200": { description: Active and retiring JSON Web Keys } } }
+  /oidc/authorize:
+    get: { operationId: beginOIDCAuthorization, tags: [Identity], security: [], parameters: [{ $ref: "#/components/parameters/OAuthClientID" }, { $ref: "#/components/parameters/OAuthRedirectURI" }, { $ref: "#/components/parameters/OAuthResponseType" }, { $ref: "#/components/parameters/OAuthScope" }, { $ref: "#/components/parameters/OAuthState" }, { $ref: "#/components/parameters/OAuthCodeChallenge" }, { $ref: "#/components/parameters/OAuthCodeChallengeMethod" }], responses: { "200": { description: Headless consent interaction }, "302": { description: Authorization response redirect } } }
+    post: { operationId: decideOIDCAuthorization, tags: [Identity], security: [{ bearerAuth: [] }], requestBody: { $ref: "#/components/requestBodies/OAuthAuthorizationDecision" }, responses: { "200": { description: Headless authorization response containing redirect_to when JSON is requested }, "302": { description: Authorization response redirect } } }
+  /oidc/token:
+    post: { operationId: exchangeOIDCToken, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/OAuthToken" }, responses: { "200": { description: OAuth token response }, "400": { description: OAuth error response } } }
+  /oidc/revoke:
+    post: { operationId: revokeOIDCToken, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/OAuthTokenCredential" }, responses: { "200": { description: Token revoked or already inactive } } }
+  /oidc/introspect:
+    post: { operationId: introspectOIDCToken, tags: [Identity], security: [], requestBody: { $ref: "#/components/requestBodies/OAuthTokenCredential" }, responses: { "200": { description: RFC 7662 token state } } }
+  /oidc/userinfo:
+    get: { operationId: oidcUserinfo, tags: [Identity], security: [{ bearerAuth: [] }], responses: { "200": { description: OpenID Connect claims }, "401": { $ref: "#/components/responses/Problem" } } }
+  /provider-webhooks/stripe/{connection_public_id}:
+    post: { operationId: stripeWebhook, tags: [Billing], security: [], parameters: [{ name: connection_public_id, in: path, required: true, schema: { type: string } }, { name: Stripe-Signature, in: header, required: true, schema: { type: string } }], requestBody: { required: true, content: { application/json: { schema: {} } } }, responses: { "200": { description: Event stored and processed }, "400": { $ref: "#/components/responses/Problem" } } }
+  /v1/management/organizations:
+    get: { operationId: managementListOrganizations, tags: [Management], security: [{ managementBearer: [] }], parameters: [{ $ref: "#/components/parameters/IncludeRetired" }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: managementCreateOrganization, tags: [Management], security: [{ managementBearer: [] }], requestBody: { $ref: "#/components/requestBodies/Named" }, responses: { "201": { description: Organization provisioned without an operator membership } } }
+  /v1/management/organizations/{organization_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: managementGetOrganization, tags: [Management], security: [{ managementBearer: [] }], responses: { "200": { description: Organization details } } }
+    patch: { operationId: managementUpdateOrganization, tags: [Management], security: [{ managementBearer: [] }], parameters: [{ $ref: "#/components/parameters/IfMatch" }], requestBody: { $ref: "#/components/requestBodies/Rename" }, responses: { "204": { description: Organization renamed } } }
+    delete: { operationId: managementRetireOrganization, tags: [Management], security: [{ managementBearer: [] }], responses: { "204": { description: Organization retired } } }
+  /v1/management/organizations/{organization_id}/restore:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    post: { operationId: managementRestoreOrganization, tags: [Management], security: [{ managementBearer: [] }], responses: { "204": { description: Organization restored } } }
+  /v1/management/organizations/{organization_id}/policy:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: managementGetOrganizationPolicy, tags: [Management], security: [{ managementBearer: [] }], responses: { "200": { description: Organization policy and usage, content: { application/json: { schema: { $ref: "#/components/schemas/OrganizationPolicy" } } } } } }
+    put: { operationId: managementUpdateOrganizationPolicy, tags: [Management], security: [{ managementBearer: [] }], parameters: [{ $ref: "#/components/parameters/IfMatch" }], requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateOrganizationPolicy" } } } }, responses: { "204": { description: Organization policy updated } } }
+  /v1/management/organizations/{organization_id}/applications:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get: { operationId: managementListApplications, tags: [Management], security: [{ managementBearer: [] }], parameters: [{ $ref: "#/components/parameters/IncludeRetired" }], responses: { "200": { $ref: "#/components/responses/Page" } } }
+    post: { operationId: managementCreateApplication, tags: [Management], security: [{ managementBearer: [] }], requestBody: { $ref: "#/components/requestBodies/Named" }, responses: { "201": { description: Application provisioned }, "409": { $ref: "#/components/responses/Problem" } } }
+  /v1/management/organizations/{organization_id}/applications/{application_resource_id}:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: application_resource_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    patch: { operationId: managementUpdateApplication, tags: [Management], security: [{ managementBearer: [] }], parameters: [{ $ref: "#/components/parameters/IfMatch" }], requestBody: { $ref: "#/components/requestBodies/Rename" }, responses: { "204": { description: Application renamed } } }
+    delete: { operationId: managementRetireApplication, tags: [Management], security: [{ managementBearer: [] }], responses: { "204": { description: Application retired } } }
+  /v1/management/organizations/{organization_id}/applications/{application_resource_id}/restore:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }, { name: application_resource_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }]
+    post: { operationId: managementRestoreApplication, tags: [Management], security: [{ managementBearer: [] }], responses: { "204": { description: Application restored } } }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT-or-PAT }
+    operatorBearer: { type: http, scheme: bearer, bearerFormat: JWT }
+    operatorCookie: { type: apiKey, in: cookie, name: p93_operator_access }
+    managementBearer: { type: http, scheme: bearer, bearerFormat: Platform93-management-JWT, description: "Short-lived client-credentials token with actor_type=management_client and audience platform93:control." }
+  parameters:
+    ApplicationID: { name: application_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    WorkspaceIDQuery: { name: workspace_id, in: query, required: false, description: Explicit accessible workspace whose grants are merged with the current user's grants., schema: { $ref: "#/components/schemas/UUID" } }
+    OrganizationID: { name: organization_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    IncludeRetired: { name: include_retired, in: query, schema: { type: boolean, default: false } }
+    IfMatch: { name: If-Match, in: header, required: true, schema: { type: string }, description: Current resource ETag. }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: false, schema: { type: string, minLength: 8, maxLength: 255 } }
+    RequiredIdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 8, maxLength: 255 } }
+    ProviderID: { name: provider_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    SessionID: { name: session_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    SubscriptionID: { name: subscription_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    PaymentID: { name: payment_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    RequestID: { name: request_id, in: path, required: true, schema: { $ref: "#/components/schemas/UUID" } }
+    OAuthClientID: { name: client_id, in: query, required: true, schema: { type: string } }
+    OAuthRedirectURI: { name: redirect_uri, in: query, required: true, schema: { type: string, format: uri } }
+    OAuthResponseType: { name: response_type, in: query, required: true, schema: { type: string, enum: [code] } }
+    OAuthScope: { name: scope, in: query, required: true, schema: { type: string } }
+    OAuthState: { name: state, in: query, required: true, schema: { type: string, minLength: 8 } }
+    OAuthCodeChallenge: { name: code_challenge, in: query, required: true, schema: { type: string, minLength: 43, maxLength: 128 } }
+    OAuthCodeChallengeMethod: { name: code_challenge_method, in: query, required: true, schema: { type: string, enum: [S256] } }
+  requestBodies:
+    Named: { required: true, content: { application/json: { schema: { type: object, required: [name, slug], properties: { name: { type: string }, slug: { type: string, pattern: "^[a-z][a-z0-9-]{1,62}[a-z0-9]$" } } } } } }
+    Rename: { required: true, content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string, minLength: 1, maxLength: 255 } }, additionalProperties: false } } } }
+    Object: { required: true, content: { application/json: { schema: { type: object } } } }
+    ProviderInheritance: { required: true, content: { application/json: { schema: { type: object, required: [inheritable], properties: { inheritable: { type: boolean, description: Allow child scopes to resolve this provider. } }, additionalProperties: false } } } }
+    ApplicationAuthConfig: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ApplicationAuthConfig" } } } }
+    PublicApplicationConfig: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true, description: "This entire object is returned by the unauthenticated runtime-config endpoint. Secrets are forbidden." } } } }
+    InternalApplicationConfig: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/ApplicationInternalConfig" } } } }
+    RoleAssignment: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/RoleAssignment" } } } }
+    OwnershipTransfer: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/OwnershipTransfer" } } } }
+    SMTPProvider: { required: true, content: { application/json: { schema: { type: object, required: [name, host, port, tls_mode, sender_email], properties: { name: { type: string }, host: { type: string }, port: { type: integer, minimum: 1, maximum: 65535 }, username: { type: string }, password: { type: string, writeOnly: true }, tls_mode: { enum: [starttls, implicit_tls] }, sender_email: { type: string, format: email }, sender_name: { type: string }, inheritable: { type: boolean, default: false } } } } } }
+    OAuthAuthorizationDecision: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object, required: [client_id, redirect_uri, response_type, scope, state, code_challenge, code_challenge_method, decision], properties: { client_id: { type: string }, redirect_uri: { type: string, format: uri }, response_type: { type: string, enum: [code] }, scope: { type: string }, state: { type: string }, nonce: { type: string }, code_challenge: { type: string }, code_challenge_method: { type: string, enum: [S256] }, decision: { enum: [grant, deny] } } } } } }
+    OAuthToken: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object, required: [grant_type], properties: { grant_type: { enum: [authorization_code, refresh_token, client_credentials] }, code: { type: string }, redirect_uri: { type: string, format: uri }, code_verifier: { type: string }, refresh_token: { type: string }, client_id: { type: string }, client_secret: { type: string, writeOnly: true }, scope: { type: string } } } } } }
+    OAuthTokenCredential: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object, required: [token], properties: { token: { type: string, writeOnly: true }, token_type_hint: { enum: [access_token, refresh_token] }, client_id: { type: string }, client_secret: { type: string, writeOnly: true } } } } } }
+  responses:
+    Problem: { description: RFC 9457 problem, content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+    Page: { description: Cursor page, content: { application/json: { schema: { $ref: "#/components/schemas/Page" } } } }
+    Tokens: { description: Rotating user session, content: { application/json: { schema: { $ref: "#/components/schemas/TokenResponse" } } } }
+    OwnershipTransferResult: { description: Workspace ownership transferred atomically, content: { application/json: { schema: { $ref: "#/components/schemas/OwnershipTransferResult" } } } }
+  schemas:
+    ManagementAPIStatus:
+      type: object
+      required: [enabled, can_manage, active_clients, token_endpoint, api_base]
+      properties:
+        enabled: { type: boolean }
+        can_manage: { type: boolean }
+        active_clients: { type: integer, minimum: 0 }
+        token_endpoint: { type: string, format: uri }
+        api_base: { type: string, format: uri }
+      additionalProperties: false
+    CreateManagementClient:
+      type: object
+      required: [client_id, name]
+      properties:
+        client_id: { type: string, minLength: 1, maxLength: 160 }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        allowed_scopes: { type: array, items: { type: string, enum: [/management/organizations/*] }, default: [/management/organizations/*] }
+      additionalProperties: false
+    OrganizationEnabledSettings:
+      type: object
+      required: [public_registration, password_authentication, passwordless_authentication, personal_api_keys, delegation, organization_provider_overrides, application_provider_overrides, custom_events, webhooks]
+      properties:
+        public_registration: { type: boolean }
+        password_authentication: { type: boolean }
+        passwordless_authentication: { type: boolean }
+        personal_api_keys: { type: boolean }
+        delegation: { type: boolean }
+        organization_provider_overrides: { type: boolean }
+        application_provider_overrides: { type: boolean }
+        custom_events: { type: boolean }
+        webhooks: { type: boolean }
+      additionalProperties: false
+    UpdateOrganizationPolicy:
+      type: object
+      required: [max_applications, max_users, enabled_settings]
+      properties:
+        max_applications: { type: integer, nullable: true, minimum: 0, description: Null means unlimited. }
+        max_users: { type: integer, nullable: true, minimum: 0, description: Null means unlimited across all applications in the organization. }
+        enabled_settings: { $ref: "#/components/schemas/OrganizationEnabledSettings" }
+      additionalProperties: false
+    OrganizationPolicy:
+      allOf:
+        - { $ref: "#/components/schemas/UpdateOrganizationPolicy" }
+        - type: object
+          required: [organization_id, usage, version]
+          properties:
+            organization_id: { $ref: "#/components/schemas/UUID" }
+            usage:
+              type: object
+              required: [applications, users]
+              properties:
+                applications: { type: integer, minimum: 0 }
+                users: { type: integer, minimum: 0 }
+              additionalProperties: false
+            version: { type: integer, format: int64, minimum: 1 }
+    UUID: { type: string, format: uuid }
+    Locale: { type: string, maxLength: 35, description: "Canonical BCP 47 language tag such as en, de-CH, or pt-BR. Empty means no user preference." }
+    Problem: { type: object, required: [type, title, status, code], properties: { type: { type: string, format: uri-reference }, title: { type: string }, status: { type: integer }, detail: { type: string }, code: { type: string }, request_id: { type: string } } }
+    Page: { type: object, required: [items, next_cursor], properties: { items: { type: array, items: {} }, next_cursor: { type: string, nullable: true } } }
+    OrganizationPage: { type: object, required: [items, next_cursor, installation_role], properties: { items: { type: array, items: { type: object, additionalProperties: true } }, next_cursor: { type: string, nullable: true }, installation_role: { type: string, nullable: true, enum: [owner, admin, auditor, null], description: "The current operator's installation-wide role, or null for organization-only access." } } }
+    BootstrapRequest: { type: object, required: [credential, email], properties: { credential: { type: string, writeOnly: true }, email: { type: string, format: email }, display_name: { type: string } } }
+    AcceptOrganizationInvitation: { type: object, required: [invitation_token], properties: { invitation_token: { type: string, minLength: 1, writeOnly: true }, display_name: { type: string, maxLength: 200 } }, additionalProperties: false }
+    ApplicationFlowConfig: { type: object, required: [oauth_client_id, sign_in_redirect_uri, invitation_redirect_uri], additionalProperties: false, properties: { oauth_client_id: { type: string, minLength: 1 }, sign_in_redirect_uri: { type: string, format: uri }, invitation_redirect_uri: { type: string, format: uri } } }
+    ApplicationAuthConfig: { type: object, additionalProperties: false, properties: { flows: { $ref: "#/components/schemas/ApplicationFlowConfig" } } }
+    ApplicationInternalConfig: { type: object, additionalProperties: false, properties: { registration_mode: { type: string, enum: [public, invite_only] }, password_enabled: { type: boolean }, passwordless_enabled: { type: boolean }, personal_api_keys_enabled: { type: boolean }, delegation_enabled: { type: boolean } } }
+    RuntimeAuthConfig: { type: object, required: [registration_mode, registration_enabled, password_enabled, passwordless_enabled], additionalProperties: false, properties: { registration_mode: { type: string, enum: [public, invite_only] }, registration_enabled: { type: boolean }, password_enabled: { type: boolean }, passwordless_enabled: { type: boolean }, flows: { $ref: "#/components/schemas/ApplicationFlowConfig" } } }
+    RuntimeConfig: { type: object, required: [schema_version, api_base, issuer, application_id, public_config, auth], properties: { schema_version: { type: string }, api_base: { type: string, format: uri }, issuer: { type: string, format: uri }, application_id: { $ref: "#/components/schemas/UUID" }, public_config: { type: object, additionalProperties: true }, auth: { $ref: "#/components/schemas/RuntimeAuthConfig" } } }
+    PasswordSignIn: { type: object, required: [email, password], properties: { email: { type: string, format: email }, password: { type: string, writeOnly: true, minLength: 12, maxLength: 1024 } } }
+    PasswordSignUp: { allOf: [{ $ref: "#/components/schemas/PasswordSignIn" }, { type: object, properties: { first_name: { type: string }, last_name: { type: string }, locale: { $ref: "#/components/schemas/Locale" } } }] }
+    EmailStart: { type: object, required: [email, intent, delivery], properties: { email: { type: string, format: email }, intent: { enum: [sign_in, sign_up, automatic] }, delivery: { enum: [code, link, both] }, redirect_uri: { type: string, format: uri } } }
+    EmailVerify: { type: object, required: [challenge_id], properties: { challenge_id: { $ref: "#/components/schemas/UUID" }, code: { type: string, minLength: 8, maxLength: 8, writeOnly: true }, link_token: { type: string, writeOnly: true } } }
+    TokenResponse: { type: object, required: [access_token, refresh_token, token_type, expires_in], properties: { access_token: { type: string, writeOnly: true }, refresh_token: { type: string, writeOnly: true }, token_type: { enum: [Bearer] }, expires_in: { type: integer } } }
+    User: { type: object, required: [id, application_id, email, locale, email_verified, is_org_verified, status], properties: { id: { $ref: "#/components/schemas/UUID" }, application_id: { $ref: "#/components/schemas/UUID" }, email: { type: string, format: email }, first_name: { type: string }, last_name: { type: string }, username: { type: string, nullable: true }, locale: { $ref: "#/components/schemas/Locale" }, email_verified: { type: boolean }, is_org_verified: { type: boolean }, status: { enum: [active, suspended, pending_deletion, anonymized, deleted] }, custom_attributes: { type: object, additionalProperties: true }, version: { type: integer, format: int64 } } }
+    UpdateUserProfile:
+      type: object
+      properties:
+        first_name: { type: string }
+        last_name: { type: string }
+        username: { type: string, nullable: true }
+        locale: { $ref: "#/components/schemas/Locale" }
+      additionalProperties: false
+    QueueNotification:
+      type: object
+      required: [template_key]
+      properties:
+        template_key: { type: string, minLength: 3, maxLength: 101 }
+        locale: { $ref: "#/components/schemas/Locale", description: Explicit locale override. When omitted, the selected user's locale is used. }
+        recipient: { type: string, format: email }
+        user_id: { $ref: "#/components/schemas/UUID" }
+        variables: { type: object, additionalProperties: true }
+        attachments:
+          type: array
+          items:
+            type: object
+            required: [filename, content_type, content_base64]
+            properties:
+              filename: { type: string }
+              content_type: { type: string }
+              content_base64: { type: string, format: byte }
+            additionalProperties: false
+      additionalProperties: false
+    QueuedNotification:
+      type: object
+      required: [id, status, requested_locale, resolved_locale, fallback_used]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        status: { enum: [queued, suppressed] }
+        requested_locale: { $ref: "#/components/schemas/Locale" }
+        resolved_locale: { $ref: "#/components/schemas/Locale" }
+        fallback_used: { type: boolean }
+      additionalProperties: false
+    RoleAssignment:
+      type: object
+      required: [role_id]
+      oneOf: [{ required: [user_id] }, { required: [client_id] }]
+      properties:
+        user_id: { $ref: "#/components/schemas/UUID" }
+        client_id: { $ref: "#/components/schemas/UUID" }
+        role_id: { $ref: "#/components/schemas/UUID" }
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+      additionalProperties: false
+    OwnershipTransfer:
+      type: object
+      required: [new_owner_user_id]
+      properties:
+        new_owner_user_id: { $ref: "#/components/schemas/UUID" }
+        previous_owner_disposition: { enum: [member, remove], default: member }
+      additionalProperties: false
+    OwnershipTransferResult:
+      type: object
+      required: [workspace_id, owner_user_id, previous_owner_user_id, previous_owner_disposition]
+      properties:
+        workspace_id: { $ref: "#/components/schemas/UUID" }
+        owner_user_id: { $ref: "#/components/schemas/UUID" }
+        previous_owner_user_id: { $ref: "#/components/schemas/UUID" }
+        previous_owner_disposition: { enum: [member, remove] }
+    OperatorPasswordLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 12, maxLength: 1024, writeOnly: true }
+      additionalProperties: false
+    OperatorPasswordChange:
+      type: object
+      required: [new_password]
+      properties:
+        current_password: { type: string, maxLength: 1024, writeOnly: true }
+        new_password: { type: string, minLength: 12, maxLength: 1024, writeOnly: true }
+      additionalProperties: false
+    CreateEventType:
+      type: object
+      required: [name, data_schema, example_subject, example_data]
+      properties:
+        name: { type: string, pattern: '^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$', maxLength: 160 }
+        description: { type: string, maxLength: 500 }
+        schema_version: { type: string, pattern: '^[1-9][0-9]*\.[0-9]+$', default: '1.0' }
+        data_schema: { type: object, additionalProperties: true, description: JSON Schema 2020-12 with an object root. }
+        example_subject: { type: string, minLength: 1, maxLength: 500 }
+        example_data: { type: object, additionalProperties: true, description: Must validate against data_schema. }
+      additionalProperties: false
+    UpdateEventType:
+      type: object
+      properties:
+        description: { type: string, maxLength: 500 }
+        schema_version: { type: string, pattern: '^[1-9][0-9]*\.[0-9]+$' }
+        data_schema: { type: object, additionalProperties: true }
+        example_subject: { type: string, minLength: 1, maxLength: 500 }
+        example_data: { type: object, additionalProperties: true }
+        status: { enum: [active, archived] }
+      additionalProperties: false
+    EventEnvelope:
+      type: object
+      required: [specversion, id, source, type, contract_source, time, application_id, schema_version, data]
+      properties:
+        specversion: { type: string, enum: ['1.0'] }
+        id: { $ref: "#/components/schemas/UUID" }
+        source: { type: string, format: uri }
+        type: { type: string }
+        contract_source: { type: string, enum: [platform93, application] }
+        time: { type: string, format: date-time }
+        application_id: { $ref: "#/components/schemas/UUID" }
+        schema_version: { type: string, pattern: '^[1-9][0-9]*\.[0-9]+$' }
+        subject: { type: string, nullable: true }
+        actor: { type: object, nullable: true, additionalProperties: true }
+        correlation_id: { type: string, nullable: true, format: uuid }
+        causation_id: { type: string, nullable: true, format: uuid }
+        data: { type: object, additionalProperties: true }
+      additionalProperties: false
+    EventTypeDefinition:
+      type: object
+      required: [id, name, description, schema_version, data_schema, example_subject, example_data, example_event, source, status, version]
+      properties:
+        id: { $ref: "#/components/schemas/UUID" }
+        name: { type: string }
+        description: { type: string }
+        schema_version: { type: string }
+        data_schema: { type: object, additionalProperties: true }
+        example_subject: { type: string }
+        example_data: { type: object, additionalProperties: true }
+        example_event: { $ref: "#/components/schemas/EventEnvelope" }
+        source: { type: string, enum: [platform93, application] }
+        status: { type: string, enum: [active, archived] }
+        version: { type: integer, format: int64 }
+        event_count: { type: integer, format: int64 }
+        last_occurred_at: { type: string, nullable: true, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PublishCustomEvent:
+      type: object
+      required: [type, subject, data]
+      properties:
+        type: { type: string, pattern: '^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$', maxLength: 160 }
+        subject: { type: string, minLength: 1, maxLength: 500 }
+        data: { type: object, additionalProperties: true }
+        correlation_id: { $ref: "#/components/schemas/UUID" }
+        causation_id: { $ref: "#/components/schemas/UUID" }
+      additionalProperties: false
+    CreatePersonalAPIKey: { type: object, properties: { label: { type: string, maxLength: 255 }, expires_in_days: { type: integer, minimum: 1, maximum: 366, default: 365 }, scopes: { type: array, items: { type: string } } } }
+    CreateFeature: { type: object, required: [key, name, value_type], properties: { key: { type: string, minLength: 1 }, name: { type: string, minLength: 1 }, value_type: { type: string, enum: [boolean, quantity, free_form] }, free_form_format: { type: string, enum: [text, csv, json], description: Required when value_type is free_form and forbidden otherwise. }, metadata: { type: object, additionalProperties: true } }, additionalProperties: false }
+    FeatureValue: { type: object, required: [feature_id], properties: { feature_id: { $ref: "#/components/schemas/UUID" }, boolean_value: { type: boolean }, quantity_value: { type: integer, minimum: 0 }, free_form_value: { description: "A string for text or CSV features, or any valid JSON value for JSON features." } }, additionalProperties: false }
+    CreateProduct: { type: object, required: [key, name], properties: { key: { type: string }, name: { type: string }, description: { type: string }, listable: { type: boolean, default: true }, status: { enum: [draft, active, archived] }, metadata: { type: object }, entitlement_config: { type: object, additionalProperties: true }, features: { type: array, items: { $ref: "#/components/schemas/FeatureValue" } } } }
+    UpdateProduct: { type: object, properties: { name: { type: string }, description: { type: string }, listable: { type: boolean }, status: { enum: [draft, active, archived] }, metadata: { type: object }, entitlement_config: { type: object, additionalProperties: true }, features: { type: array, items: { $ref: "#/components/schemas/FeatureValue" } } }, additionalProperties: false }
+    CreatePrice: { type: object, required: [key, mode, amount_minor, currency], properties: { key: { type: string }, mode: { enum: [recurring, one_time, local] }, amount_minor: { type: integer, minimum: 0 }, currency: { type: string, minLength: 3, maxLength: 3 }, currency_exponent: { type: integer, default: 2 }, interval_unit: { enum: [day, week, month, year] }, interval_count: { type: integer, minimum: 1 }, validity_seconds: { type: integer, minimum: 1 }, grace_seconds: { type: integer, minimum: 0 }, tax_behavior: { enum: [inclusive, exclusive, unspecified] }, checkout_config: { type: object }, entitlement_config: { type: object, additionalProperties: true }, features: { type: array, items: { $ref: "#/components/schemas/FeatureValue" } } } }
+    LocalCheckout: { type: object, required: [price_id], properties: { price_id: { $ref: "#/components/schemas/UUID" }, subject_type: { enum: [user, workspace] }, subject_id: { $ref: "#/components/schemas/UUID" }, address_id: { $ref: "#/components/schemas/UUID" }, local_reference: { type: string } } }
+    CreateBillingProvider: { type: object, required: [provider, secret], properties: { provider: { enum: [stripe] }, secret: { type: string, writeOnly: true }, webhook_secret: { type: string, writeOnly: true }, api_version: { enum: [2026-04-22.dahlia] }, inheritable: { type: boolean, default: false } } }
+    CreateCheckout: { type: object, required: [price_id, success_uri, cancel_uri], properties: { price_id: { $ref: "#/components/schemas/UUID" }, provider_id: { $ref: "#/components/schemas/UUID", description: Optional provider pin; omission resolves the effective application, organization, or installation provider. }, subject_type: { enum: [user, workspace] }, subject_id: { $ref: "#/components/schemas/UUID" }, payment_methods: { type: array, items: { enum: [card, twint] } }, success_uri: { type: string, format: uri }, cancel_uri: { type: string, format: uri } } }

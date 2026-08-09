@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform93.dev/schemas/events/envelope/1.0",
+  "title": "Platform93 Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["specversion", "id", "source", "type", "contract_source", "time", "application_id", "schema_version", "data"],
+  "properties": {
+    "specversion": { "const": "1.0" },
+    "id": { "type": "string", "format": "uuid" },
+    "source": { "type": "string", "format": "uri" },
+    "type": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$" },
+    "contract_source": { "enum": ["platform93", "application"] },
+    "subject": { "type": "string" },
+    "time": { "type": "string", "format": "date-time" },
+    "application_id": { "type": "string", "format": "uuid" },
+    "schema_version": { "type": "string", "pattern": "^[1-9][0-9]*\\.[0-9]+$" },
+    "actor": { "type": ["object", "null"] },
+    "correlation_id": { "type": ["string", "null"], "format": "uuid" },
+    "causation_id": { "type": ["string", "null"], "format": "uuid" },
+    "data": { "type": "object" }
+  }
+}
