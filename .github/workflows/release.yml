@@ -63,7 +63,11 @@ jobs:
           cp deploy/compose/compose.yaml dist/platform93-compose.yaml
           sha256sum dist/platform93-* > dist/SHA256SUMS
       - uses: softprops/action-gh-release@v2
-        with: { files: "dist/*", generate_release_notes: true }
+        with:
+          files: "dist/*"
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
   image:
     needs: verify
     runs-on: ubuntu-latest
