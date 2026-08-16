@@ -88,3 +88,27 @@ func Status(databaseURL string) error {
 	}
 	return nil
 }
+
+func ValidateAuthorization(databaseURL string) error {
+	pool, err := pgxpool.New(context.Background(), databaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	var invalidRoles int
+	if err = pool.QueryRow(context.Background(), `SELECT count(*) FROM roles
+WHERE key !~ '^[a-z][a-z0-9_-]{0,62}$' OR NOT public.valid_permission_keys(permissions)`).Scan(&invalidRoles); err != nil {
+		return fmt.Errorf("validate role permissions: %w", err)
+	}
+	var invalidGrants int
+	if err = pool.QueryRow(context.Background(), `SELECT count(*) FROM permission_grants
+WHERE NOT public.valid_permission_key(permission) OR split_part(permission,':',1)='roles'
+OR canonical_scope <> '/applications/' || application_id::text ||
+CASE WHEN workspace_id IS NULL THEN '' ELSE '/workspaces/' || workspace_id::text END || '/' || replace(permission,':','/')`).Scan(&invalidGrants); err != nil {
+		return fmt.Errorf("validate direct permission grants: %w", err)
+	}
+	if invalidRoles != 0 || invalidGrants != 0 {
+		return fmt.Errorf("authorization data is invalid: roles=%d permission_grants=%d", invalidRoles, invalidGrants)
+	}
+	return nil
+}

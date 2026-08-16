@@ -675,7 +675,7 @@ func (s *Server) authorizeApplicationStorageControl(w http.ResponseWriter, r *ht
 		kernel.WriteProblem(w, r, http.StatusForbidden, "organization_permission_required", "An organization owner or administrator is required to manage application storage.")
 		return false
 	}
-	if s.operatorBelongsToOrganization(r, organizationID) {
+	if s.controlUserBelongsToOrganization(r, organizationID) {
 		return true
 	}
 	kernel.WriteProblem(w, r, http.StatusNotFound, "application_not_found", "The application was not found.")

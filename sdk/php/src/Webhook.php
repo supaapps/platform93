@@ -5,6 +5,10 @@ final class Webhook {
     public const PLATFORM_EVENT_VERSIONS = [
         'organization.created'=>'1.0','organization.retired'=>'1.0','organization.restored'=>'1.0',
         'application.created'=>'1.0','application.retired'=>'1.0','application.restored'=>'1.0',
+        'authorization.permission_grant.created'=>'1.0','authorization.permission_grant.revoked'=>'1.0',
+        'control_user.identity_linked'=>'1.0','control_user.identity_unlinked'=>'1.0',
+        'control_user.invitation_created'=>'1.0','control_user.invitation_resent'=>'1.0','control_user.invitation_revoked'=>'1.0','control_user.invitation_accepted'=>'1.0',
+        'control_auth.policy_updated'=>'1.0','control_auth.provider_login_enabled'=>'1.0','control_auth.provider_login_disabled'=>'1.0',
         'delegation.created'=>'1.0','delegation.exchanged'=>'1.0','delegation.revoked'=>'1.0',
         'entitlement.granted'=>'1.0','local_entitlement_request.created'=>'1.0','local_entitlement_request.approved'=>'1.0',
         'oauth.consent_revoked'=>'1.0','platform93.webhook.test'=>'1.0','user.created'=>'1.0',
@@ -15,6 +19,12 @@ final class Webhook {
         'user.pending_deletion'=>'1.0','user.anonymized'=>'1.0','user.deleted'=>'1.0',
         'user.suspended'=>'1.0','user.restored'=>'1.0','workspace.invitation_created'=>'1.0',
         'workspace.invitation_accepted'=>'1.0','workspace.owner_transferred'=>'1.0',
+        'application_invitation.created'=>'1.0','application_invitation.resent'=>'1.0','application_invitation.revoked'=>'1.0',
+        'application_invitation.accepted'=>'1.0','application_invitation.expired'=>'1.0','user.updated'=>'1.0',
+        'workspace.created'=>'1.0','workspace.updated'=>'1.0','workspace.archived'=>'1.0',
+        'workspace.member_added'=>'1.0','workspace.member_updated'=>'1.0','workspace.member_removed'=>'1.0',
+        'entitlement.adjusted'=>'1.0','entitlement.revoked'=>'1.0','entitlement.restored'=>'1.0','entitlement.expired'=>'1.0','entitlement.effective_changed'=>'1.0',
+        'billing.subscription.updated'=>'1.0','billing.invoice.updated'=>'1.0','billing.payment.updated'=>'1.0','billing.refund.updated'=>'1.0','billing.dispute.updated'=>'1.0',
     ];
 
     public static function verify(string $rawBody, string $header, string $secret, int $tolerance = 300): array {
@@ -32,5 +42,10 @@ final class Webhook {
         if(!self::isPlatformEvent($event)) throw new \UnexpectedValueException('Unknown Platform93 event contract');
         $supported=self::PLATFORM_EVENT_VERSIONS[$event['type']];
         if(explode('.',$supported,2)[0]!==explode('.',$event['schema_version'],2)[0]) throw new \UnexpectedValueException('Unsupported Platform93 event schema version');
+    }
+
+    public static function dispatch(array $event, array $handlers, ?callable $custom = null): bool {
+        if(self::isCustomEvent($event)){if($custom===null)return false;$custom($event);return true;}
+        self::assertSupportedPlatformEvent($event);$handler=$handlers[$event['type']]??null;if(!is_callable($handler))return false;$handler($event);return true;
     }
 }

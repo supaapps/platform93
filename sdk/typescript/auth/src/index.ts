@@ -4,6 +4,10 @@ import {
   type ApplicationFlowConfig,
   type EmailStart,
   type EmailVerify,
+  type ExternalAuthAuthorization,
+  type ExternalAuthFlow,
+  type ExternalAuthProvider,
+  type InvitationCredential,
   type MFAChallenge,
   type MFAVerify,
   type PasswordSignIn,
@@ -28,7 +32,17 @@ export type PKCEAuthorizationOptions = {
   scopes?: string[];
   state?: string;
   nonce?: string;
+  clientId?: string;
+  redirectUri?: string;
 };
+
+export type ExternalAuthStartOptions = {
+  redirectUri: string;
+  flow?: ExternalAuthFlow;
+  loginHint?: string;
+};
+
+export type InvitationLink = { applicationId: string; invitationId: string; linkToken: string };
 
 export interface TokenStore {
   loadRefreshToken(): Promise<string | null>;
@@ -117,6 +131,7 @@ export type Platform93AuthOptions = {
 
 export class Platform93Auth extends EventTarget {
   private accessToken: string | null = null;
+  private accessTokenExpiresAt = 0;
   private status: AuthSnapshot["status"] = "anonymous";
   private refreshPromise: Promise<string | null> | null = null;
   private readonly adapter: SessionAdapter;
@@ -151,39 +166,97 @@ export class Platform93Auth extends EventTarget {
   }
 
   snapshot(): AuthSnapshot { return { status: this.status, accessToken: this.accessToken }; }
+  async getAccessToken(leewaySeconds = 10) {
+    if (this.accessToken && Date.now() + leewaySeconds * 1000 < this.accessTokenExpiresAt) return this.accessToken;
+    return this.refresh(false);
+  }
   signIn(input: PasswordSignIn) { return this.resolve(this.client.application().signIn(input)); }
   signUp(input: PasswordSignUp) { return this.resolve(this.client.application().signUp(input)); }
   startEmail(input: EmailStart) { return this.client.application().startEmail(input); }
   verifyEmail(input: EmailVerify) { return this.resolve(this.client.application().verifyEmail(input)); }
+  startExternalAuth(provider: ExternalAuthProvider, options: ExternalAuthStartOptions): Promise<ExternalAuthAuthorization> {
+    return this.client.application().startExternalAuth(provider, {
+      redirect_uri: options.redirectUri,
+      flow: options.flow,
+      ...(options.loginHint ? { login_hint: options.loginHint } : {}),
+    });
+  }
+  startGoogleAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("google", options); }
+  startAppleAuth(options: Omit<ExternalAuthStartOptions, "loginHint">) { return this.startExternalAuth("apple", options); }
+  exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string) {
+    return this.resolve(this.client.application().exchangeExternalAuth(provider, exchange));
+  }
+  exchangeGoogleAuth(exchange: string) { return this.exchangeExternalAuth("google", exchange); }
+  exchangeAppleAuth(exchange: string) { return this.exchangeExternalAuth("apple", exchange); }
+  completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL) {
+    const redirect = input instanceof URL ? input : new URL(input);
+    const providerError = redirect.searchParams.get("external_auth_error");
+    if (providerError) throw new Error(`Platform93 ${provider} authentication failed: ${providerError}`);
+    const exchange = redirect.searchParams.get("external_auth_exchange");
+    if (!exchange) throw new Error(`Platform93 ${provider} redirect is missing its one-time exchange credential`);
+    return this.exchangeExternalAuth(provider, exchange);
+  }
+  async exchangeInvitation(input: InvitationCredential) {
+    const codeVerifier = randomBase64URL(32);
+    const codeChallenge = await sha256Base64URL(codeVerifier);
+    const authorization = await this.client.application().exchangeInvitation({ ...input, code_challenge: codeChallenge });
+    return this.resolve(this.client.application().redeemInvitation({ authorization_code: authorization.authorization_code, code_verifier: codeVerifier }));
+  }
   verifyMFA(input: MFAVerify) { return this.resolve(this.client.application().verifyMFA(input)); }
 
   async createAuthorizationRequest(options: PKCEAuthorizationOptions = {}): Promise<PKCEAuthorizationRequest> {
     const runtime = await this.client.application().publicConfig();
     const flows = runtime.auth.flows as ApplicationFlowConfig | undefined;
-    if (!flows?.oauth_client_id || !flows.sign_in_redirect_uri) {
+    const hasOverride = options.clientId !== undefined || options.redirectUri !== undefined;
+    if (hasOverride && (!options.clientId || !options.redirectUri)) {
+      throw new Error("Platform93 authorization overrides require both clientId and redirectUri");
+    }
+    const clientId = options.clientId ?? flows?.oauth_client_id;
+    const redirectUri = options.redirectUri ?? flows?.sign_in_redirect_uri;
+    if (!clientId || !redirectUri) {
       throw new Error("Platform93 application sign-in flow is not configured");
     }
     const codeVerifier = randomBase64URL(32);
     const challenge = await sha256Base64URL(codeVerifier);
     const state = options.state ?? randomBase64URL(24);
     const authorization = new URL("/oidc/authorize", runtime.issuer);
-    authorization.searchParams.set("client_id", flows.oauth_client_id);
-    authorization.searchParams.set("redirect_uri", flows.sign_in_redirect_uri);
+    authorization.searchParams.set("client_id", clientId);
+    authorization.searchParams.set("redirect_uri", redirectUri);
     authorization.searchParams.set("response_type", "code");
     authorization.searchParams.set("scope", (options.scopes ?? ["openid", "profile", "email"]).join(" "));
     authorization.searchParams.set("state", state);
     authorization.searchParams.set("code_challenge", challenge);
     authorization.searchParams.set("code_challenge_method", "S256");
     if (options.nonce) authorization.searchParams.set("nonce", options.nonce);
-    return { authorizationUrl: authorization.toString(), codeVerifier, state, clientId: flows.oauth_client_id, redirectUri: flows.sign_in_redirect_uri };
+    return { authorizationUrl: authorization.toString(), codeVerifier, state, clientId, redirectUri };
   }
 
   async verifyEmailLink(input: string | URL = globalThis.location.href) {
     const link = input instanceof URL ? input : new URL(input, globalThis.location?.origin);
     const challengeId = link.searchParams.get("challenge_id");
-    const linkToken = link.searchParams.get("link_token");
+    const linkToken = link.searchParams.get("link_token") ?? link.searchParams.get("invitation_token");
     if (!challengeId || !linkToken) throw new Error("Platform93 email link is missing its one-time credential");
     return this.verifyEmail({ challenge_id: challengeId, link_token: linkToken });
+  }
+
+  parseInvitationLink(input: string | URL = globalThis.location.href): InvitationLink {
+    const link = input instanceof URL ? input : new URL(input, globalThis.location?.origin);
+    const applicationId = link.searchParams.get("application_id");
+    const invitationId = link.searchParams.get("invitation_id");
+    const linkToken = link.searchParams.get("link_token");
+    if (!applicationId || !invitationId || !linkToken || applicationId !== this.applicationId) {
+      throw new Error("Platform93 invitation link is missing or has the wrong application context");
+    }
+    return { applicationId, invitationId, linkToken };
+  }
+
+  exchangeInvitationLink(input: string | URL = globalThis.location.href) {
+    const invitation = this.parseInvitationLink(input);
+    return this.exchangeInvitation({ invitation_id: invitation.invitationId, link_token: invitation.linkToken });
+  }
+
+  exchangeInvitationCode(email: string, code: string) {
+    return this.exchangeInvitation({ email, code: code.trim().toUpperCase() });
   }
 
   async refresh(broadcast = true) {
@@ -222,12 +295,14 @@ export class Platform93Auth extends EventTarget {
   private async accept(tokens: TokenResponse, broadcast: boolean) {
     await this.adapter.accept(tokens);
     this.accessToken = tokens.access_token;
+    this.accessTokenExpiresAt = Date.now() + tokens.expires_in * 1000;
     this.setStatus("authenticated");
     if (broadcast) this.channel?.postMessage({ type: "session-changed", source: this.source });
   }
 
   private async clear(broadcast: boolean) {
     this.accessToken = null;
+    this.accessTokenExpiresAt = 0;
     await this.adapter.clear();
     this.setStatus("anonymous");
     if (broadcast) this.channel?.postMessage({ type: "logout", source: this.source });

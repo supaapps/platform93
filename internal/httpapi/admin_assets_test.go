@@ -3,11 +3,14 @@ package httpapi
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/supaapps/platform93/internal/platform"
 )
 
 func TestAdminHTMLCSPAllowsOnlyExportedInlineScripts(t *testing.T) {
@@ -24,5 +27,15 @@ func TestAdminHTMLCSPAllowsOnlyExportedInlineScripts(t *testing.T) {
 	policy := response.Header().Get("Content-Security-Policy")
 	if response.Code != 200 || !strings.Contains(policy, wanted) || strings.Contains(policy, "'unsafe-inline'") && strings.Contains(strings.Split(policy, ";")[1], "'unsafe-inline'") {
 		t.Fatalf("unexpected admin CSP: status=%d policy=%q", response.Code, policy)
+	}
+}
+
+func TestSecurityHeadersProtectHTTPSControlResponses(t *testing.T) {
+	server := &Server{app: &platform.App{PublicURL: "https://platform93.example"}}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/control/organizations", nil)
+	server.securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(response, request)
+	if response.Header().Get("Strict-Transport-Security") != "max-age=31536000" || response.Header().Get("X-Frame-Options") != "DENY" || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("control response is missing hardened headers: %v", response.Header())
 	}
 }

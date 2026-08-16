@@ -30,6 +30,13 @@ type UserStateData = UserIDData & { reason: string };
 type VerificationData<Verified extends boolean> = UserIDData & { verified: Verified; reason: string };
 type StorageObjectData = { object_id: ID; owner_type: "installation" | "application" | "user" | "workspace"; visibility: "public" | "private"; size_bytes: number };
 type StorageProviderData = { provider_id: ID; scope: "installation" | "organization" | "application"; public_enabled: boolean; private_enabled: boolean };
+type InvitationLifecycleData = { invitation_id: ID; status: "pending" | "accepted" | "revoked" | "expired"; workspace_id?: ID | null; user_id?: ID; expires_at?: string };
+type WorkspaceLifecycleData = { workspace_id: ID; status: "active" | "archived" | "removed"; user_id?: ID; owner_user_id?: ID; role_keys?: string[]; changed_fields?: string[] };
+type EntitlementLifecycleData = { grant_id: ID; status?: "active" | "revoked" | "expired"; subject_type?: "user" | "workspace"; subject_id?: ID; external_reference?: string | null; expires_at?: string | null; reason?: string };
+type BillingLifecycleData<Key extends string> = { status: string; external_reference: string | null } & Record<Key, ID>;
+type PermissionGrantLifecycleData = { grant_id: ID; subject_type: "user" | "client"; subject_id: ID; workspace_id: ID | null; permission: string; canonical_scope: string };
+type ControlUserIdentityData = { control_user_id: ID; provider: "google" | "apple" };
+type ControlInvitationData = { invitation_id: ID; organization_id?: ID | null; control_user_id?: ID; role: "owner" | "admin" | "member" | "auditor"; onboarding_method: "email" | "google" | "apple"; status: "pending" | "accepted" | "revoked" };
 
 export interface Platform93EventDataMap {
   "organization.created": NamedData;
@@ -38,10 +45,31 @@ export interface Platform93EventDataMap {
   "application.created": NamedData;
   "application.retired": { organization_id: ID; reason: string };
   "application.restored": { organization_id: ID; reason: string };
+  "authorization.permission_grant.created": PermissionGrantLifecycleData;
+  "authorization.permission_grant.revoked": PermissionGrantLifecycleData;
+  "control_user.identity_linked": ControlUserIdentityData;
+  "control_user.identity_unlinked": ControlUserIdentityData;
+  "control_user.invitation_created": ControlInvitationData;
+  "control_user.invitation_resent": ControlInvitationData;
+  "control_user.invitation_revoked": ControlInvitationData;
+  "control_user.invitation_accepted": ControlInvitationData & { control_user_id: ID };
+  "control_auth.policy_updated": { email_code_enabled: boolean; magic_link_enabled: boolean; password_enabled: boolean };
+  "control_auth.provider_login_enabled": { provider: "google" | "apple"; enabled: true };
+  "control_auth.provider_login_disabled": { provider: "google" | "apple"; enabled: false };
   "delegation.created": { delegation_id: ID; user_id: ID; workspace_id: ID | null; permissions: string[]; reason: string; expires_at: string };
   "delegation.exchanged": { delegation_id: ID; user_id: ID };
   "delegation.revoked": { delegation_id: ID };
-  "entitlement.granted": { grant_id: ID; subject_type: "user" | "workspace"; subject_id: ID; reason: string };
+  "entitlement.granted": EntitlementLifecycleData & { subject_type: "user" | "workspace"; subject_id: ID; status: "active" };
+  "entitlement.adjusted": EntitlementLifecycleData;
+  "entitlement.revoked": EntitlementLifecycleData;
+  "entitlement.restored": EntitlementLifecycleData;
+  "entitlement.expired": EntitlementLifecycleData;
+  "entitlement.effective_changed": EntitlementLifecycleData;
+  "application_invitation.created": InvitationLifecycleData;
+  "application_invitation.resent": InvitationLifecycleData;
+  "application_invitation.revoked": InvitationLifecycleData;
+  "application_invitation.accepted": InvitationLifecycleData;
+  "application_invitation.expired": InvitationLifecycleData;
   "local_entitlement_request.created": { request_id: ID; subject_type: "user" | "workspace"; subject_id: ID; price_id: ID };
   "local_entitlement_request.approved": { request_id: ID; grant_id: ID };
   "oauth.consent_revoked": { user_id: ID; client_id: ID; client_key: string };
@@ -52,6 +80,7 @@ export interface Platform93EventDataMap {
   "storage.provider.verified": StorageProviderData;
   "storage.provider.disabled": StorageProviderData;
   "user.created": UserIDData & { email_verified: boolean; is_org_verified: boolean };
+  "user.updated": UserIDData & { changed_fields: string[] };
   "user.email_verified": VerificationData<true>;
   "user.email_unverified": VerificationData<false>;
   "user.organization_verified": VerificationData<true>;
@@ -66,6 +95,17 @@ export interface Platform93EventDataMap {
   "workspace.invitation_created": { invitation_id: ID; workspace_id: ID; role_keys: string[] };
   "workspace.invitation_accepted": { invitation_id: ID; workspace_id: ID; user_id: ID };
   "workspace.owner_transferred": { workspace_id: ID; previous_owner_user_id: ID; new_owner_user_id: ID; previous_owner_disposition: "member" | "remove" };
+  "workspace.created": WorkspaceLifecycleData;
+  "workspace.updated": WorkspaceLifecycleData;
+  "workspace.archived": WorkspaceLifecycleData;
+  "workspace.member_added": WorkspaceLifecycleData;
+  "workspace.member_updated": WorkspaceLifecycleData;
+  "workspace.member_removed": WorkspaceLifecycleData;
+  "billing.subscription.updated": BillingLifecycleData<"subscription_id"> & { subject_type: "user" | "workspace"; subject_id: ID };
+  "billing.invoice.updated": BillingLifecycleData<"invoice_id">;
+  "billing.payment.updated": BillingLifecycleData<"payment_id">;
+  "billing.refund.updated": BillingLifecycleData<"refund_id">;
+  "billing.dispute.updated": BillingLifecycleData<"dispute_id">;
 }
 
 export type Platform93EventType = keyof Platform93EventDataMap;
@@ -78,6 +118,11 @@ export type AnyPlatform93Event = KnownPlatform93Event | CustomPlatform93Event;
 export const platform93EventVersions: Readonly<Record<Platform93EventType, string>> = {
   "organization.created": "1.0", "organization.retired": "1.0", "organization.restored": "1.0",
   "application.created": "1.0", "application.retired": "1.0", "application.restored": "1.0",
+  "authorization.permission_grant.created": "1.0", "authorization.permission_grant.revoked": "1.0",
+  "control_user.identity_linked": "1.0", "control_user.identity_unlinked": "1.0",
+  "control_user.invitation_created": "1.0", "control_user.invitation_resent": "1.0",
+  "control_user.invitation_revoked": "1.0", "control_user.invitation_accepted": "1.0",
+  "control_auth.policy_updated": "1.0", "control_auth.provider_login_enabled": "1.0", "control_auth.provider_login_disabled": "1.0",
   "delegation.created": "1.0", "delegation.exchanged": "1.0", "delegation.revoked": "1.0",
   "entitlement.granted": "1.0", "local_entitlement_request.created": "1.0", "local_entitlement_request.approved": "1.0",
   "oauth.consent_revoked": "1.0", "platform93.webhook.test": "1.0", "user.created": "1.0",
@@ -88,6 +133,14 @@ export const platform93EventVersions: Readonly<Record<Platform93EventType, strin
   "user.pending_deletion": "1.0", "user.anonymized": "1.0", "user.deleted": "1.0",
   "user.suspended": "1.0", "user.restored": "1.0", "workspace.invitation_created": "1.0",
   "workspace.invitation_accepted": "1.0", "workspace.owner_transferred": "1.0",
+  "application_invitation.created": "1.0", "application_invitation.resent": "1.0",
+  "application_invitation.revoked": "1.0", "application_invitation.accepted": "1.0", "application_invitation.expired": "1.0",
+  "user.updated": "1.0", "workspace.created": "1.0", "workspace.updated": "1.0", "workspace.archived": "1.0",
+  "workspace.member_added": "1.0", "workspace.member_updated": "1.0", "workspace.member_removed": "1.0",
+  "entitlement.adjusted": "1.0", "entitlement.revoked": "1.0", "entitlement.restored": "1.0",
+  "entitlement.expired": "1.0", "entitlement.effective_changed": "1.0",
+  "billing.subscription.updated": "1.0", "billing.invoice.updated": "1.0", "billing.payment.updated": "1.0",
+  "billing.refund.updated": "1.0", "billing.dispute.updated": "1.0",
 };
 
 export function isKnownPlatform93Event(event: AnyPlatform93Event): event is KnownPlatform93Event {

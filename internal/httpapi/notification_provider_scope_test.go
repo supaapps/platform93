@@ -31,7 +31,7 @@ func TestInstallationNotificationProviderIsScopeIsolated(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
-	operatorID := kernel.NewID()
+	controlUserID := kernel.NewID()
 	organizationID, applicationID := kernel.NewID(), kernel.NewID()
 	installationProviderID, applicationProviderID := kernel.NewID(), kernel.NewID()
 	suffix := applicationID.String()
@@ -41,10 +41,10 @@ func TestInstallationNotificationProviderIsScopeIsolated(t *testing.T) {
 	if _, err = db.Exec(context.Background(), `INSERT INTO applications(id,organization_id,name,slug) VALUES($1,$2,'SMTP scope test',$3)`, applicationID, organizationID, "smtp-scope-"+suffix); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, operatorID, "smtp-operator-"+suffix+"@example.test"); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, controlUserID, "smtp-control_user-"+suffix+"@example.test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO installation_operator_roles(operator_id,role) VALUES($1,'admin')`, operatorID); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO installation_control_user_roles(control_user_id,role) VALUES($1,'admin')`, controlUserID); err != nil {
 		t.Fatal(err)
 	}
 	config, _ := json.Marshal(storedSMTPConfig{Host: "smtp.example.test", Port: 587, TLSMode: "starttls"})
@@ -56,15 +56,15 @@ VALUES($1,NULL,'Installation SMTP',$2,'installation@example.test'),($3,$4,'Appli
 		t.Fatal(err)
 	}
 
-	operator := kernel.Actor{Type: "operator", ID: operatorID.String()}
-	wrongScope := requestWithRoute(t, "GET", "/", nil, map[string]string{"provider_id": applicationProviderID.String()}, operator)
+	controlUser := kernel.Actor{Type: "control_user", ID: controlUserID.String()}
+	wrongScope := requestWithRoute(t, "GET", "/", nil, map[string]string{"provider_id": applicationProviderID.String()}, controlUser)
 	response := httptest.NewRecorder()
 	server.getInstallationNotificationProvider(response, wrongScope)
 	if response.Code != 404 {
 		t.Fatalf("application provider escaped into installation scope: %d %s", response.Code, response.Body.String())
 	}
 
-	testRequest := requestWithRoute(t, "POST", "/", map[string]any{"recipient": "operator@example.test"}, map[string]string{"provider_id": installationProviderID.String()}, operator)
+	testRequest := requestWithRoute(t, "POST", "/", map[string]any{"recipient": "control_user@example.test"}, map[string]string{"provider_id": installationProviderID.String()}, controlUser)
 	response = httptest.NewRecorder()
 	server.testInstallationNotificationProvider(response, testRequest)
 	if response.Code != 202 {

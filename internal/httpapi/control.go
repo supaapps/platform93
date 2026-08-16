@@ -38,7 +38,7 @@ func (s *Server) createOrganization(w http.ResponseWriter, r *http.Request) {
 	_, err = tx.Exec(r.Context(), "INSERT INTO organizations (id,name,slug) VALUES ($1,$2,$3)", id, request.Name, request.Slug)
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO organization_memberships
-(organization_id,operator_id,role) VALUES ($1,$2,'owner')`, id, actor(r).ID)
+(organization_id,control_user_id,role) VALUES ($1,$2,'owner')`, id, actor(r).ID)
 	}
 	if err == nil {
 		_, err = s.app.Emit(r.Context(), tx, nil, "organization.created", "organization/"+id.String(), actor(r), request)
@@ -55,8 +55,8 @@ func (s *Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 	installationRole, installationAccess := s.installationRole(r)
 	rows, err := s.app.DB.Query(r.Context(), `SELECT o.id,o.name,o.slug,o.version,o.created_at,o.updated_at,
 COALESCE(m.role,$4),o.deleted_at FROM organizations o
-LEFT JOIN organization_memberships m ON m.organization_id=o.id AND m.operator_id=$1
-WHERE ($3 OR m.operator_id IS NOT NULL) AND ($2 OR o.deleted_at IS NULL) ORDER BY o.created_at,o.id`, actor(r).ID, includeRetired, installationAccess, "installation:"+installationRole)
+LEFT JOIN organization_memberships m ON m.organization_id=o.id AND m.control_user_id=$1
+WHERE ($3 OR m.control_user_id IS NOT NULL) AND ($2 OR o.deleted_at IS NULL) ORDER BY o.created_at,o.id`, actor(r).ID, includeRetired, installationAccess, "installation:"+installationRole)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Organizations could not be loaded.")
 		return
@@ -96,8 +96,8 @@ func (s *Server) getOrganization(w http.ResponseWriter, r *http.Request) {
 	}
 	installationRole, installationAccess := s.installationRole(r)
 	err := s.app.DB.QueryRow(r.Context(), `SELECT o.name,o.slug,o.version,COALESCE(m.role,$4) FROM organizations o
-LEFT JOIN organization_memberships m ON m.organization_id=o.id AND m.operator_id=$2
-WHERE o.id=$1 AND ($3 OR m.operator_id IS NOT NULL) AND o.deleted_at IS NULL`, id, actor(r).ID, installationAccess, "installation:"+installationRole).Scan(&name, &slug, &version, &role)
+LEFT JOIN organization_memberships m ON m.organization_id=o.id AND m.control_user_id=$2
+WHERE o.id=$1 AND ($3 OR m.control_user_id IS NOT NULL) AND o.deleted_at IS NULL`, id, actor(r).ID, installationAccess, "installation:"+installationRole).Scan(&name, &slug, &version, &role)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "organization_not_found", "The organization was not found.")
 		return
@@ -150,7 +150,7 @@ func (s *Server) createApplication(w http.ResponseWriter, r *http.Request) {
 	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM organizations WHERE id=$1 AND deleted_at IS NULL)`, organizationID).Scan(&active)
 	allowed = allowed && active
 	if !allowed {
-		kernel.WriteProblem(w, r, http.StatusForbidden, "organization_permission_required", "The operator cannot create applications in this organization.")
+		kernel.WriteProblem(w, r, http.StatusForbidden, "organization_permission_required", "The Platform user cannot create applications in this organization.")
 		return
 	}
 	id := kernel.NewID()
@@ -174,7 +174,8 @@ VALUES ($1,$2,$3,$4)`, id, organizationID, request.Name, request.Slug)
 		_, err = tx.Exec(r.Context(), `INSERT INTO roles (id,application_id,key,name,scope,permissions,built_in)
 VALUES ($1,$2,'application_admin','Application administrator','application',ARRAY[$4],true),
 ($3,$2,'workspace_member','Workspace member','workspace',ARRAY['read','storage:read'],true),
-($5,$2,'event_publisher','Event publisher','application',ARRAY['events:publish'],true)`, kernel.NewID(), id, kernel.NewID(), "/applications/"+id.String()+"/*", kernel.NewID())
+($5,$2,'event_publisher','Event publisher','application',ARRAY['events:publish'],true),
+($6,$2,'notification_sender','Notification sender','application',ARRAY['notifications:send'],true)`, kernel.NewID(), id, kernel.NewID(), "*", kernel.NewID(), kernel.NewID())
 	}
 	if err == nil {
 		_, err = s.app.Emit(r.Context(), tx, &id, "application.created", "application/"+id.String(), actor(r), request)
@@ -226,7 +227,7 @@ WHERE id=$2 AND organization_id=$3 AND version=$4 AND deleted_at IS NULL`, reque
 
 func (s *Server) listApplications(w http.ResponseWriter, r *http.Request) {
 	includeRetired := r.URL.Query().Get("include_retired") == "true"
-	if !s.operatorBelongsToOrganization(r, chi.URLParam(r, "organization_id")) {
+	if !s.controlUserBelongsToOrganization(r, chi.URLParam(r, "organization_id")) {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "organization_not_found", "The organization was not found.")
 		return
 	}
@@ -354,6 +355,10 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request) {
 	}
 	if request.ClientType != "public" && request.ClientType != "confidential" && request.ClientType != "machine" {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_client_type", "Client type must be public, confidential, or machine.")
+		return
+	}
+	if err := validateClientRedirectURIs(request.ClientType, request.RedirectURIs); err != nil {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_redirect_uri", err.Error())
 		return
 	}
 	id := kernel.NewID()

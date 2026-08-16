@@ -173,7 +173,7 @@ func (s *Server) testWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rollback(tx, r.Context())
 	eventID, deliveryID := kernel.NewID(), kernel.NewID()
-	actorJSON, _ := json.Marshal(map[string]any{"type": "operator", "id": actor(r).ID})
+	actorJSON, _ := json.Marshal(map[string]any{"type": "control_user", "id": actor(r).ID})
 	dataJSON, _ := json.Marshal(map[string]any{"webhook_endpoint_id": webhookID, "test": true})
 	result, err := tx.Exec(r.Context(), `INSERT INTO domain_events(id,application_id,event_type,schema_version,contract_source,subject,actor,data)
 SELECT $1,$2,d.name,d.schema_version,'platform93',$3::text,$4,$5 FROM webhook_endpoints w

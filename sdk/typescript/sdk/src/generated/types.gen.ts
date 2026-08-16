@@ -4,6 +4,1575 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type HealthStatus = {
+    status: 'ok' | 'ready';
+};
+
+export type VersionInfo = {
+    version: string;
+    commit: string;
+    built_at: string;
+    schema: string;
+};
+
+export type SetupStatus = {
+    available: boolean;
+    control_user_email_login_available: boolean;
+    control_auth_methods: ControlAuthMethods;
+};
+
+export type SetupSession = {
+    token_type: 'Bearer';
+    expires_in: number;
+    control_user_id: Uuid;
+};
+
+export type SetupCompletion = {
+    token_type: 'Bearer';
+    expires_in: number;
+    completed: true;
+};
+
+export type ChallengeAccepted = {
+    challenge_id: Uuid;
+    expires_in: number;
+};
+
+export type NotificationQueued = {
+    notification_id: Uuid;
+    status: 'queued';
+};
+
+export type InvitationResent = {
+    id: Uuid;
+    last_sent_at: string;
+    resend_available_at: string;
+    expires_at: string;
+};
+
+export type ReconciliationAccepted = {
+    id: Uuid;
+    provider_id: Uuid;
+    status: 'pending';
+};
+
+export type WebhookTestAccepted = {
+    event_id: Uuid;
+    delivery_id: Uuid;
+    status: 'pending';
+};
+
+export type ControlUserAccount = {
+    id: Uuid;
+    email: string;
+    display_name: string;
+    status: 'active' | 'suspended' | 'deleted';
+    installation_role: 'owner' | 'admin' | 'auditor' | null;
+    organizations: Array<{
+        id: Uuid;
+        name: string;
+        role: 'owner' | 'admin' | 'member' | 'auditor';
+    }>;
+    sign_in_methods: {
+        email_code: boolean;
+        magic_link: boolean;
+        password: boolean;
+        external_identities: Array<{
+            id: Uuid;
+            provider: 'google' | 'apple';
+            metadata: {
+                [key: string]: unknown;
+            };
+            available: boolean;
+            created_at: string;
+            last_used_at?: string | null;
+        }>;
+    };
+    created_at: string;
+    updated_at: string;
+};
+
+export type Session = {
+    id: Uuid;
+    actor_type: 'control_user' | 'user' | 'client';
+    user_agent?: string | null;
+    ip_address?: string | null;
+    amr?: Array<string>;
+    authenticated_at?: string | null;
+    created_at: string;
+    expires_at: string;
+    revoked: boolean;
+};
+
+export type NotificationProvider = {
+    id: Uuid;
+    provider: 'smtp';
+    scope: 'installation' | 'organization' | 'application';
+    organization_id?: string | null;
+    application_id?: string | null;
+    name: string;
+    sender_email: string;
+    sender_name: string;
+    inheritable: boolean;
+    verified?: boolean;
+    credentials_configured?: boolean;
+    effective?: boolean;
+    verified_at?: string | null;
+    disabled_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type AuthProvider = {
+    id: Uuid;
+    provider: 'google' | 'apple';
+    scope: 'installation' | 'organization' | 'application';
+    organization_id?: string | null;
+    application_id?: string | null;
+    client_id: string;
+    team_id?: string | null;
+    key_id?: string | null;
+    inheritable: boolean;
+    control_login_enabled: boolean;
+    configured?: boolean;
+    inherited?: boolean;
+    linked_control_users?: number;
+    inheriting_applications?: number;
+    callback_uri?: string;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type BillingProvider = {
+    id: Uuid;
+    provider: 'stripe';
+    public_id: string;
+    api_version: string;
+    status: 'active' | 'disabled' | 'error';
+    scope: 'installation' | 'organization' | 'application';
+    inheritable: boolean;
+    organization_id?: string | null;
+    application_id?: string | null;
+    inherited?: boolean;
+    webhook_configured?: boolean;
+    effective?: boolean;
+    metadata?: {
+        [key: string]: unknown;
+    };
+    webhook_uri: string;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type ControlUser = {
+    id: Uuid;
+    email: string;
+    display_name: string;
+    status: 'active' | 'suspended' | 'deleted';
+    role: 'owner' | 'admin' | 'member' | 'auditor';
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type ControlUserInvitation = {
+    id: Uuid;
+    organization_id?: string | null;
+    email: string;
+    role: 'owner' | 'admin' | 'member' | 'auditor';
+    onboarding_method: 'email' | 'google' | 'apple';
+    status?: 'pending' | 'accepted' | 'revoked' | 'expired';
+    expires_at: string;
+    token_returned_once?: boolean;
+    invited_by?: string;
+    accepted_by?: string | null;
+    accepted_at?: string | null;
+    revoked_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type SigningKey = {
+    id: Uuid;
+    kid: string;
+    algorithm: 'RS256';
+    status: 'active' | 'retiring' | 'retired';
+    created_at: string;
+    retires_at?: string | null;
+};
+
+export type SecretCredential = {
+    id?: Uuid;
+    client_id?: string;
+    secret_returned_once: boolean;
+    previous_secret_valid_for_seconds?: number;
+};
+
+export type ManagementClient = {
+    id: Uuid;
+    client_id: string;
+    name: string;
+    allowed_scopes: Array<string>;
+    status: 'active' | 'disabled';
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type Organization = {
+    id: Uuid;
+    slug: string;
+    name: string;
+    version: number;
+    role?: string;
+    retired_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type Application = {
+    id: Uuid;
+    organization_id: Uuid;
+    slug: string;
+    name: string;
+    version: number;
+    issuer?: string;
+    audience?: string;
+    auth_config?: {
+        [key: string]: unknown;
+    };
+    public_config?: {
+        [key: string]: unknown;
+    };
+    internal_config?: {
+        [key: string]: unknown;
+    };
+    retired_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type ApplicationStatistics = {
+    users: {
+        total: number;
+        active: number;
+        suspended: number;
+    };
+    workspaces: number;
+    active_products: number;
+    active_entitlements: number;
+    pending_local_requests: number;
+    live_subscriptions: number;
+    notification_failures: number;
+    webhook_failures: number;
+    events_last_24_hours: number;
+};
+
+export type ApplicationDomain = {
+    id: Uuid;
+    hostname: string;
+    status: 'pending' | 'verified' | 'disabled';
+    created_at?: string;
+};
+
+export type OAuthClient = {
+    id: Uuid;
+    client_id: string;
+    name: string;
+    client_type: 'public' | 'confidential' | 'machine';
+    redirect_uris?: Array<string>;
+    post_logout_redirect_uris?: Array<string>;
+    allowed_scopes?: Array<string>;
+    allowed_grants?: Array<string>;
+    secret_returned_once?: boolean;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type Workspace = {
+    id: Uuid;
+    application_id?: Uuid;
+    owner_user_id: Uuid;
+    key: string;
+    name: string;
+    metadata: {
+        [key: string]: unknown;
+    };
+    version: number;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type WorkspaceMember = {
+    workspace_id: Uuid;
+    user_id: Uuid;
+    role_keys: Array<RoleKey>;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type RoleAssignmentRecord = {
+    id: Uuid;
+    user_id?: string | null;
+    client_id?: string | null;
+    role_id: Uuid;
+    workspace_id?: string | null;
+    created_at?: string;
+};
+
+export type Delegation = {
+    id: Uuid;
+    user_id: Uuid;
+    workspace_id?: string | null;
+    scopes: Array<string>;
+    reason: string;
+    status: 'pending' | 'exchanged' | 'revoked' | 'expired';
+    expires_at: string;
+    created_at?: string;
+};
+
+export type ApplicationInvitation = {
+    id: Uuid;
+    application_id: Uuid;
+    workspace_id?: string | null;
+    email: string;
+    application_role_keys?: Array<RoleKey>;
+    workspace_role_keys?: Array<RoleKey>;
+    status: 'pending' | 'accepted' | 'revoked' | 'expired';
+    link?: string;
+    expires_at: string;
+    accepted_user_id?: string | null;
+    created_at?: string;
+};
+
+export type RevokedSessionCount = {
+    revoked_sessions: number;
+};
+
+export type AuthMethods = {
+    methods: Array<'password' | 'email_code' | 'magic_link' | 'google' | 'apple' | 'totp' | 'webauthn'>;
+    registration_enabled: boolean;
+    registration_mode: 'public' | 'invite_only';
+};
+
+export type WebAuthnChallenge = {
+    ceremony_id: Uuid;
+    options: {
+        [key: string]: unknown;
+    };
+    expires_at: string;
+};
+
+export type InvitationExchangeResult = {
+    redirect_uri: string;
+    expires_in: number;
+    mfa_challenge_id?: string | null;
+};
+
+export type PersonalApiKeyCreated = {
+    api_key: {
+        id: Uuid;
+        label: string;
+        token_prefix: string;
+        scopes: Array<string>;
+        expires_at: string;
+    };
+};
+
+export type Feature = {
+    id: Uuid;
+    key: string;
+    name: string;
+    value_type: 'boolean' | 'number' | 'string' | 'free_form';
+    free_form_format?: 'text' | 'csv' | 'json' | null;
+    metadata: {
+        [key: string]: unknown;
+    };
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type Product = {
+    id: Uuid;
+    key: string;
+    name: string;
+    description?: string | null;
+    listable: boolean;
+    status: 'active' | 'archived';
+    metadata: {
+        [key: string]: unknown;
+    };
+    entitlement_config: {
+        [key: string]: unknown;
+    };
+    features: {
+        [key: string]: FeatureValue;
+    };
+    version: number;
+    prices?: Array<Price>;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type Price = {
+    id: Uuid;
+    product_id?: Uuid;
+    key: string;
+    mode: 'recurring' | 'one_time' | 'local';
+    amount_minor?: number | null;
+    currency: string;
+    currency_exponent: number;
+    tax_behavior: 'inclusive' | 'exclusive' | 'unspecified';
+    checkout_config: {
+        [key: string]: unknown;
+    };
+    entitlement_config: {
+        [key: string]: unknown;
+    };
+    features: {
+        [key: string]: FeatureValue;
+    };
+    status?: 'active' | 'archived';
+    version?: number;
+    created_at?: string;
+};
+
+export type EntitlementGrant = {
+    id: Uuid;
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    source_type: 'manual' | 'local_request' | 'subscription' | 'checkout';
+    source_id?: string | null;
+    feature_values: {
+        [key: string]: FeatureValue;
+    };
+    configuration: {
+        [key: string]: unknown;
+    };
+    starts_at: string;
+    expires_at?: string | null;
+    revoked_at?: string | null;
+    external_reference?: string | null;
+    created_at?: string;
+};
+
+export type EffectiveEntitlements = {
+    workspace_id: string | null;
+    effective: {
+        [key: string]: FeatureValue;
+    };
+    provenance: {
+        [key: string]: Array<Uuid>;
+    };
+    sources: Array<EntitlementGrant>;
+};
+
+export type LocalEntitlementRequest = {
+    id: Uuid;
+    status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    product_snapshot: {
+        [key: string]: unknown;
+    };
+    price_snapshot: {
+        [key: string]: unknown;
+    };
+    feature_snapshot: {
+        [key: string]: unknown;
+    };
+    address_snapshot?: {
+        [key: string]: unknown;
+    } | null;
+    external_reference?: string | null;
+    entitlement_grant_id?: string | null;
+    reason?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type LocalEntitlementApproval = {
+    status: 'approved';
+    entitlement_grant_id: Uuid;
+};
+
+export type CheckoutSession = {
+    id: Uuid;
+    status: 'open' | 'complete' | 'expired';
+    checkout_uri?: string | null;
+    provider_session_id?: string | null;
+    subject_type?: 'user' | 'workspace';
+    subject_id?: Uuid;
+    external_reference?: string | null;
+    created_at?: string;
+    expires_at?: string | null;
+};
+
+export type PortalSession = {
+    provider_session_id: string;
+    portal_uri: string;
+};
+
+export type Subscription = {
+    id: Uuid;
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    price_id: Uuid;
+    provider_id: Uuid;
+    provider_subscription_id?: string;
+    status: string;
+    current_period_start?: string | null;
+    current_period_end?: string | null;
+    cancel_at_period_end?: boolean;
+    external_reference?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type Invoice = {
+    id: Uuid;
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    subscription_id?: string | null;
+    provider_invoice_id?: string;
+    status: string;
+    amount_due_minor: number;
+    amount_paid_minor?: number;
+    currency: string;
+    hosted_invoice_uri?: string | null;
+    external_reference?: string | null;
+    created_at?: string;
+};
+
+export type Payment = {
+    id: Uuid;
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    invoice_id?: string | null;
+    provider_payment_id?: string;
+    status: string;
+    amount_minor: number;
+    currency: string;
+    external_reference?: string | null;
+    created_at?: string;
+};
+
+export type Refund = {
+    id: Uuid;
+    payment_id?: Uuid;
+    provider_refund_id?: string;
+    status: string;
+    amount_minor: number;
+    currency: string;
+    reason?: string | null;
+    external_reference?: string | null;
+    created_at?: string;
+};
+
+export type Dispute = {
+    id: Uuid;
+    payment_id?: string | null;
+    provider_dispute_id?: string;
+    status: string;
+    amount_minor: number;
+    currency: string;
+    reason?: string | null;
+    created_at?: string;
+};
+
+export type BillingStatistics = {
+    from: string;
+    to: string;
+    revenue_minor_by_currency: Array<CurrencyTotal>;
+    refunds_minor_by_currency: Array<CurrencyTotal>;
+    status_counts: {
+        [key: string]: {
+            [key: string]: number;
+        };
+    };
+};
+
+export type CurrencyTotal = {
+    currency: string;
+    amount_minor: number;
+};
+
+export type BillingProviderEvent = {
+    id: Uuid;
+    provider_event_id: string;
+    event_type: string;
+    status: 'pending' | 'processed' | 'failed' | 'ignored';
+    attempts?: number;
+    last_error?: string | null;
+    received_at: string;
+    processed_at?: string | null;
+};
+
+export type ReconciliationRun = {
+    id: Uuid;
+    provider_id: Uuid;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    findings: number;
+    repairs: number;
+    last_error?: string | null;
+    started_at?: string | null;
+    completed_at?: string | null;
+    created_at: string;
+};
+
+export type BillingProfile = {
+    id: Uuid;
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    name?: string | null;
+    email?: string | null;
+    tax_id?: string | null;
+    default_address_id?: string | null;
+    version: number;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type BillingSummary = {
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    billing_profile: BillingProfile | null;
+    subscriptions: Array<Subscription>;
+};
+
+export type Address = {
+    id: Uuid;
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    name?: string | null;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    region?: string | null;
+    postal_code: string;
+    country: string;
+    active: boolean;
+    version: number;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type AccountExport = {
+    exported_at: string;
+    user: User;
+    addresses: Array<Address>;
+};
+
+export type MfaEnrollment = {
+    method_id: Uuid;
+    provisioning_uri: string;
+};
+
+export type MfaActivation = {
+    method_id: Uuid;
+    recovery_codes: Array<unknown>;
+};
+
+export type RecoveryCodes = {
+    recovery_codes: Array<unknown>;
+};
+
+export type MfaMethod = {
+    id: Uuid;
+    type: 'totp' | 'webauthn';
+    name?: string | null;
+    status: 'pending' | 'active' | 'disabled';
+    last_used_at?: string | null;
+    created_at: string;
+};
+
+export type ExternalIdentity = {
+    id: Uuid;
+    provider: 'google' | 'apple';
+    email?: string | null;
+    created_at: string;
+    last_used_at?: string | null;
+};
+
+export type PermissionCheckResult = {
+    workspace_id: string | null;
+    results: {
+        [key: string]: boolean;
+    };
+};
+
+export type AuditRecord = {
+    id: Uuid;
+    organization_id?: string | null;
+    application_id?: string | null;
+    actor_type: 'control_user' | 'user' | 'client' | 'system';
+    actor_id?: string | null;
+    action: string;
+    target_type: string;
+    target_id?: string | null;
+    reason?: string | null;
+    request_id?: string | null;
+    changes?: {
+        [key: string]: unknown;
+    };
+    created_at: string;
+};
+
+export type AuditExportRecord = {
+    id: Uuid;
+    record_count: number;
+    filters?: {
+        [key: string]: unknown;
+    };
+    status?: 'pending' | 'ready' | 'expired' | 'failed';
+    download_uri?: string | null;
+    expires_at: string;
+    created_at?: string;
+};
+
+export type Webhook = {
+    id: Uuid;
+    uri: string;
+    event_filters: Array<string>;
+    secret_returned_once?: boolean;
+    disabled: boolean;
+    disabled_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type WebhookDelivery = {
+    id: Uuid;
+    event_id: Uuid;
+    webhook_id: Uuid;
+    status: 'pending' | 'delivered' | 'failed' | 'dead';
+    attempt_count: number;
+    response_status?: number | null;
+    last_error?: string | null;
+    next_attempt_at?: string | null;
+    created_at: string;
+    delivered_at?: string | null;
+};
+
+export type SenderIdentity = {
+    id: Uuid;
+    provider_id: Uuid;
+    email: string;
+    name: string;
+    is_default: boolean;
+    verified: boolean;
+    created_at?: string;
+};
+
+export type NotificationTemplate = {
+    id: Uuid;
+    application_id?: string | null;
+    key: string;
+    locale: Locale;
+    category: string;
+    subject_template?: string;
+    text_template?: string;
+    html_template?: string | null;
+    version: number;
+    status: 'draft' | 'active' | 'archived';
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type TemplateVariables = {
+    protected: Array<string>;
+    optional: Array<string>;
+};
+
+export type NotificationTemplatePreview = {
+    template_id: Uuid;
+    version: number;
+    subject: string;
+    text: string;
+    html: string | null;
+};
+
+export type NotificationStatistics = {
+    notification_status_counts: {
+        [key: string]: number;
+    };
+    attempts_delivered: number;
+    attempts_failed: number;
+};
+
+export type Notification = {
+    id: Uuid;
+    template_key: string;
+    recipient: string;
+    locale?: Locale;
+    status: 'queued' | 'sending' | 'delivered' | 'failed' | 'suppressed' | 'dead';
+    attempt_count?: number;
+    last_error?: string | null;
+    created_at: string;
+    delivered_at?: string | null;
+};
+
+export type NotificationPreference = {
+    category: string;
+    email_enabled: boolean;
+    updated_at?: string;
+};
+
+export type StorageProvider = {
+    id: Uuid;
+    provider: 's3';
+    scope: 'installation' | 'organization' | 'application';
+    organization_id?: string | null;
+    application_id?: string | null;
+    name: string;
+    endpoint: string;
+    region: string;
+    force_path_style: boolean;
+    public_bucket?: string | null;
+    private_bucket?: string | null;
+    public_base_url?: string | null;
+    status: 'active' | 'disabled' | 'unverified' | 'error';
+    inheritable: boolean;
+    credentials_configured: boolean;
+    allow_private_endpoint: boolean;
+    verified_at?: string | null;
+    disabled_at?: string | null;
+    last_error?: string | null;
+    max_object_bytes: number;
+    max_email_image_bytes: number;
+    max_application_bytes: number;
+    max_application_objects: number;
+    version: number;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type StorageProviderStatus = {
+    id: Uuid;
+    status: 'active' | 'disabled' | 'unverified' | 'error';
+};
+
+export type StorageDownload = {
+    url: string;
+    expires_at: string;
+    visibility: 'public' | 'private';
+};
+
+export type OidcDiscovery = {
+    issuer: string;
+    authorization_endpoint: string;
+    token_endpoint: string;
+    userinfo_endpoint?: string;
+    revocation_endpoint?: string;
+    introspection_endpoint?: string;
+    jwks_uri: string;
+    response_types_supported: Array<string>;
+    grant_types_supported?: Array<string>;
+    subject_types_supported: Array<string>;
+    id_token_signing_alg_values_supported: Array<string>;
+    code_challenge_methods_supported?: Array<string>;
+    scopes_supported?: Array<string>;
+};
+
+export type Jwks = {
+    keys: Array<{
+        kty: string;
+        kid: string;
+        use: string;
+        alg: string;
+        n: string;
+        e: string;
+    }>;
+};
+
+export type AuthorizationRedirect = {
+    redirect_to: string;
+};
+
+export type TokenIntrospection = {
+    active: boolean;
+    sub?: string;
+    aud?: string | Array<string>;
+    iss?: string;
+    exp?: number;
+    iat?: number;
+    scope?: string;
+    client_id?: string;
+    token_type?: string;
+    actor_type?: 'control_user' | 'user' | 'client';
+    application_id?: string;
+    roles?: StructuredRoles;
+};
+
+export type UserInfo = {
+    sub: string;
+    application_id: Uuid;
+    actor_type: 'user' | 'client';
+    email?: string;
+    email_verified?: boolean;
+    given_name?: string;
+    family_name?: string;
+    locale?: Locale;
+    scope?: string;
+    roles?: StructuredRoles;
+    custom_claims?: {
+        [key: string]: unknown;
+    };
+};
+
+export type WebhookAcknowledgement = {
+    received: boolean;
+};
+
+export type OrganizationMember = {
+    control_user_id: Uuid;
+    email: string;
+    display_name: string;
+    role: 'owner' | 'admin' | 'member' | 'auditor';
+    status: 'active' | 'suspended' | 'deleted';
+    joined_at?: string;
+};
+
+export type PersonalApiKey = {
+    id: Uuid;
+    label: string;
+    token_prefix: string;
+    scopes: Array<string>;
+    status: 'active' | 'revoked' | 'expired';
+    last_used_at?: string | null;
+    expires_at: string;
+    created_at?: string;
+};
+
+export type OAuthConsent = {
+    id: Uuid;
+    client_id: string;
+    client_name?: string;
+    scopes: Array<string>;
+    created_at: string;
+    updated_at?: string;
+};
+
+export type WorkspaceAccessEntry = {
+    type: 'owner' | 'member' | 'invitation';
+    workspace_id: Uuid;
+    user_id?: string | null;
+    email?: string | null;
+    role_keys?: Array<RoleKey>;
+    invitation_id?: string | null;
+    status?: string;
+    expires_at?: string | null;
+};
+
+export type EmptyResponse = {
+    [key: string]: never;
+};
+
+export type SessionPage = {
+    items: Array<Session>;
+    next_cursor: string | null;
+};
+
+export type NotificationProviderPage = {
+    items: Array<NotificationProvider>;
+    next_cursor: string | null;
+};
+
+export type AuthProviderPage = {
+    items: Array<AuthProvider>;
+    next_cursor: string | null;
+};
+
+export type BillingProviderPage = {
+    items: Array<BillingProvider>;
+    next_cursor: string | null;
+};
+
+export type ControlUserPage = {
+    items: Array<ControlUser>;
+    next_cursor: string | null;
+};
+
+export type ControlUserInvitationPage = {
+    items: Array<ControlUserInvitation>;
+    next_cursor: string | null;
+};
+
+export type SigningKeyPage = {
+    items: Array<SigningKey>;
+    next_cursor: string | null;
+};
+
+export type ManagementClientPage = {
+    items: Array<ManagementClient>;
+    next_cursor: string | null;
+};
+
+export type ApplicationPage = {
+    items: Array<Application>;
+    next_cursor: string | null;
+};
+
+export type OrganizationMemberPage = {
+    items: Array<OrganizationMember>;
+    next_cursor: string | null;
+};
+
+export type ApplicationDomainPage = {
+    items: Array<ApplicationDomain>;
+    next_cursor: string | null;
+};
+
+export type OAuthClientPage = {
+    items: Array<OAuthClient>;
+    next_cursor: string | null;
+};
+
+export type RolePage = {
+    items: Array<Role>;
+    next_cursor: string | null;
+};
+
+export type WorkspacePage = {
+    items: Array<Workspace>;
+    next_cursor: string | null;
+};
+
+export type WorkspaceMemberPage = {
+    items: Array<WorkspaceMember>;
+    next_cursor: string | null;
+};
+
+export type RoleAssignmentPage = {
+    items: Array<RoleAssignmentRecord>;
+    next_cursor: string | null;
+};
+
+export type PermissionGrantPage = {
+    items: Array<PermissionGrant>;
+    next_cursor: string | null;
+};
+
+export type DelegationPage = {
+    items: Array<Delegation>;
+    next_cursor: string | null;
+};
+
+export type ApplicationInvitationPage = {
+    items: Array<ApplicationInvitation>;
+    next_cursor: string | null;
+};
+
+export type UserPage = {
+    items: Array<User>;
+    next_cursor: string | null;
+};
+
+export type EntitlementGrantPage = {
+    items: Array<EntitlementGrant>;
+    next_cursor: string | null;
+};
+
+export type AddressPage = {
+    items: Array<Address>;
+    next_cursor: string | null;
+};
+
+export type OAuthConsentPage = {
+    items: Array<OAuthConsent>;
+    next_cursor: string | null;
+};
+
+export type FeaturePage = {
+    items: Array<Feature>;
+    next_cursor: string | null;
+};
+
+export type ProductPage = {
+    items: Array<Product>;
+    next_cursor: string | null;
+};
+
+export type PricePage = {
+    items: Array<Price>;
+    next_cursor: string | null;
+};
+
+export type LocalEntitlementRequestPage = {
+    items: Array<LocalEntitlementRequest>;
+    next_cursor: string | null;
+};
+
+export type SubscriptionPage = {
+    items: Array<Subscription>;
+    next_cursor: string | null;
+};
+
+export type InvoicePage = {
+    items: Array<Invoice>;
+    next_cursor: string | null;
+};
+
+export type PaymentPage = {
+    items: Array<Payment>;
+    next_cursor: string | null;
+};
+
+export type RefundPage = {
+    items: Array<Refund>;
+    next_cursor: string | null;
+};
+
+export type DisputePage = {
+    items: Array<Dispute>;
+    next_cursor: string | null;
+};
+
+export type BillingProviderEventPage = {
+    items: Array<BillingProviderEvent>;
+    next_cursor: string | null;
+};
+
+export type ReconciliationRunPage = {
+    items: Array<ReconciliationRun>;
+    next_cursor: string | null;
+};
+
+export type MfaMethodPage = {
+    items: Array<MfaMethod>;
+    next_cursor: string | null;
+};
+
+export type ExternalIdentityPage = {
+    items: Array<ExternalIdentity>;
+    next_cursor: string | null;
+};
+
+export type WorkspaceAccessPage = {
+    items: Array<WorkspaceAccessEntry>;
+    next_cursor: string | null;
+};
+
+export type EventPage = {
+    items: Array<EventEnvelope>;
+    next_cursor: string | null;
+};
+
+export type EventTypePage = {
+    items: Array<EventTypeDefinition>;
+    next_cursor: string | null;
+};
+
+export type AuditRecordPage = {
+    items: Array<AuditRecord>;
+    next_cursor: string | null;
+};
+
+export type WebhookPage = {
+    items: Array<Webhook>;
+    next_cursor: string | null;
+};
+
+export type WebhookDeliveryPage = {
+    items: Array<WebhookDelivery>;
+    next_cursor: string | null;
+};
+
+export type SenderIdentityPage = {
+    items: Array<SenderIdentity>;
+    next_cursor: string | null;
+};
+
+export type NotificationTemplatePage = {
+    items: Array<NotificationTemplate>;
+    next_cursor: string | null;
+};
+
+export type NotificationPage = {
+    items: Array<Notification>;
+    next_cursor: string | null;
+};
+
+export type NotificationPreferencePage = {
+    items: Array<NotificationPreference>;
+    next_cursor: string | null;
+};
+
+export type StorageProviderPage = {
+    items: Array<StorageProvider>;
+    next_cursor: string | null;
+};
+
+export type StorageObjectPage = {
+    items: Array<StorageObject>;
+    next_cursor: string | null;
+};
+
+export type PersonalApiKeyPage = {
+    items: Array<PersonalApiKey>;
+    next_cursor: string | null;
+};
+
+export type CompleteSetup = {
+    password?: string;
+};
+
+export type ControlEmailStart = {
+    email: string;
+    delivery?: 'code' | 'link' | 'both';
+};
+
+export type UpdateControlUserAccount = {
+    display_name: string;
+};
+
+export type ControlInvitationProviderStart = {
+    invitation_token: string;
+};
+
+export type UpdateControlInvitationMethod = {
+    onboarding_method?: 'email' | 'google' | 'apple';
+};
+
+export type UpdateManagementApi = {
+    enabled: boolean;
+};
+
+export type RefreshToken = {
+    refresh_token: string;
+};
+
+export type ConfigureAuthProvider = {
+    client_id: string;
+    team_id?: string;
+    key_id?: string;
+    inheritable?: boolean;
+    control_login_enabled?: boolean;
+};
+
+export type UpdateSmtpProvider = {
+    name?: string;
+    host?: string;
+    port?: number;
+    username?: string;
+    tls_mode?: 'starttls' | 'implicit_tls';
+    sender_email?: string;
+    sender_name?: string;
+    inheritable?: boolean;
+};
+
+export type TestNotificationProvider = {
+    recipient: string;
+};
+
+export type UpdateBillingProvider = {
+    metadata?: {
+        [key: string]: unknown;
+    };
+    inheritable?: boolean;
+};
+
+export type MembershipRole = {
+    role: 'owner' | 'admin' | 'member' | 'auditor';
+};
+
+export type CreateApplicationDomain = {
+    hostname: string;
+};
+
+export type CreateClient = {
+    client_id: string;
+    name: string;
+    client_type: 'public' | 'confidential';
+    redirect_uris?: Array<string>;
+    allowed_grants?: Array<'authorization_code' | 'refresh_token' | 'client_credentials'>;
+    allowed_scopes?: Array<string>;
+};
+
+export type UpdateClient = {
+    name?: string;
+    redirect_uris?: Array<string>;
+    allowed_grants?: Array<'authorization_code' | 'refresh_token' | 'client_credentials'>;
+    allowed_scopes?: Array<string>;
+};
+
+export type CreateWorkspace = {
+    key: string;
+    name: string;
+    owner_user_id?: Uuid;
+    metadata?: {
+        [key: string]: unknown;
+    };
+};
+
+export type UpdateWorkspace = {
+    name?: string;
+    metadata?: {
+        [key: string]: unknown;
+    };
+};
+
+export type ReplaceWorkspaceMemberRoles = {
+    role_keys: Array<RoleKey>;
+};
+
+export type CreateDelegation = {
+    user_id: Uuid;
+    workspace_id?: Uuid;
+    reason: string;
+    redirect_uri: string;
+    permissions: Array<PermissionKey>;
+    expires_in?: number;
+};
+
+export type ExchangeDelegation = {
+    exchange_code: string;
+};
+
+export type CreateUser = {
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    username?: string | null;
+    locale?: Locale;
+    email_verified?: boolean;
+    is_org_verified?: boolean;
+    custom_attributes?: {
+        [key: string]: unknown;
+    };
+};
+
+export type UpdateUser = {
+    first_name?: string;
+    last_name?: string;
+    username?: string | null;
+    locale?: Locale;
+    status?: 'active' | 'suspended' | 'pending_deletion';
+    email_verified?: boolean;
+    is_org_verified?: boolean;
+    custom_attributes?: {
+        [key: string]: unknown;
+    };
+    reason?: string;
+};
+
+export type AuditReason = {
+    reason: string;
+};
+
+export type PasswordResetStart = {
+    email: string;
+};
+
+export type PasswordResetVerify = {
+    challenge_id: Uuid;
+};
+
+export type ExternalAuthStartRequest = {
+    flow?: 'sign_in' | 'sign_up' | 'automatic' | 'link';
+    redirect_uri: string;
+    login_hint?: string;
+};
+
+export type ExternalAuthExchange = {
+    exchange: string;
+};
+
+export type VerifyMfa = unknown & {
+    challenge_id: Uuid;
+};
+
+export type BeginWebAuthnAuthentication = {
+    challenge_id: Uuid;
+    origin?: string;
+};
+
+export type BeginWebAuthnRegistration = {
+    origin?: string;
+    label?: string;
+};
+
+export type FinishWebAuthnCeremony = {
+    ceremony_id: Uuid;
+    credential: {
+        [key: string]: unknown;
+    };
+};
+
+export type CreateEntitlement = {
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    product_id?: Uuid;
+    price_id?: Uuid;
+    feature_values?: {
+        [key: string]: unknown;
+    };
+    configuration?: {
+        [key: string]: unknown;
+    };
+    starts_at?: string;
+    expires_at?: string;
+    reason?: string;
+    external_reference?: string;
+};
+
+export type AdjustEntitlement = {
+    expires_at?: string | null;
+    reason?: string;
+};
+
+export type CreatePortalSession = {
+    provider_id: Uuid;
+    subject_type?: 'user' | 'workspace';
+    subject_id?: Uuid;
+    return_uri: string;
+};
+
+export type CancelSubscription = {
+    at_period_end?: boolean;
+};
+
+export type ChangeSubscriptionPrice = {
+    price_id: Uuid;
+    proration_behavior?: 'create_prorations' | 'always_invoice' | 'none';
+};
+
+export type CreateRefund = {
+    amount_minor?: number;
+    reason?: string;
+};
+
+export type AccountChallenge = {
+    challenge_id: Uuid;
+};
+
+export type EmailAddress = {
+    email: string;
+};
+
+export type PasswordChange = {
+    current_password: string;
+    new_password: string;
+};
+
+export type StartTotp = {
+    label?: string;
+};
+
+export type ActivateTotp = {
+    code: string;
+};
+
+export type CreateAddress = {
+    name: string;
+    line1: string;
+    line2?: string;
+    city: string;
+    region?: string;
+    postal_code: string;
+    country_code: string;
+    tax_id?: string | null;
+    active?: boolean;
+};
+
+export type UpdateAddress = {
+    name?: string;
+    line1?: string;
+    line2?: string;
+    city?: string;
+    region?: string;
+    postal_code?: string;
+    country_code?: string;
+    tax_id?: string | null;
+    version: number;
+};
+
+export type UpdateBillingProfile = {
+    name?: string;
+    email?: string;
+    tax_id?: string;
+    version: number;
+};
+
+export type PermissionCheck = {
+    permissions: Array<PermissionKey>;
+    workspace_id?: Uuid;
+};
+
+export type AuditExport = {
+    start?: string;
+    end?: string;
+    actor_type?: 'control_user' | 'user' | 'client' | 'system';
+    action?: string;
+    target_type?: string;
+};
+
+export type CreateWebhook = {
+    uri: string;
+    event_filters?: Array<string>;
+};
+
+export type UpdateWebhook = {
+    uri?: string;
+    event_filters?: Array<string>;
+    enabled?: boolean;
+};
+
+export type CreateSenderIdentity = {
+    provider_id: Uuid;
+    email: string;
+    name?: string;
+    is_default?: boolean;
+};
+
+export type CreateNotificationTemplate = {
+    key: string;
+    locale?: Locale;
+    category: 'security' | 'billing' | 'transactional' | 'marketing';
+    subject_template: string;
+    text_template: string;
+    html_template?: string;
+    variable_schema?: {
+        [key: string]: unknown;
+    };
+};
+
+export type UpdateNotificationTemplate = {
+    category?: 'security' | 'billing' | 'transactional' | 'marketing';
+    subject_template?: string;
+    text_template?: string;
+    html_template?: string;
+    variable_schema?: {
+        [key: string]: unknown;
+    };
+};
+
+export type PreviewNotificationTemplate = {
+    variables: {
+        [key: string]: unknown;
+    };
+    user_id?: Uuid;
+    recipient?: string;
+};
+
+export type UpdateNotificationPreference = {
+    email_enabled: boolean;
+};
+
+export type UpdateStorageProvider = {
+    name?: string;
+    endpoint?: string;
+    region?: string;
+    force_path_style?: boolean;
+    public_bucket?: string;
+    private_bucket?: string;
+    public_base_url?: string;
+    inheritable?: boolean;
+    allow_private_endpoint?: boolean;
+    max_object_bytes?: number;
+    max_email_image_bytes?: number;
+    max_application_bytes?: number;
+    max_application_objects?: number;
+};
+
 export type ManagementApiStatus = {
     enabled: boolean;
     can_manage: boolean;
@@ -42,7 +1611,16 @@ export type UpdateOrganizationPolicy = {
     enabled_settings: OrganizationEnabledSettings;
 };
 
-export type OrganizationPolicy = UpdateOrganizationPolicy & {
+export type OrganizationPolicy = {
+    /**
+     * Null means unlimited.
+     */
+    max_applications: number | null;
+    /**
+     * Null means unlimited across all applications in the organization.
+     */
+    max_users: number | null;
+    enabled_settings: OrganizationEnabledSettings;
     organization_id: Uuid;
     usage: {
         applications: number;
@@ -137,22 +1715,16 @@ export type Problem = {
     detail?: string;
     code: string;
     request_id?: string;
-};
-
-export type Page = {
-    items: Array<unknown>;
-    next_cursor: string | null;
+    affected_users?: number;
 };
 
 export type OrganizationPage = {
-    items: Array<{
-        [key: string]: unknown;
-    }>;
+    items: Array<Organization>;
     next_cursor: string | null;
     /**
-     * The current operator's installation-wide role, or null for organization-only access.
+     * The current Platform user's installation-wide role, or null for organization-only access.
      */
-    installation_role: 'owner' | 'admin' | 'auditor' | null;
+    installation_role?: 'owner' | 'admin' | 'auditor' | null;
 };
 
 export type BootstrapRequest = {
@@ -160,13 +1732,58 @@ export type BootstrapRequest = {
     display_name?: string;
 };
 
-export type AcceptOrganizationInvitation = {
+export type AcceptControlUserInvitation = {
     display_name?: string;
+};
+
+export type CreateControlUserInvitation = {
+    email: string;
+    role: 'owner' | 'admin' | 'member' | 'auditor';
+    onboarding_method?: 'email' | 'google' | 'apple';
+    expires_in?: number;
+};
+
+export type ControlAuthPolicy = {
+    email_code_enabled: boolean;
+    magic_link_enabled: boolean;
+    password_enabled: boolean;
+};
+
+export type UpdateControlAuthPolicy = {
+    email_code_enabled: boolean;
+    magic_link_enabled: boolean;
+    password_enabled: boolean;
+    confirm_affected_users?: boolean;
+};
+
+export type ControlAuthMethods = {
+    email_code: boolean;
+    magic_link: boolean;
+    password: boolean;
+    providers: Array<'google' | 'apple'>;
+};
+
+export type ExternalAuthStart = {
+    provider: 'google' | 'apple';
+    authorize_url: string;
+    expires_in: number;
+};
+
+export type UpdateInstallationAuthProvider = {
+    inheritable?: boolean;
+    control_login_enabled?: boolean;
+    confirm_affected_users?: boolean;
 };
 
 export type ApplicationFlowConfig = {
     oauth_client_id: string;
+    /**
+     * Exact registered HTTPS, loopback HTTP, or public-client native application redirect URI.
+     */
     sign_in_redirect_uri: string;
+    /**
+     * Invitation destination using the same origin or native scheme authority as the sign-in redirect.
+     */
     invitation_redirect_uri: string;
 };
 
@@ -180,6 +1797,8 @@ export type ApplicationInternalConfig = {
     passwordless_enabled?: boolean;
     personal_api_keys_enabled?: boolean;
     delegation_enabled?: boolean;
+    user_invitations_enabled?: boolean;
+    custom_token_claim_keys?: Array<string>;
 };
 
 export type RuntimeAuthConfig = {
@@ -206,7 +1825,8 @@ export type PasswordSignIn = {
     email: string;
 };
 
-export type PasswordSignUp = PasswordSignIn & {
+export type PasswordSignUp = {
+    email: string;
     first_name?: string;
     last_name?: string;
     locale?: Locale;
@@ -278,11 +1898,100 @@ export type QueuedNotification = {
     fallback_used: boolean;
 };
 
+export type CreateInvitation = {
+    email: string;
+    workspace_id?: Uuid;
+    application_role_keys?: Array<string>;
+    workspace_role_keys?: Array<string>;
+    expires_in?: number;
+};
+
+export type ExchangeInvitation = unknown & {
+    invitation_id?: Uuid;
+    email?: string;
+};
+
+export type RedeemInvitation = {
+    authorization_code: string;
+    code_verifier: string;
+};
+
 export type RoleAssignment = unknown & {
     user_id?: Uuid;
     client_id?: Uuid;
     role_id: Uuid;
     workspace_id?: Uuid;
+};
+
+export type PermissionKey = string;
+
+export type RoleKey = string;
+
+export type CreateRole = {
+    key: RoleKey;
+    name: string;
+    scope: 'application' | 'workspace';
+    permissions: Array<PermissionKey>;
+};
+
+export type UpdateRole = {
+    name?: string;
+    permissions?: Array<PermissionKey>;
+};
+
+export type Role = {
+    key: RoleKey;
+    name: string;
+    scope: 'application' | 'workspace';
+    permissions: Array<PermissionKey>;
+    id: Uuid;
+    built_in: boolean;
+    version: number;
+};
+
+export type StructuredRoles = {
+    application: Array<RoleKey>;
+    workspaces: {
+        [key: string]: Array<RoleKey>;
+    };
+};
+
+export type CreatePermissionGrant = {
+    subject_type: 'user' | 'client';
+    subject_id: Uuid;
+    workspace_id?: Uuid;
+    permission: PermissionKey;
+    reason?: string;
+};
+
+export type PermissionGrant = {
+    subject_type: 'user' | 'client';
+    subject_id: Uuid;
+    workspace_id?: Uuid;
+    permission: PermissionKey;
+    reason?: string;
+    id: Uuid;
+    application_id: Uuid;
+    canonical_scope: string;
+    status: 'active' | 'revoked';
+    version: number;
+    created_at: string;
+    revoked_at?: string | null;
+};
+
+export type EffectiveAccess = {
+    subject_type: 'user' | 'client';
+    subject_id: Uuid;
+    roles: StructuredRoles;
+    scopes: Array<string>;
+    provenance: Array<{
+        scope: string;
+        source: 'role_marker' | 'role' | 'direct' | 'workspace_owner';
+        role_key?: RoleKey;
+        grant_id?: Uuid;
+        workspace_id?: Uuid;
+        permission?: PermissionKey;
+    }>;
 };
 
 export type OwnershipTransfer = {
@@ -297,11 +2006,11 @@ export type OwnershipTransferResult = {
     previous_owner_disposition: 'member' | 'remove';
 };
 
-export type OperatorPasswordLogin = {
+export type ControlUserPasswordLogin = {
     email: string;
 };
 
-export type OperatorPasswordChange = {
+export type ControlUserPasswordChange = {
     current_password?: string;
     new_password: string;
 };
@@ -473,7 +2182,7 @@ export type LocalCheckout = {
     subject_type?: 'user' | 'workspace';
     subject_id?: Uuid;
     address_id?: Uuid;
-    local_reference?: string;
+    external_reference?: string;
 };
 
 export type CreateBillingProvider = {
@@ -493,6 +2202,245 @@ export type CreateCheckout = {
     payment_methods?: Array<'card' | 'twint'>;
     success_uri: string;
     cancel_uri: string;
+    external_reference?: string;
+};
+
+export type SetupSessionWritable = {
+    access_token: string;
+    refresh_token: string;
+    token_type: 'Bearer';
+    expires_in: number;
+    control_user_id: Uuid;
+};
+
+export type SetupCompletionWritable = {
+    access_token: string;
+    refresh_token: string;
+    token_type: 'Bearer';
+    expires_in: number;
+    completed: true;
+};
+
+export type ControlUserInvitationWritable = {
+    id: Uuid;
+    organization_id?: string | null;
+    email: string;
+    role: 'owner' | 'admin' | 'member' | 'auditor';
+    onboarding_method: 'email' | 'google' | 'apple';
+    status?: 'pending' | 'accepted' | 'revoked' | 'expired';
+    expires_at: string;
+    invitation_token?: string;
+    token_returned_once?: boolean;
+    invited_by?: string;
+    accepted_by?: string | null;
+    accepted_at?: string | null;
+    revoked_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type SecretCredentialWritable = {
+    id?: Uuid;
+    client_id?: string;
+    secret: string;
+    secret_returned_once: boolean;
+    previous_secret_valid_for_seconds?: number;
+};
+
+export type OAuthClientWritable = {
+    id: Uuid;
+    client_id: string;
+    name: string;
+    client_type: 'public' | 'confidential' | 'machine';
+    redirect_uris?: Array<string>;
+    post_logout_redirect_uris?: Array<string>;
+    allowed_scopes?: Array<string>;
+    allowed_grants?: Array<string>;
+    client_secret?: string | null;
+    secret?: string;
+    secret_returned_once?: boolean;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type DelegationWritable = {
+    id: Uuid;
+    user_id: Uuid;
+    workspace_id?: string | null;
+    scopes: Array<string>;
+    reason: string;
+    status: 'pending' | 'exchanged' | 'revoked' | 'expired';
+    exchange_code?: string;
+    expires_at: string;
+    created_at?: string;
+};
+
+export type ApplicationInvitationWritable = {
+    id: Uuid;
+    application_id: Uuid;
+    workspace_id?: string | null;
+    email: string;
+    application_role_keys?: Array<RoleKey>;
+    workspace_role_keys?: Array<RoleKey>;
+    status: 'pending' | 'accepted' | 'revoked' | 'expired';
+    code?: string;
+    link_token?: string;
+    link?: string;
+    expires_at: string;
+    accepted_user_id?: string | null;
+    created_at?: string;
+};
+
+export type InvitationExchangeResultWritable = {
+    authorization_code: string;
+    redirect_uri: string;
+    expires_in: number;
+    mfa_challenge_id?: string | null;
+};
+
+export type PersonalApiKeyCreatedWritable = {
+    token: string;
+    api_key: {
+        id: Uuid;
+        label: string;
+        token_prefix: string;
+        scopes: Array<string>;
+        expires_at: string;
+    };
+};
+
+export type MfaEnrollmentWritable = {
+    method_id: Uuid;
+    secret: string;
+    provisioning_uri: string;
+};
+
+export type MfaActivationWritable = {
+    method_id: Uuid;
+    recovery_codes: Array<string>;
+};
+
+export type RecoveryCodesWritable = {
+    recovery_codes: Array<string>;
+};
+
+export type WebhookWritable = {
+    id: Uuid;
+    uri: string;
+    event_filters: Array<string>;
+    secret?: string;
+    secret_returned_once?: boolean;
+    disabled: boolean;
+    disabled_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+};
+
+export type ControlUserInvitationPageWritable = {
+    items: Array<ControlUserInvitationWritable>;
+    next_cursor: string | null;
+};
+
+export type OAuthClientPageWritable = {
+    items: Array<OAuthClientWritable>;
+    next_cursor: string | null;
+};
+
+export type DelegationPageWritable = {
+    items: Array<DelegationWritable>;
+    next_cursor: string | null;
+};
+
+export type ApplicationInvitationPageWritable = {
+    items: Array<ApplicationInvitationWritable>;
+    next_cursor: string | null;
+};
+
+export type WebhookPageWritable = {
+    items: Array<WebhookWritable>;
+    next_cursor: string | null;
+};
+
+export type ConfigureAuthProviderWritable = {
+    client_id: string;
+    client_secret?: string;
+    team_id?: string;
+    key_id?: string;
+    private_key_pem?: string;
+    inheritable?: boolean;
+    control_login_enabled?: boolean;
+};
+
+export type UpdateSmtpProviderWritable = {
+    name?: string;
+    host?: string;
+    port?: number;
+    username?: string;
+    password?: string;
+    tls_mode?: 'starttls' | 'implicit_tls';
+    sender_email?: string;
+    sender_name?: string;
+    inheritable?: boolean;
+};
+
+export type UpdateBillingProviderWritable = {
+    secret?: string;
+    webhook_secret?: string;
+    metadata?: {
+        [key: string]: unknown;
+    };
+    inheritable?: boolean;
+};
+
+export type CreateUserWritable = {
+    email: string;
+    password?: string;
+    first_name?: string;
+    last_name?: string;
+    username?: string | null;
+    locale?: Locale;
+    email_verified?: boolean;
+    is_org_verified?: boolean;
+    custom_attributes?: {
+        [key: string]: unknown;
+    };
+};
+
+export type PasswordResetVerifyWritable = {
+    challenge_id: Uuid;
+    code?: string;
+    link_token?: string;
+    password: string;
+};
+
+export type VerifyMfaWritable = unknown & {
+    challenge_id: Uuid;
+    code?: string;
+    recovery_code?: string;
+};
+
+export type AccountChallengeWritable = {
+    challenge_id: Uuid;
+    code?: string;
+    link_token?: string;
+};
+
+export type UpdateStorageProviderWritable = {
+    name?: string;
+    endpoint?: string;
+    region?: string;
+    access_key_id?: string;
+    secret_access_key?: string;
+    force_path_style?: boolean;
+    public_bucket?: string;
+    private_bucket?: string;
+    public_base_url?: string;
+    inheritable?: boolean;
+    allow_private_endpoint?: boolean;
+    max_object_bytes?: number;
+    max_email_image_bytes?: number;
+    max_application_bytes?: number;
+    max_application_objects?: number;
 };
 
 export type CreateStorageProviderWritable = unknown & {
@@ -531,7 +2479,7 @@ export type BootstrapRequestWritable = {
     display_name?: string;
 };
 
-export type AcceptOrganizationInvitationWritable = {
+export type AcceptControlUserInvitationWritable = {
     invitation_token: string;
     display_name?: string;
 };
@@ -541,7 +2489,9 @@ export type PasswordSignInWritable = {
     password: string;
 };
 
-export type PasswordSignUpWritable = PasswordSignInWritable & {
+export type PasswordSignUpWritable = {
+    email: string;
+    password: string;
     first_name?: string;
     last_name?: string;
     locale?: Locale;
@@ -560,7 +2510,15 @@ export type TokenResponseWritable = {
     expires_in: number;
 };
 
-export type OperatorPasswordLoginWritable = {
+export type ExchangeInvitationWritable = unknown & {
+    invitation_id?: Uuid;
+    email?: string;
+    code?: string;
+    link_token?: string;
+    code_challenge: string;
+};
+
+export type ControlUserPasswordLoginWritable = {
     email: string;
     password: string;
 };
@@ -593,6 +2551,10 @@ export type ForceDelete = boolean;
  * Explicit accessible workspace whose grants are merged with the current user's grants.
  */
 export type WorkspaceIdQuery = Uuid;
+
+export type PermissionSubjectType = 'user' | 'client';
+
+export type PermissionSubjectId = Uuid;
 
 export type OrganizationId = Uuid;
 
@@ -631,6 +2593,12 @@ export type OAuthCodeChallenge = string;
 
 export type OAuthCodeChallengeMethod = 'S256';
 
+export type OptionalPermissionSubjectType = 'user' | 'client';
+
+export type OptionalPermissionSubjectId = Uuid;
+
+export type PermissionGrantStatus = 'active' | 'revoked';
+
 export type Named = {
     name: string;
     slug: string;
@@ -638,10 +2606,6 @@ export type Named = {
 
 export type Rename = {
     name: string;
-};
-
-export type Object = {
-    [key: string]: unknown;
 };
 
 export type ProviderInheritance = {
@@ -664,6 +2628,8 @@ export type InternalApplicationConfig = ApplicationInternalConfig;
 
 export type RoleAssignment2 = RoleAssignment;
 
+export type PermissionGrantBody = CreatePermissionGrant;
+
 export type OwnershipTransfer2 = OwnershipTransfer;
 
 export type SmtpProvider = {
@@ -678,7 +2644,7 @@ export type SmtpProvider = {
     inheritable?: boolean;
 };
 
-export type StorageProvider = CreateStorageProviderWritable;
+export type StorageProviderBody = CreateStorageProviderWritable;
 
 export type StorageUpload = CreateStorageUpload;
 
@@ -723,8 +2689,10 @@ export type HealthResponses = {
     /**
      * Process is alive
      */
-    200: unknown;
+    200: HealthStatus;
 };
+
+export type HealthResponse = HealthResponses[keyof HealthResponses];
 
 export type ReadinessData = {
     body?: never;
@@ -746,8 +2714,10 @@ export type ReadinessResponses = {
     /**
      * Process is ready
      */
-    200: unknown;
+    200: HealthStatus;
 };
+
+export type ReadinessResponse = ReadinessResponses[keyof ReadinessResponses];
 
 export type VersionData = {
     body?: never;
@@ -760,9 +2730,7 @@ export type VersionResponses = {
     /**
      * Build information
      */
-    200: {
-        [key: string]: unknown;
-    };
+    200: VersionInfo;
 };
 
 export type VersionResponse = VersionResponses[keyof VersionResponses];
@@ -776,12 +2744,9 @@ export type SetupStatusData = {
 
 export type SetupStatusResponses = {
     /**
-     * Setup and operator login availability
+     * Setup and Platform user login availability
      */
-    200: {
-        available: boolean;
-        operator_email_login_available: boolean;
-    };
+    200: SetupStatus;
 };
 
 export type SetupStatusResponse = SetupStatusResponses[keyof SetupStatusResponses];
@@ -804,13 +2769,15 @@ export type BootstrapError = BootstrapErrors[keyof BootstrapErrors];
 
 export type BootstrapResponses = {
     /**
-     * Setup-only operator session
+     * Setup-only Platform user session
      */
-    201: unknown;
+    201: SetupSession;
 };
 
+export type BootstrapResponse = BootstrapResponses[keyof BootstrapResponses];
+
 export type CompleteSetupData = {
-    body?: never;
+    body?: CompleteSetup;
     path?: never;
     query?: never;
     url: '/v1/setup/complete';
@@ -821,6 +2788,10 @@ export type CompleteSetupErrors = {
      * RFC 9457 problem
      */
     409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
 };
 
 export type CompleteSetupError = CompleteSetupErrors[keyof CompleteSetupErrors];
@@ -829,8 +2800,10 @@ export type CompleteSetupResponses = {
     /**
      * Setup completed
      */
-    200: unknown;
+    200: SetupCompletion;
 };
+
+export type CompleteSetupResponse = CompleteSetupResponses[keyof CompleteSetupResponses];
 
 export type CreateSetupNotificationProviderData = {
     body: SmtpProvider;
@@ -843,167 +2816,174 @@ export type CreateSetupNotificationProviderResponses = {
     /**
      * Installation SMTP provider stored
      */
-    201: unknown;
+    201: NotificationProvider;
 };
 
-export type StartOperatorEmailLoginData = {
-    body: {
-        email: string;
-        delivery?: 'code' | 'link' | 'both';
-    };
+export type CreateSetupNotificationProviderResponse = CreateSetupNotificationProviderResponses[keyof CreateSetupNotificationProviderResponses];
+
+export type StartControlUserEmailLoginData = {
+    body: ControlEmailStart;
     path?: never;
     query?: never;
     url: '/v1/control/auth/email/start';
 };
 
-export type StartOperatorEmailLoginResponses = {
+export type StartControlUserEmailLoginResponses = {
     /**
-     * Enumeration-safe operator challenge accepted
+     * Enumeration-safe Platform user challenge accepted
      */
-    202: unknown;
+    202: ChallengeAccepted;
 };
 
-export type VerifyOperatorEmailLoginData = {
+export type StartControlUserEmailLoginResponse = StartControlUserEmailLoginResponses[keyof StartControlUserEmailLoginResponses];
+
+export type VerifyControlUserEmailLoginData = {
     body: EmailVerifyWritable;
     path?: never;
     query?: never;
     url: '/v1/control/auth/email/verify';
 };
 
-export type VerifyOperatorEmailLoginResponses = {
+export type VerifyControlUserEmailLoginResponses = {
     /**
-     * Operator cookie session created
+     * Platform user cookie session created
      */
-    200: unknown;
+    200: TokenResponse;
 };
 
-export type LoginOperatorWithPasswordData = {
-    body: OperatorPasswordLoginWritable;
+export type VerifyControlUserEmailLoginResponse = VerifyControlUserEmailLoginResponses[keyof VerifyControlUserEmailLoginResponses];
+
+export type LoginControlUserWithPasswordData = {
+    body: ControlUserPasswordLoginWritable;
     path?: never;
     query?: never;
     url: '/v1/control/auth/password';
 };
 
-export type LoginOperatorWithPasswordErrors = {
+export type LoginControlUserWithPasswordErrors = {
     /**
      * RFC 9457 problem
      */
     401: Problem;
 };
 
-export type LoginOperatorWithPasswordError = LoginOperatorWithPasswordErrors[keyof LoginOperatorWithPasswordErrors];
+export type LoginControlUserWithPasswordError = LoginControlUserWithPasswordErrors[keyof LoginControlUserWithPasswordErrors];
 
-export type LoginOperatorWithPasswordResponses = {
+export type LoginControlUserWithPasswordResponses = {
     /**
-     * Operator cookie session created
+     * Platform user cookie session created
      */
-    200: unknown;
+    200: TokenResponse;
 };
 
-export type ChangeOperatorPasswordData = {
-    body: OperatorPasswordChange;
+export type LoginControlUserWithPasswordResponse = LoginControlUserWithPasswordResponses[keyof LoginControlUserWithPasswordResponses];
+
+export type ChangeControlUserPasswordData = {
+    body: ControlUserPasswordChange;
     path?: never;
     query?: never;
     url: '/v1/control/auth/password';
 };
 
-export type ChangeOperatorPasswordErrors = {
+export type ChangeControlUserPasswordErrors = {
     /**
      * RFC 9457 problem
      */
     409: Problem;
 };
 
-export type ChangeOperatorPasswordError = ChangeOperatorPasswordErrors[keyof ChangeOperatorPasswordErrors];
+export type ChangeControlUserPasswordError = ChangeControlUserPasswordErrors[keyof ChangeControlUserPasswordErrors];
 
-export type ChangeOperatorPasswordResponses = {
+export type ChangeControlUserPasswordResponses = {
     /**
-     * Password stored and other operator sessions revoked
+     * Password stored and other Platform user sessions revoked
      */
     204: void;
 };
 
-export type ChangeOperatorPasswordResponse = ChangeOperatorPasswordResponses[keyof ChangeOperatorPasswordResponses];
+export type ChangeControlUserPasswordResponse = ChangeControlUserPasswordResponses[keyof ChangeControlUserPasswordResponses];
 
-export type GetOperatorAccountData = {
+export type GetControlUserAccountData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/v1/control/auth/me';
 };
 
-export type GetOperatorAccountResponses = {
+export type GetControlUserAccountResponses = {
     /**
-     * Current operator profile and sign-in methods
+     * Current Platform user profile and sign-in methods
      */
-    200: unknown;
+    200: ControlUserAccount;
 };
 
-export type UpdateOperatorAccountData = {
-    body: {
-        display_name: string;
-    };
+export type GetControlUserAccountResponse = GetControlUserAccountResponses[keyof GetControlUserAccountResponses];
+
+export type UpdateControlUserAccountData = {
+    body: UpdateControlUserAccount;
     path?: never;
     query?: never;
     url: '/v1/control/auth/me';
 };
 
-export type UpdateOperatorAccountResponses = {
+export type UpdateControlUserAccountResponses = {
     /**
-     * Operator profile updated
+     * Platform user profile updated
      */
     204: void;
 };
 
-export type UpdateOperatorAccountResponse = UpdateOperatorAccountResponses[keyof UpdateOperatorAccountResponses];
+export type UpdateControlUserAccountResponse = UpdateControlUserAccountResponses[keyof UpdateControlUserAccountResponses];
 
-export type LogoutOperatorData = {
+export type LogoutControlUserData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/v1/control/auth/logout';
 };
 
-export type LogoutOperatorResponses = {
+export type LogoutControlUserResponses = {
     /**
-     * Operator session revoked
+     * Platform user session revoked
      */
     204: void;
 };
 
-export type LogoutOperatorResponse = LogoutOperatorResponses[keyof LogoutOperatorResponses];
+export type LogoutControlUserResponse = LogoutControlUserResponses[keyof LogoutControlUserResponses];
 
-export type RefreshOperatorSessionData = {
+export type RefreshControlUserSessionData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/v1/control/auth/token/refresh';
 };
 
-export type RefreshOperatorSessionResponses = {
+export type RefreshControlUserSessionResponses = {
     /**
-     * Operator session credential rotated
+     * Platform user session credential rotated
      */
-    200: unknown;
+    200: TokenResponse;
 };
 
-export type ListOperatorSessionsData = {
+export type RefreshControlUserSessionResponse = RefreshControlUserSessionResponses[keyof RefreshControlUserSessionResponses];
+
+export type ListControlUserSessionsData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/v1/control/auth/sessions';
 };
 
-export type ListOperatorSessionsResponses = {
+export type ListControlUserSessionsResponses = {
     /**
-     * Cursor page
+     * Successful listControlUserSessions response.
      */
-    200: Page;
+    200: SessionPage;
 };
 
-export type ListOperatorSessionsResponse = ListOperatorSessionsResponses[keyof ListOperatorSessionsResponses];
+export type ListControlUserSessionsResponse = ListControlUserSessionsResponses[keyof ListControlUserSessionsResponses];
 
-export type RevokeOperatorSessionData = {
+export type RevokeControlUserSessionData = {
     body?: never;
     path: {
         session_id: Uuid;
@@ -1012,53 +2992,152 @@ export type RevokeOperatorSessionData = {
     url: '/v1/control/auth/sessions/{session_id}';
 };
 
-export type RevokeOperatorSessionResponses = {
+export type RevokeControlUserSessionResponses = {
     /**
-     * Operator session revoked
+     * Platform user session revoked
      */
     204: void;
 };
 
-export type RevokeOperatorSessionResponse = RevokeOperatorSessionResponses[keyof RevokeOperatorSessionResponses];
+export type RevokeControlUserSessionResponse = RevokeControlUserSessionResponses[keyof RevokeControlUserSessionResponses];
 
-export type LogoutAllOperatorSessionsData = {
+export type LogoutAllControlUserSessionsData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/v1/control/auth/logout-all';
 };
 
-export type LogoutAllOperatorSessionsResponses = {
+export type LogoutAllControlUserSessionsResponses = {
     /**
-     * All operator sessions revoked
+     * All Platform user sessions revoked
      */
     204: void;
 };
 
-export type LogoutAllOperatorSessionsResponse = LogoutAllOperatorSessionsResponses[keyof LogoutAllOperatorSessionsResponses];
+export type LogoutAllControlUserSessionsResponse = LogoutAllControlUserSessionsResponses[keyof LogoutAllControlUserSessionsResponses];
 
-export type AcceptOrganizationInvitationData = {
-    body: AcceptOrganizationInvitationWritable;
+export type GetControlAuthMethodsData = {
+    body?: never;
     path?: never;
     query?: never;
-    url: '/v1/control/organization-invitations/accept';
+    url: '/v1/control/auth/methods';
 };
 
-export type AcceptOrganizationInvitationErrors = {
+export type GetControlAuthMethodsResponses = {
+    /**
+     * Available Platform user sign-in methods
+     */
+    200: ControlAuthMethods;
+};
+
+export type GetControlAuthMethodsResponse = GetControlAuthMethodsResponses[keyof GetControlAuthMethodsResponses];
+
+export type StartControlExternalLoginData = {
+    body?: never;
+    path: {
+        provider: 'google' | 'apple';
+    };
+    query?: never;
+    url: '/v1/control/auth/providers/{provider}/start';
+};
+
+export type StartControlExternalLoginResponses = {
+    /**
+     * External Platform sign-in started
+     */
+    201: ExternalAuthStart;
+};
+
+export type StartControlExternalLoginResponse = StartControlExternalLoginResponses[keyof StartControlExternalLoginResponses];
+
+export type LinkControlExternalIdentityData = {
+    body?: never;
+    path: {
+        provider: 'google' | 'apple';
+    };
+    query?: never;
+    url: '/v1/control/auth/providers/{provider}/link';
+};
+
+export type LinkControlExternalIdentityResponses = {
+    /**
+     * External Platform identity link started
+     */
+    201: ExternalAuthStart;
+};
+
+export type LinkControlExternalIdentityResponse = LinkControlExternalIdentityResponses[keyof LinkControlExternalIdentityResponses];
+
+export type UnlinkControlExternalIdentityData = {
+    body?: never;
+    path: {
+        identity_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/auth/identities/{identity_id}';
+};
+
+export type UnlinkControlExternalIdentityErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+};
+
+export type UnlinkControlExternalIdentityError = UnlinkControlExternalIdentityErrors[keyof UnlinkControlExternalIdentityErrors];
+
+export type UnlinkControlExternalIdentityResponses = {
+    /**
+     * External Platform identity unlinked
+     */
+    204: void;
+};
+
+export type UnlinkControlExternalIdentityResponse = UnlinkControlExternalIdentityResponses[keyof UnlinkControlExternalIdentityResponses];
+
+export type AcceptControlUserInvitationData = {
+    body: AcceptControlUserInvitationWritable;
+    path?: never;
+    query?: never;
+    url: '/v1/control/invitations/accept';
+};
+
+export type AcceptControlUserInvitationErrors = {
     /**
      * RFC 9457 problem
      */
     401: Problem;
 };
 
-export type AcceptOrganizationInvitationError = AcceptOrganizationInvitationErrors[keyof AcceptOrganizationInvitationErrors];
+export type AcceptControlUserInvitationError = AcceptControlUserInvitationErrors[keyof AcceptControlUserInvitationErrors];
 
-export type AcceptOrganizationInvitationResponses = {
+export type AcceptControlUserInvitationResponses = {
     /**
-     * Invitation accepted and operator cookie issued
+     * Invitation accepted and Platform user cookie issued
      */
-    200: unknown;
+    200: TokenResponse;
 };
+
+export type AcceptControlUserInvitationResponse = AcceptControlUserInvitationResponses[keyof AcceptControlUserInvitationResponses];
+
+export type StartControlInvitationExternalLoginData = {
+    body: ControlInvitationProviderStart;
+    path: {
+        provider: 'google' | 'apple';
+    };
+    query?: never;
+    url: '/v1/control/invitations/providers/{provider}/start';
+};
+
+export type StartControlInvitationExternalLoginResponses = {
+    /**
+     * Provider-backed invitation acceptance started
+     */
+    201: ExternalAuthStart;
+};
+
+export type StartControlInvitationExternalLoginResponse = StartControlInvitationExternalLoginResponses[keyof StartControlInvitationExternalLoginResponses];
 
 export type ListInstallationNotificationProvidersData = {
     body?: never;
@@ -1069,9 +3148,9 @@ export type ListInstallationNotificationProvidersData = {
 
 export type ListInstallationNotificationProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listInstallationNotificationProviders response.
      */
-    200: Page;
+    200: NotificationProviderPage;
 };
 
 export type ListInstallationNotificationProvidersResponse = ListInstallationNotificationProvidersResponses[keyof ListInstallationNotificationProvidersResponses];
@@ -1087,8 +3166,10 @@ export type CreateInstallationNotificationProviderResponses = {
     /**
      * Installation SMTP provider stored
      */
-    201: unknown;
+    201: NotificationProvider;
 };
+
+export type CreateInstallationNotificationProviderResponse = CreateInstallationNotificationProviderResponses[keyof CreateInstallationNotificationProviderResponses];
 
 export type DisableInstallationNotificationProviderData = {
     body?: never;
@@ -1139,11 +3220,13 @@ export type GetInstallationNotificationProviderResponses = {
     /**
      * Installation notification provider metadata
      */
-    200: unknown;
+    200: NotificationProvider;
 };
 
+export type GetInstallationNotificationProviderResponse = GetInstallationNotificationProviderResponses[keyof GetInstallationNotificationProviderResponses];
+
 export type UpdateInstallationNotificationProviderData = {
-    body: Object;
+    body: UpdateSmtpProviderWritable;
     path: {
         provider_id: Uuid;
     };
@@ -1164,8 +3247,10 @@ export type UpdateInstallationNotificationProviderResponses = {
     /**
      * Installation notification provider updated
      */
-    200: unknown;
+    200: NotificationProvider;
 };
+
+export type UpdateInstallationNotificationProviderResponse = UpdateInstallationNotificationProviderResponses[keyof UpdateInstallationNotificationProviderResponses];
 
 export type VerifyInstallationNotificationProviderData = {
     body?: never;
@@ -1195,7 +3280,7 @@ export type VerifyInstallationNotificationProviderResponses = {
 export type VerifyInstallationNotificationProviderResponse = VerifyInstallationNotificationProviderResponses[keyof VerifyInstallationNotificationProviderResponses];
 
 export type TestInstallationNotificationProviderData = {
-    body: Object;
+    body: TestNotificationProvider;
     headers?: {
         'Idempotency-Key'?: string;
     };
@@ -1219,8 +3304,10 @@ export type TestInstallationNotificationProviderResponses = {
     /**
      * Installation SMTP test queued
      */
-    202: unknown;
+    202: NotificationQueued;
 };
+
+export type TestInstallationNotificationProviderResponse = TestInstallationNotificationProviderResponses[keyof TestInstallationNotificationProviderResponses];
 
 export type ListInstallationAuthProvidersData = {
     body?: never;
@@ -1231,9 +3318,9 @@ export type ListInstallationAuthProvidersData = {
 
 export type ListInstallationAuthProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listInstallationAuthProviders response.
      */
-    200: Page;
+    200: AuthProviderPage;
 };
 
 export type ListInstallationAuthProvidersResponse = ListInstallationAuthProvidersResponses[keyof ListInstallationAuthProvidersResponses];
@@ -1257,7 +3344,7 @@ export type DisableInstallationAuthProviderResponses = {
 export type DisableInstallationAuthProviderResponse = DisableInstallationAuthProviderResponses[keyof DisableInstallationAuthProviderResponses];
 
 export type UpdateInstallationAuthProviderData = {
-    body: ProviderInheritance;
+    body: UpdateInstallationAuthProvider;
     path: {
         provider: 'google' | 'apple';
     };
@@ -1276,7 +3363,7 @@ export type UpdateInstallationAuthProviderError = UpdateInstallationAuthProvider
 
 export type UpdateInstallationAuthProviderResponses = {
     /**
-     * Installation authentication provider inheritance updated
+     * Installation authentication provider settings updated
      */
     204: void;
 };
@@ -1284,7 +3371,7 @@ export type UpdateInstallationAuthProviderResponses = {
 export type UpdateInstallationAuthProviderResponse = UpdateInstallationAuthProviderResponses[keyof UpdateInstallationAuthProviderResponses];
 
 export type ConfigureInstallationAuthProviderData = {
-    body: Object;
+    body: ConfigureAuthProviderWritable;
     path: {
         provider: 'google' | 'apple';
     };
@@ -1296,8 +3383,10 @@ export type ConfigureInstallationAuthProviderResponses = {
     /**
      * Installation authentication provider configured
      */
-    200: unknown;
+    200: AuthProvider;
 };
+
+export type ConfigureInstallationAuthProviderResponse = ConfigureInstallationAuthProviderResponses[keyof ConfigureInstallationAuthProviderResponses];
 
 export type ListInstallationBillingProvidersData = {
     body?: never;
@@ -1308,9 +3397,9 @@ export type ListInstallationBillingProvidersData = {
 
 export type ListInstallationBillingProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listInstallationBillingProviders response.
      */
-    200: Page;
+    200: BillingProviderPage;
 };
 
 export type ListInstallationBillingProvidersResponse = ListInstallationBillingProvidersResponses[keyof ListInstallationBillingProvidersResponses];
@@ -1326,8 +3415,10 @@ export type CreateInstallationBillingProviderResponses = {
     /**
      * Installation billing provider configured
      */
-    201: unknown;
+    201: BillingProvider;
 };
+
+export type CreateInstallationBillingProviderResponse = CreateInstallationBillingProviderResponses[keyof CreateInstallationBillingProviderResponses];
 
 export type DisableInstallationBillingProviderData = {
     body?: never;
@@ -1360,11 +3451,13 @@ export type GetInstallationBillingProviderResponses = {
     /**
      * Secret-free installation billing provider
      */
-    200: unknown;
+    200: BillingProvider;
 };
 
+export type GetInstallationBillingProviderResponse = GetInstallationBillingProviderResponses[keyof GetInstallationBillingProviderResponses];
+
 export type UpdateInstallationBillingProviderData = {
-    body: Object;
+    body: UpdateBillingProviderWritable;
     path: {
         provider_id: Uuid;
     };
@@ -1399,71 +3492,166 @@ export type VerifyInstallationBillingProviderResponses = {
 
 export type VerifyInstallationBillingProviderResponse = VerifyInstallationBillingProviderResponses[keyof VerifyInstallationBillingProviderResponses];
 
-export type ListInstallationOperatorsData = {
+export type ListInstallationControlUsersData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/v1/control/installation/operators';
+    url: '/v1/control/installation/users';
 };
 
-export type ListInstallationOperatorsResponses = {
+export type ListInstallationControlUsersResponses = {
     /**
-     * Cursor page
+     * Successful listInstallationControlUsers response.
      */
-    200: Page;
+    200: ControlUserPage;
 };
 
-export type ListInstallationOperatorsResponse = ListInstallationOperatorsResponses[keyof ListInstallationOperatorsResponses];
+export type ListInstallationControlUsersResponse = ListInstallationControlUsersResponses[keyof ListInstallationControlUsersResponses];
 
-export type CreateInstallationOperatorData = {
-    body: Object;
-    path?: never;
-    query?: never;
-    url: '/v1/control/installation/operators';
-};
-
-export type CreateInstallationOperatorResponses = {
-    /**
-     * Installation operator and role created
-     */
-    201: unknown;
-};
-
-export type DeleteInstallationOperatorData = {
+export type DeleteInstallationControlUserData = {
     body?: never;
     path: {
-        operator_id: Uuid;
+        control_user_id: Uuid;
     };
     query?: never;
-    url: '/v1/control/installation/operators/{operator_id}';
+    url: '/v1/control/installation/users/{control_user_id}';
 };
 
-export type DeleteInstallationOperatorResponses = {
+export type DeleteInstallationControlUserResponses = {
     /**
      * Installation role removed and sessions revoked
      */
     204: void;
 };
 
-export type DeleteInstallationOperatorResponse = DeleteInstallationOperatorResponses[keyof DeleteInstallationOperatorResponses];
+export type DeleteInstallationControlUserResponse = DeleteInstallationControlUserResponses[keyof DeleteInstallationControlUserResponses];
 
-export type UpdateInstallationOperatorData = {
-    body: Object;
+export type UpdateInstallationControlUserData = {
+    body: MembershipRole;
     path: {
-        operator_id: Uuid;
+        control_user_id: Uuid;
     };
     query?: never;
-    url: '/v1/control/installation/operators/{operator_id}';
+    url: '/v1/control/installation/users/{control_user_id}';
 };
 
-export type UpdateInstallationOperatorResponses = {
+export type UpdateInstallationControlUserResponses = {
     /**
      * Installation role updated
      */
     204: void;
 };
 
-export type UpdateInstallationOperatorResponse = UpdateInstallationOperatorResponses[keyof UpdateInstallationOperatorResponses];
+export type UpdateInstallationControlUserResponse = UpdateInstallationControlUserResponses[keyof UpdateInstallationControlUserResponses];
+
+export type ListInstallationControlUserInvitationsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/invitations';
+};
+
+export type ListInstallationControlUserInvitationsResponses = {
+    /**
+     * Successful listInstallationControlUserInvitations response.
+     */
+    200: ControlUserInvitationPage;
+};
+
+export type ListInstallationControlUserInvitationsResponse = ListInstallationControlUserInvitationsResponses[keyof ListInstallationControlUserInvitationsResponses];
+
+export type CreateInstallationControlUserInvitationData = {
+    body: CreateControlUserInvitation;
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/invitations';
+};
+
+export type CreateInstallationControlUserInvitationResponses = {
+    /**
+     * Platform user invitation created and credential returned once
+     */
+    201: ControlUserInvitation;
+};
+
+export type CreateInstallationControlUserInvitationResponse = CreateInstallationControlUserInvitationResponses[keyof CreateInstallationControlUserInvitationResponses];
+
+export type ResendInstallationControlUserInvitationData = {
+    body?: UpdateControlInvitationMethod;
+    path: {
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/invitations/{invitation_id}/resend';
+};
+
+export type ResendInstallationControlUserInvitationResponses = {
+    /**
+     * Platform user invitation rotated
+     */
+    200: ControlUserInvitation;
+};
+
+export type ResendInstallationControlUserInvitationResponse = ResendInstallationControlUserInvitationResponses[keyof ResendInstallationControlUserInvitationResponses];
+
+export type RevokeInstallationControlUserInvitationData = {
+    body?: never;
+    path: {
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/installation/invitations/{invitation_id}';
+};
+
+export type RevokeInstallationControlUserInvitationResponses = {
+    /**
+     * Platform user invitation revoked
+     */
+    204: void;
+};
+
+export type RevokeInstallationControlUserInvitationResponse = RevokeInstallationControlUserInvitationResponses[keyof RevokeInstallationControlUserInvitationResponses];
+
+export type GetControlAuthPolicyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/auth-policy';
+};
+
+export type GetControlAuthPolicyResponses = {
+    /**
+     * Platform authentication policy
+     */
+    200: ControlAuthPolicy;
+};
+
+export type GetControlAuthPolicyResponse = GetControlAuthPolicyResponses[keyof GetControlAuthPolicyResponses];
+
+export type UpdateControlAuthPolicyData = {
+    body: UpdateControlAuthPolicy;
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/auth-policy';
+};
+
+export type UpdateControlAuthPolicyErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+};
+
+export type UpdateControlAuthPolicyError = UpdateControlAuthPolicyErrors[keyof UpdateControlAuthPolicyErrors];
+
+export type UpdateControlAuthPolicyResponses = {
+    /**
+     * Platform authentication policy updated
+     */
+    204: void;
+};
+
+export type UpdateControlAuthPolicyResponse = UpdateControlAuthPolicyResponses[keyof UpdateControlAuthPolicyResponses];
 
 export type ListSigningKeysData = {
     body?: never;
@@ -1474,9 +3662,9 @@ export type ListSigningKeysData = {
 
 export type ListSigningKeysResponses = {
     /**
-     * Cursor page
+     * Successful listSigningKeys response.
      */
-    200: Page;
+    200: SigningKeyPage;
 };
 
 export type ListSigningKeysResponse = ListSigningKeysResponses[keyof ListSigningKeysResponses];
@@ -1492,8 +3680,10 @@ export type RotateSigningKeyResponses = {
     /**
      * New installation signing key activated
      */
-    201: unknown;
+    201: SigningKey;
 };
+
+export type RotateSigningKeyResponse = RotateSigningKeyResponses[keyof RotateSigningKeyResponses];
 
 export type GetManagementApiStatusData = {
     body?: never;
@@ -1512,9 +3702,7 @@ export type GetManagementApiStatusResponses = {
 export type GetManagementApiStatusResponse = GetManagementApiStatusResponses[keyof GetManagementApiStatusResponses];
 
 export type UpdateManagementApiStatusData = {
-    body: {
-        enabled: boolean;
-    };
+    body: UpdateManagementApi;
     path?: never;
     query?: never;
     url: '/v1/control/installation/management-api';
@@ -1524,8 +3712,10 @@ export type UpdateManagementApiStatusResponses = {
     /**
      * Management API status updated
      */
-    200: unknown;
+    200: ManagementApiStatus;
 };
+
+export type UpdateManagementApiStatusResponse = UpdateManagementApiStatusResponses[keyof UpdateManagementApiStatusResponses];
 
 export type ListManagementClientsData = {
     body?: never;
@@ -1536,9 +3726,9 @@ export type ListManagementClientsData = {
 
 export type ListManagementClientsResponses = {
     /**
-     * Cursor page
+     * Successful listManagementClients response.
      */
-    200: Page;
+    200: ManagementClientPage;
 };
 
 export type ListManagementClientsResponse = ListManagementClientsResponses[keyof ListManagementClientsResponses];
@@ -1563,8 +3753,10 @@ export type CreateManagementClientResponses = {
     /**
      * Management client created and secret returned once
      */
-    201: unknown;
+    201: ManagementClient;
 };
+
+export type CreateManagementClientResponse = CreateManagementClientResponses[keyof CreateManagementClientResponses];
 
 export type RotateManagementClientSecretData = {
     body?: never;
@@ -1579,8 +3771,10 @@ export type RotateManagementClientSecretResponses = {
     /**
      * Management client secret rotated and returned once
      */
-    200: unknown;
+    200: SecretCredential;
 };
+
+export type RotateManagementClientSecretResponse = RotateManagementClientSecretResponses[keyof RotateManagementClientSecretResponses];
 
 export type DisableManagementClientData = {
     body?: never;
@@ -1671,8 +3865,10 @@ export type CreateOrganizationResponses = {
     /**
      * Organization created
      */
-    201: unknown;
+    201: Organization;
 };
+
+export type CreateOrganizationResponse = CreateOrganizationResponses[keyof CreateOrganizationResponses];
 
 export type ListApplicationsData = {
     body?: never;
@@ -1687,9 +3883,9 @@ export type ListApplicationsData = {
 
 export type ListApplicationsResponses = {
     /**
-     * Cursor page
+     * Successful listApplications response.
      */
-    200: Page;
+    200: ApplicationPage;
 };
 
 export type ListApplicationsResponse = ListApplicationsResponses[keyof ListApplicationsResponses];
@@ -1707,8 +3903,10 @@ export type CreateApplicationResponses = {
     /**
      * Application created
      */
-    201: unknown;
+    201: Application;
 };
+
+export type CreateApplicationResponse = CreateApplicationResponses[keyof CreateApplicationResponses];
 
 export type RetireApplicationData = {
     body?: never;
@@ -1807,8 +4005,10 @@ export type GetOrganizationResponses = {
     /**
      * Organization details
      */
-    200: unknown;
+    200: Organization;
 };
+
+export type GetOrganizationResponse = GetOrganizationResponses[keyof GetOrganizationResponses];
 
 export type UpdateOrganizationData = {
     body: Rename;
@@ -1884,9 +4084,9 @@ export type ListOrganizationMembersData = {
 
 export type ListOrganizationMembersResponses = {
     /**
-     * Cursor page
+     * Successful listOrganizationMembers response.
      */
-    200: Page;
+    200: OrganizationMemberPage;
 };
 
 export type ListOrganizationMembersResponse = ListOrganizationMembersResponses[keyof ListOrganizationMembersResponses];
@@ -1911,7 +4111,7 @@ export type DeleteOrganizationMemberResponses = {
 export type DeleteOrganizationMemberResponse = DeleteOrganizationMemberResponses[keyof DeleteOrganizationMemberResponses];
 
 export type UpdateOrganizationMemberData = {
-    body: Object;
+    body: MembershipRole;
     path: {
         organization_id: Uuid;
         member_id: Uuid;
@@ -1940,15 +4140,15 @@ export type ListOrganizationInvitationsData = {
 
 export type ListOrganizationInvitationsResponses = {
     /**
-     * Cursor page
+     * Successful listOrganizationInvitations response.
      */
-    200: Page;
+    200: ControlUserInvitationPage;
 };
 
 export type ListOrganizationInvitationsResponse = ListOrganizationInvitationsResponses[keyof ListOrganizationInvitationsResponses];
 
 export type CreateOrganizationInvitationData = {
-    body: Object;
+    body: CreateControlUserInvitation;
     path: {
         organization_id: Uuid;
     };
@@ -1960,8 +4160,10 @@ export type CreateOrganizationInvitationResponses = {
     /**
      * Invitation queued and credential returned once
      */
-    201: unknown;
+    201: ControlUserInvitation;
 };
+
+export type CreateOrganizationInvitationResponse = CreateOrganizationInvitationResponses[keyof CreateOrganizationInvitationResponses];
 
 export type ResendOrganizationInvitationData = {
     body?: never;
@@ -1977,8 +4179,10 @@ export type ResendOrganizationInvitationResponses = {
     /**
      * Invitation credential rotated and delivery queued
      */
-    200: unknown;
+    200: ControlUserInvitation;
 };
+
+export type ResendOrganizationInvitationResponse = ResendOrganizationInvitationResponses[keyof ResendOrganizationInvitationResponses];
 
 export type RevokeOrganizationInvitationData = {
     body?: never;
@@ -2010,9 +4214,9 @@ export type ListOrganizationAuditLogsData = {
 
 export type ListOrganizationAuditLogsResponses = {
     /**
-     * Cursor page
+     * Successful listOrganizationAuditLogs response.
      */
-    200: Page;
+    200: AuditRecordPage;
 };
 
 export type ListOrganizationAuditLogsResponse = ListOrganizationAuditLogsResponses[keyof ListOrganizationAuditLogsResponses];
@@ -2028,9 +4232,9 @@ export type ListOrganizationAuthProvidersData = {
 
 export type ListOrganizationAuthProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listOrganizationAuthProviders response.
      */
-    200: Page;
+    200: AuthProviderPage;
 };
 
 export type ListOrganizationAuthProvidersResponse = ListOrganizationAuthProvidersResponses[keyof ListOrganizationAuthProvidersResponses];
@@ -2083,7 +4287,7 @@ export type UpdateOrganizationAuthProviderResponses = {
 export type UpdateOrganizationAuthProviderResponse = UpdateOrganizationAuthProviderResponses[keyof UpdateOrganizationAuthProviderResponses];
 
 export type ConfigureOrganizationAuthProviderData = {
-    body: Object;
+    body: ConfigureAuthProviderWritable;
     path: {
         organization_id: Uuid;
         provider: 'google' | 'apple';
@@ -2096,8 +4300,10 @@ export type ConfigureOrganizationAuthProviderResponses = {
     /**
      * Organization authentication provider configured
      */
-    200: unknown;
+    200: AuthProvider;
 };
+
+export type ConfigureOrganizationAuthProviderResponse = ConfigureOrganizationAuthProviderResponses[keyof ConfigureOrganizationAuthProviderResponses];
 
 export type ListOrganizationNotificationProvidersData = {
     body?: never;
@@ -2110,9 +4316,9 @@ export type ListOrganizationNotificationProvidersData = {
 
 export type ListOrganizationNotificationProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listOrganizationNotificationProviders response.
      */
-    200: Page;
+    200: NotificationProviderPage;
 };
 
 export type ListOrganizationNotificationProvidersResponse = ListOrganizationNotificationProvidersResponses[keyof ListOrganizationNotificationProvidersResponses];
@@ -2130,8 +4336,10 @@ export type CreateOrganizationNotificationProviderResponses = {
     /**
      * Organization SMTP provider stored
      */
-    201: unknown;
+    201: NotificationProvider;
 };
+
+export type CreateOrganizationNotificationProviderResponse = CreateOrganizationNotificationProviderResponses[keyof CreateOrganizationNotificationProviderResponses];
 
 export type DisableOrganizationNotificationProviderData = {
     body?: never;
@@ -2166,11 +4374,13 @@ export type GetOrganizationNotificationProviderResponses = {
     /**
      * Redacted organization SMTP provider
      */
-    200: unknown;
+    200: NotificationProvider;
 };
 
+export type GetOrganizationNotificationProviderResponse = GetOrganizationNotificationProviderResponses[keyof GetOrganizationNotificationProviderResponses];
+
 export type UpdateOrganizationNotificationProviderData = {
-    body: Object;
+    body: UpdateSmtpProviderWritable;
     path: {
         organization_id: Uuid;
         provider_id: Uuid;
@@ -2183,8 +4393,10 @@ export type UpdateOrganizationNotificationProviderResponses = {
     /**
      * Organization SMTP provider updated
      */
-    200: unknown;
+    200: NotificationProvider;
 };
+
+export type UpdateOrganizationNotificationProviderResponse = UpdateOrganizationNotificationProviderResponses[keyof UpdateOrganizationNotificationProviderResponses];
 
 export type VerifyOrganizationNotificationProviderData = {
     body?: never;
@@ -2206,7 +4418,7 @@ export type VerifyOrganizationNotificationProviderResponses = {
 export type VerifyOrganizationNotificationProviderResponse = VerifyOrganizationNotificationProviderResponses[keyof VerifyOrganizationNotificationProviderResponses];
 
 export type TestOrganizationNotificationProviderData = {
-    body: Object;
+    body: TestNotificationProvider;
     headers?: {
         'Idempotency-Key'?: string;
     };
@@ -2222,8 +4434,10 @@ export type TestOrganizationNotificationProviderResponses = {
     /**
      * Organization SMTP test queued
      */
-    202: unknown;
+    202: NotificationQueued;
 };
+
+export type TestOrganizationNotificationProviderResponse = TestOrganizationNotificationProviderResponses[keyof TestOrganizationNotificationProviderResponses];
 
 export type ListOrganizationBillingProvidersData = {
     body?: never;
@@ -2236,9 +4450,9 @@ export type ListOrganizationBillingProvidersData = {
 
 export type ListOrganizationBillingProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listOrganizationBillingProviders response.
      */
-    200: Page;
+    200: BillingProviderPage;
 };
 
 export type ListOrganizationBillingProvidersResponse = ListOrganizationBillingProvidersResponses[keyof ListOrganizationBillingProvidersResponses];
@@ -2256,8 +4470,10 @@ export type CreateOrganizationBillingProviderResponses = {
     /**
      * Organization billing provider configured
      */
-    201: unknown;
+    201: BillingProvider;
 };
+
+export type CreateOrganizationBillingProviderResponse = CreateOrganizationBillingProviderResponses[keyof CreateOrganizationBillingProviderResponses];
 
 export type DisableOrganizationBillingProviderData = {
     body?: never;
@@ -2292,11 +4508,13 @@ export type GetOrganizationBillingProviderResponses = {
     /**
      * Secret-free organization billing provider
      */
-    200: unknown;
+    200: BillingProvider;
 };
 
+export type GetOrganizationBillingProviderResponse = GetOrganizationBillingProviderResponses[keyof GetOrganizationBillingProviderResponses];
+
 export type UpdateOrganizationBillingProviderData = {
-    body: Object;
+    body: UpdateBillingProviderWritable;
     path: {
         organization_id: Uuid;
         provider_id: Uuid;
@@ -2364,8 +4582,10 @@ export type GetApplicationResponses = {
     /**
      * Application details
      */
-    200: unknown;
+    200: Application;
 };
+
+export type GetApplicationResponse = GetApplicationResponses[keyof GetApplicationResponses];
 
 export type GetApplicationStatisticsData = {
     body?: never;
@@ -2380,8 +4600,10 @@ export type GetApplicationStatisticsResponses = {
     /**
      * Application identity, catalog, billing, and delivery counts
      */
-    200: unknown;
+    200: ApplicationStatistics;
 };
+
+export type GetApplicationStatisticsResponse = GetApplicationStatisticsResponses[keyof GetApplicationStatisticsResponses];
 
 export type UpdatePublicApplicationConfigData = {
     body: PublicApplicationConfig;
@@ -2456,7 +4678,7 @@ export type UpdateAuthConfigResponses = {
 export type UpdateAuthConfigResponse = UpdateAuthConfigResponses[keyof UpdateAuthConfigResponses];
 
 export type ConfigureGoogleProviderData = {
-    body: Object;
+    body: ConfigureAuthProviderWritable;
     path: {
         application_id: Uuid;
     };
@@ -2468,11 +4690,13 @@ export type ConfigureGoogleProviderResponses = {
     /**
      * Google client configured and callback URI returned
      */
-    200: unknown;
+    200: AuthProvider;
 };
 
+export type ConfigureGoogleProviderResponse = ConfigureGoogleProviderResponses[keyof ConfigureGoogleProviderResponses];
+
 export type ConfigureAppleProviderData = {
-    body: Object;
+    body: ConfigureAuthProviderWritable;
     path: {
         application_id: Uuid;
     };
@@ -2484,8 +4708,10 @@ export type ConfigureAppleProviderResponses = {
     /**
      * Apple client configured and callback URI returned
      */
-    200: unknown;
+    200: AuthProvider;
 };
+
+export type ConfigureAppleProviderResponse = ConfigureAppleProviderResponses[keyof ConfigureAppleProviderResponses];
 
 export type ListApplicationAuthProvidersData = {
     body?: never;
@@ -2498,9 +4724,9 @@ export type ListApplicationAuthProvidersData = {
 
 export type ListApplicationAuthProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listApplicationAuthProviders response.
      */
-    200: Page;
+    200: AuthProviderPage;
 };
 
 export type ListApplicationAuthProvidersResponse = ListApplicationAuthProvidersResponses[keyof ListApplicationAuthProvidersResponses];
@@ -2535,15 +4761,15 @@ export type ListApplicationDomainsData = {
 
 export type ListApplicationDomainsResponses = {
     /**
-     * Cursor page
+     * Successful listApplicationDomains response.
      */
-    200: Page;
+    200: ApplicationDomainPage;
 };
 
 export type ListApplicationDomainsResponse = ListApplicationDomainsResponses[keyof ListApplicationDomainsResponses];
 
 export type CreateApplicationDomainData = {
-    body: Object;
+    body: CreateApplicationDomain;
     path: {
         application_id: Uuid;
     };
@@ -2555,8 +4781,10 @@ export type CreateApplicationDomainResponses = {
     /**
      * Domain added and DNS proof returned once
      */
-    201: unknown;
+    201: ApplicationDomain;
 };
+
+export type CreateApplicationDomainResponse = CreateApplicationDomainResponses[keyof CreateApplicationDomainResponses];
 
 export type DeleteApplicationDomainData = {
     body?: never;
@@ -2607,15 +4835,15 @@ export type ListClientsData = {
 
 export type ListClientsResponses = {
     /**
-     * Cursor page
+     * Successful listClients response.
      */
-    200: Page;
+    200: OAuthClientPage;
 };
 
 export type ListClientsResponse = ListClientsResponses[keyof ListClientsResponses];
 
 export type CreateClientData = {
-    body: Object;
+    body: CreateClient;
     path: {
         application_id: Uuid;
     };
@@ -2627,8 +4855,10 @@ export type CreateClientResponses = {
     /**
      * Client created and secret returned once when applicable
      */
-    201: unknown;
+    201: OAuthClient;
 };
+
+export type CreateClientResponse = CreateClientResponses[keyof CreateClientResponses];
 
 export type DisableClientData = {
     body?: never;
@@ -2649,8 +4879,27 @@ export type DisableClientResponses = {
 
 export type DisableClientResponse = DisableClientResponses[keyof DisableClientResponses];
 
+export type GetClientData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        client_id: string;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/clients/{client_id}';
+};
+
+export type GetClientResponses = {
+    /**
+     * Client detail
+     */
+    200: OAuthClient;
+};
+
+export type GetClientResponse = GetClientResponses[keyof GetClientResponses];
+
 export type UpdateClientData = {
-    body: Object;
+    body: UpdateClient;
     path: {
         application_id: Uuid;
         client_id: string;
@@ -2682,8 +4931,10 @@ export type RotateClientSecretResponses = {
     /**
      * Replacement client secret returned once
      */
-    200: unknown;
+    200: SecretCredential;
 };
+
+export type RotateClientSecretResponse = RotateClientSecretResponses[keyof RotateClientSecretResponses];
 
 export type ListRolesData = {
     body?: never;
@@ -2696,15 +4947,15 @@ export type ListRolesData = {
 
 export type ListRolesResponses = {
     /**
-     * Cursor page
+     * Successful listRoles response.
      */
-    200: Page;
+    200: RolePage;
 };
 
 export type ListRolesResponse = ListRolesResponses[keyof ListRolesResponses];
 
 export type CreateRoleData = {
-    body: Object;
+    body: CreateRole;
     path: {
         application_id: Uuid;
     };
@@ -2712,12 +4963,23 @@ export type CreateRoleData = {
     url: '/v1/control/applications/{application_id}/roles';
 };
 
+export type CreateRoleErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+};
+
+export type CreateRoleError = CreateRoleErrors[keyof CreateRoleErrors];
+
 export type CreateRoleResponses = {
     /**
      * Role created
      */
-    201: unknown;
+    201: Role;
 };
+
+export type CreateRoleResponse = CreateRoleResponses[keyof CreateRoleResponses];
 
 export type DeleteRoleData = {
     body?: never;
@@ -2770,11 +5032,19 @@ export type GetRoleResponses = {
     /**
      * Role details
      */
-    200: unknown;
+    200: Role;
 };
 
+export type GetRoleResponse = GetRoleResponses[keyof GetRoleResponses];
+
 export type UpdateRoleData = {
-    body: Object;
+    body: UpdateRole;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
     path: {
         application_id: Uuid;
         role_id: Uuid;
@@ -2788,6 +5058,10 @@ export type UpdateRoleErrors = {
      * RFC 9457 problem
      */
     409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
 };
 
 export type UpdateRoleError = UpdateRoleErrors[keyof UpdateRoleErrors];
@@ -2812,15 +5086,15 @@ export type ListWorkspacesData = {
 
 export type ListWorkspacesResponses = {
     /**
-     * Cursor page
+     * Successful listWorkspaces response.
      */
-    200: Page;
+    200: WorkspacePage;
 };
 
 export type ListWorkspacesResponse = ListWorkspacesResponses[keyof ListWorkspacesResponses];
 
 export type CreateWorkspaceData = {
-    body: Object;
+    body: CreateWorkspace;
     path: {
         application_id: Uuid;
     };
@@ -2832,8 +5106,10 @@ export type CreateWorkspaceResponses = {
     /**
      * Workspace created
      */
-    201: unknown;
+    201: Workspace;
 };
+
+export type CreateWorkspaceResponse = CreateWorkspaceResponses[keyof CreateWorkspaceResponses];
 
 export type DeleteWorkspaceData = {
     body?: never;
@@ -2877,11 +5153,13 @@ export type GetWorkspaceResponses = {
     /**
      * Workspace details
      */
-    200: unknown;
+    200: Workspace;
 };
 
+export type GetWorkspaceResponse = GetWorkspaceResponses[keyof GetWorkspaceResponses];
+
 export type UpdateWorkspaceData = {
-    body: Object;
+    body: UpdateWorkspace;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -2930,9 +5208,9 @@ export type ListWorkspaceMembersData = {
 
 export type ListWorkspaceMembersResponses = {
     /**
-     * Cursor page
+     * Successful listWorkspaceMembers response.
      */
-    200: Page;
+    200: WorkspaceMemberPage;
 };
 
 export type ListWorkspaceMembersResponse = ListWorkspaceMembersResponses[keyof ListWorkspaceMembersResponses];
@@ -2958,7 +5236,7 @@ export type DeleteWorkspaceMemberResponses = {
 export type DeleteWorkspaceMemberResponse = DeleteWorkspaceMemberResponses[keyof DeleteWorkspaceMemberResponses];
 
 export type ReplaceWorkspaceMemberRolesData = {
-    body: Object;
+    body: ReplaceWorkspaceMemberRoles;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -2972,8 +5250,10 @@ export type ReplaceWorkspaceMemberRolesResponses = {
     /**
      * Workspace member roles replaced atomically
      */
-    200: unknown;
+    200: WorkspaceMember;
 };
+
+export type ReplaceWorkspaceMemberRolesResponse = ReplaceWorkspaceMemberRolesResponses[keyof ReplaceWorkspaceMemberRolesResponses];
 
 export type ListRoleAssignmentsData = {
     body?: never;
@@ -2986,9 +5266,9 @@ export type ListRoleAssignmentsData = {
 
 export type ListRoleAssignmentsResponses = {
     /**
-     * Cursor page
+     * Successful listRoleAssignments response.
      */
-    200: Page;
+    200: RoleAssignmentPage;
 };
 
 export type ListRoleAssignmentsResponse = ListRoleAssignmentsResponses[keyof ListRoleAssignmentsResponses];
@@ -3006,8 +5286,10 @@ export type CreateRoleAssignmentResponses = {
     /**
      * User or machine-client role assignment created
      */
-    201: unknown;
+    201: RoleAssignmentRecord;
 };
+
+export type CreateRoleAssignmentResponse = CreateRoleAssignmentResponses[keyof CreateRoleAssignmentResponses];
 
 export type DeleteRoleAssignmentData = {
     body?: never;
@@ -3028,6 +5310,148 @@ export type DeleteRoleAssignmentResponses = {
 
 export type DeleteRoleAssignmentResponse = DeleteRoleAssignmentResponses[keyof DeleteRoleAssignmentResponses];
 
+export type ListControlPermissionGrantsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: {
+        subject_type?: 'user' | 'client';
+        subject_id?: Uuid;
+        /**
+         * Explicit accessible workspace whose grants are merged with the current user's grants.
+         */
+        workspace_id?: Uuid;
+        status?: 'active' | 'revoked';
+    };
+    url: '/v1/control/applications/{application_id}/permission-grants';
+};
+
+export type ListControlPermissionGrantsResponses = {
+    /**
+     * Successful listControlPermissionGrants response.
+     */
+    200: PermissionGrantPage;
+};
+
+export type ListControlPermissionGrantsResponse = ListControlPermissionGrantsResponses[keyof ListControlPermissionGrantsResponses];
+
+export type CreateControlPermissionGrantData = {
+    body: PermissionGrantBody;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: {
+        subject_type?: 'user' | 'client';
+        subject_id?: Uuid;
+        /**
+         * Explicit accessible workspace whose grants are merged with the current user's grants.
+         */
+        workspace_id?: Uuid;
+        status?: 'active' | 'revoked';
+    };
+    url: '/v1/control/applications/{application_id}/permission-grants';
+};
+
+export type CreateControlPermissionGrantErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+};
+
+export type CreateControlPermissionGrantError = CreateControlPermissionGrantErrors[keyof CreateControlPermissionGrantErrors];
+
+export type CreateControlPermissionGrantResponses = {
+    /**
+     * Direct permission grant created
+     */
+    201: PermissionGrant;
+};
+
+export type CreateControlPermissionGrantResponse = CreateControlPermissionGrantResponses[keyof CreateControlPermissionGrantResponses];
+
+export type GetControlEffectiveAccessData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query: {
+        subject_type: 'user' | 'client';
+        subject_id: Uuid;
+        /**
+         * Explicit accessible workspace whose grants are merged with the current user's grants.
+         */
+        workspace_id?: Uuid;
+    };
+    url: '/v1/control/applications/{application_id}/permission-grants/effective';
+};
+
+export type GetControlEffectiveAccessResponses = {
+    /**
+     * Effective roles and scopes
+     */
+    200: EffectiveAccess;
+};
+
+export type GetControlEffectiveAccessResponse = GetControlEffectiveAccessResponses[keyof GetControlEffectiveAccessResponses];
+
+export type RevokeControlPermissionGrantData = {
+    body?: never;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        grant_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/permission-grants/{grant_id}';
+};
+
+export type RevokeControlPermissionGrantErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+};
+
+export type RevokeControlPermissionGrantError = RevokeControlPermissionGrantErrors[keyof RevokeControlPermissionGrantErrors];
+
+export type RevokeControlPermissionGrantResponses = {
+    /**
+     * Direct permission grant revoked
+     */
+    204: void;
+};
+
+export type RevokeControlPermissionGrantResponse = RevokeControlPermissionGrantResponses[keyof RevokeControlPermissionGrantResponses];
+
+export type GetControlPermissionGrantData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        grant_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/permission-grants/{grant_id}';
+};
+
+export type GetControlPermissionGrantResponses = {
+    /**
+     * Direct permission grant
+     */
+    200: PermissionGrant;
+};
+
+export type GetControlPermissionGrantResponse = GetControlPermissionGrantResponses[keyof GetControlPermissionGrantResponses];
+
 export type ListDelegationsData = {
     body?: never;
     path: {
@@ -3039,15 +5463,15 @@ export type ListDelegationsData = {
 
 export type ListDelegationsResponses = {
     /**
-     * Cursor page
+     * Successful listDelegations response.
      */
-    200: Page;
+    200: DelegationPage;
 };
 
 export type ListDelegationsResponse = ListDelegationsResponses[keyof ListDelegationsResponses];
 
 export type CreateDelegationData = {
-    body: Object;
+    body: CreateDelegation;
     path: {
         application_id: Uuid;
     };
@@ -3059,8 +5483,10 @@ export type CreateDelegationResponses = {
     /**
      * Short-lived one-time delegation exchange credential
      */
-    201: unknown;
+    201: Delegation;
 };
+
+export type CreateDelegationResponse = CreateDelegationResponses[keyof CreateDelegationResponses];
 
 export type GetDelegationData = {
     body?: never;
@@ -3076,11 +5502,13 @@ export type GetDelegationResponses = {
     /**
      * Delegation details and lifecycle state
      */
-    200: unknown;
+    200: Delegation;
 };
 
+export type GetDelegationResponse = GetDelegationResponses[keyof GetDelegationResponses];
+
 export type ExchangeDelegationData = {
-    body: Object;
+    body: ExchangeDelegation;
     path: {
         application_id: Uuid;
         delegation_id: Uuid;
@@ -3093,8 +5521,502 @@ export type ExchangeDelegationResponses = {
     /**
      * Non-refreshable delegated access token
      */
-    200: unknown;
+    200: TokenResponse;
 };
+
+export type ExchangeDelegationResponse = ExchangeDelegationResponses[keyof ExchangeDelegationResponses];
+
+export type SendMachineNotificationData = {
+    body: QueueNotification;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/notifications';
+};
+
+export type SendMachineNotificationErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type SendMachineNotificationError = SendMachineNotificationErrors[keyof SendMachineNotificationErrors];
+
+export type SendMachineNotificationResponses = {
+    /**
+     * Notification queued or suppressed
+     */
+    202: QueuedNotification;
+};
+
+export type SendMachineNotificationResponse = SendMachineNotificationResponses[keyof SendMachineNotificationResponses];
+
+export type ListPermissionGrantsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: {
+        subject_type?: 'user' | 'client';
+        subject_id?: Uuid;
+        /**
+         * Explicit accessible workspace whose grants are merged with the current user's grants.
+         */
+        workspace_id?: Uuid;
+        status?: 'active' | 'revoked';
+    };
+    url: '/v1/applications/{application_id}/permission-grants';
+};
+
+export type ListPermissionGrantsErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ListPermissionGrantsError = ListPermissionGrantsErrors[keyof ListPermissionGrantsErrors];
+
+export type ListPermissionGrantsResponses = {
+    /**
+     * Successful listPermissionGrants response.
+     */
+    200: PermissionGrantPage;
+};
+
+export type ListPermissionGrantsResponse = ListPermissionGrantsResponses[keyof ListPermissionGrantsResponses];
+
+export type CreatePermissionGrantData = {
+    body: PermissionGrantBody;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: {
+        subject_type?: 'user' | 'client';
+        subject_id?: Uuid;
+        /**
+         * Explicit accessible workspace whose grants are merged with the current user's grants.
+         */
+        workspace_id?: Uuid;
+        status?: 'active' | 'revoked';
+    };
+    url: '/v1/applications/{application_id}/permission-grants';
+};
+
+export type CreatePermissionGrantErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+};
+
+export type CreatePermissionGrantError = CreatePermissionGrantErrors[keyof CreatePermissionGrantErrors];
+
+export type CreatePermissionGrantResponses = {
+    /**
+     * Direct permission grant created
+     */
+    201: PermissionGrant;
+};
+
+export type CreatePermissionGrantResponse = CreatePermissionGrantResponses[keyof CreatePermissionGrantResponses];
+
+export type GetEffectiveAccessData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query: {
+        subject_type: 'user' | 'client';
+        subject_id: Uuid;
+        /**
+         * Explicit accessible workspace whose grants are merged with the current user's grants.
+         */
+        workspace_id?: Uuid;
+    };
+    url: '/v1/applications/{application_id}/permission-grants/effective';
+};
+
+export type GetEffectiveAccessErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type GetEffectiveAccessError = GetEffectiveAccessErrors[keyof GetEffectiveAccessErrors];
+
+export type GetEffectiveAccessResponses = {
+    /**
+     * Effective roles and scopes
+     */
+    200: EffectiveAccess;
+};
+
+export type GetEffectiveAccessResponse = GetEffectiveAccessResponses[keyof GetEffectiveAccessResponses];
+
+export type RevokePermissionGrantData = {
+    body?: never;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        grant_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/permission-grants/{grant_id}';
+};
+
+export type RevokePermissionGrantErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+};
+
+export type RevokePermissionGrantError = RevokePermissionGrantErrors[keyof RevokePermissionGrantErrors];
+
+export type RevokePermissionGrantResponses = {
+    /**
+     * Direct permission grant revoked
+     */
+    204: void;
+};
+
+export type RevokePermissionGrantResponse = RevokePermissionGrantResponses[keyof RevokePermissionGrantResponses];
+
+export type GetPermissionGrantData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        grant_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/permission-grants/{grant_id}';
+};
+
+export type GetPermissionGrantResponses = {
+    /**
+     * Direct permission grant
+     */
+    200: PermissionGrant;
+};
+
+export type GetPermissionGrantResponse = GetPermissionGrantResponses[keyof GetPermissionGrantResponses];
+
+export type ListApplicationInvitationsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/invitations';
+};
+
+export type ListApplicationInvitationsResponses = {
+    /**
+     * Successful listApplicationInvitations response.
+     */
+    200: ApplicationInvitationPage;
+};
+
+export type ListApplicationInvitationsResponse = ListApplicationInvitationsResponses[keyof ListApplicationInvitationsResponses];
+
+export type CreateApplicationInvitationMachineData = {
+    body: CreateInvitation;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/invitations';
+};
+
+export type CreateApplicationInvitationMachineResponses = {
+    /**
+     * Invitation created and email queued
+     */
+    201: ApplicationInvitation;
+};
+
+export type CreateApplicationInvitationMachineResponse = CreateApplicationInvitationMachineResponses[keyof CreateApplicationInvitationMachineResponses];
+
+export type RevokeApplicationInvitationData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/invitations/{invitation_id}';
+};
+
+export type RevokeApplicationInvitationResponses = {
+    /**
+     * Pending invitation revoked
+     */
+    204: void;
+};
+
+export type RevokeApplicationInvitationResponse = RevokeApplicationInvitationResponses[keyof RevokeApplicationInvitationResponses];
+
+export type GetApplicationInvitationData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/invitations/{invitation_id}';
+};
+
+export type GetApplicationInvitationResponses = {
+    /**
+     * Invitation detail
+     */
+    200: ApplicationInvitation;
+};
+
+export type GetApplicationInvitationResponse = GetApplicationInvitationResponses[keyof GetApplicationInvitationResponses];
+
+export type ResendApplicationInvitationData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/invitations/{invitation_id}/resend';
+};
+
+export type ResendApplicationInvitationErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    429: Problem;
+};
+
+export type ResendApplicationInvitationError = ResendApplicationInvitationErrors[keyof ResendApplicationInvitationErrors];
+
+export type ResendApplicationInvitationResponses = {
+    /**
+     * Invitation credentials rotated and email queued
+     */
+    202: InvitationResent;
+};
+
+export type ResendApplicationInvitationResponse = ResendApplicationInvitationResponses[keyof ResendApplicationInvitationResponses];
+
+export type ServiceListApplicationUsersData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users';
+};
+
+export type ServiceListApplicationUsersErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ServiceListApplicationUsersError = ServiceListApplicationUsersErrors[keyof ServiceListApplicationUsersErrors];
+
+export type ServiceListApplicationUsersResponses = {
+    /**
+     * Successful serviceListApplicationUsers response.
+     */
+    200: UserPage;
+};
+
+export type ServiceListApplicationUsersResponse = ServiceListApplicationUsersResponses[keyof ServiceListApplicationUsersResponses];
+
+export type ServiceGetApplicationUserData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}';
+};
+
+export type ServiceGetApplicationUserErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ServiceGetApplicationUserError = ServiceGetApplicationUserErrors[keyof ServiceGetApplicationUserErrors];
+
+export type ServiceGetApplicationUserResponses = {
+    /**
+     * Redacted application user
+     */
+    200: User;
+};
+
+export type ServiceGetApplicationUserResponse = ServiceGetApplicationUserResponses[keyof ServiceGetApplicationUserResponses];
+
+export type ServiceListApplicationWorkspacesData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces';
+};
+
+export type ServiceListApplicationWorkspacesErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ServiceListApplicationWorkspacesError = ServiceListApplicationWorkspacesErrors[keyof ServiceListApplicationWorkspacesErrors];
+
+export type ServiceListApplicationWorkspacesResponses = {
+    /**
+     * Successful serviceListApplicationWorkspaces response.
+     */
+    200: WorkspacePage;
+};
+
+export type ServiceListApplicationWorkspacesResponse = ServiceListApplicationWorkspacesResponses[keyof ServiceListApplicationWorkspacesResponses];
+
+export type ServiceGetApplicationWorkspaceData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/service/workspaces/{workspace_id}';
+};
+
+export type ServiceGetApplicationWorkspaceErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ServiceGetApplicationWorkspaceError = ServiceGetApplicationWorkspaceErrors[keyof ServiceGetApplicationWorkspaceErrors];
+
+export type ServiceGetApplicationWorkspaceResponses = {
+    /**
+     * Workspace detail
+     */
+    200: Workspace;
+};
+
+export type ServiceGetApplicationWorkspaceResponse = ServiceGetApplicationWorkspaceResponses[keyof ServiceGetApplicationWorkspaceResponses];
+
+export type ServiceListApplicationWorkspaceAccessData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/service/workspaces/{workspace_id}/access';
+};
+
+export type ServiceListApplicationWorkspaceAccessErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ServiceListApplicationWorkspaceAccessError = ServiceListApplicationWorkspaceAccessErrors[keyof ServiceListApplicationWorkspaceAccessErrors];
+
+export type ServiceListApplicationWorkspaceAccessResponses = {
+    /**
+     * Successful serviceListApplicationWorkspaceAccess response.
+     */
+    200: WorkspaceAccessPage;
+};
+
+export type ServiceListApplicationWorkspaceAccessResponse = ServiceListApplicationWorkspaceAccessResponses[keyof ServiceListApplicationWorkspaceAccessResponses];
+
+export type ServiceGetSubjectEntitlementsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        subject_type: 'user' | 'workspace';
+        subject_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/subjects/{subject_type}/{subject_id}/entitlements';
+};
+
+export type ServiceGetSubjectEntitlementsErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ServiceGetSubjectEntitlementsError = ServiceGetSubjectEntitlementsErrors[keyof ServiceGetSubjectEntitlementsErrors];
+
+export type ServiceGetSubjectEntitlementsResponses = {
+    /**
+     * Successful serviceGetSubjectEntitlements response.
+     */
+    200: EntitlementGrantPage;
+};
+
+export type ServiceGetSubjectEntitlementsResponse = ServiceGetSubjectEntitlementsResponses[keyof ServiceGetSubjectEntitlementsResponses];
+
+export type ServiceGetSubjectBillingData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        subject_type: 'user' | 'workspace';
+        subject_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/subjects/{subject_type}/{subject_id}/billing';
+};
+
+export type ServiceGetSubjectBillingErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ServiceGetSubjectBillingError = ServiceGetSubjectBillingErrors[keyof ServiceGetSubjectBillingErrors];
+
+export type ServiceGetSubjectBillingResponses = {
+    /**
+     * Subject billing profile and subscription summary
+     */
+    200: BillingSummary;
+};
+
+export type ServiceGetSubjectBillingResponse = ServiceGetSubjectBillingResponses[keyof ServiceGetSubjectBillingResponses];
 
 export type RevokeDelegationData = {
     body?: never;
@@ -3115,58 +6037,107 @@ export type RevokeDelegationResponses = {
 
 export type RevokeDelegationResponse = RevokeDelegationResponses[keyof RevokeDelegationResponses];
 
-export type ListWorkspaceInvitationsData = {
+export type ListApplicationInvitationsControlData = {
     body?: never;
     path: {
         application_id: Uuid;
     };
     query?: never;
-    url: '/v1/control/applications/{application_id}/workspace-invitations';
+    url: '/v1/control/applications/{application_id}/invitations';
 };
 
-export type ListWorkspaceInvitationsResponses = {
+export type ListApplicationInvitationsControlResponses = {
     /**
-     * Cursor page
+     * Successful listApplicationInvitationsControl response.
      */
-    200: Page;
+    200: ApplicationInvitationPage;
 };
 
-export type ListWorkspaceInvitationsResponse = ListWorkspaceInvitationsResponses[keyof ListWorkspaceInvitationsResponses];
+export type ListApplicationInvitationsControlResponse = ListApplicationInvitationsControlResponses[keyof ListApplicationInvitationsControlResponses];
 
-export type CreateWorkspaceInvitationData = {
-    body: Object;
+export type CreateApplicationInvitationControlData = {
+    body: CreateInvitation;
     path: {
         application_id: Uuid;
     };
     query?: never;
-    url: '/v1/control/applications/{application_id}/workspace-invitations';
+    url: '/v1/control/applications/{application_id}/invitations';
 };
 
-export type CreateWorkspaceInvitationResponses = {
+export type CreateApplicationInvitationControlResponses = {
     /**
-     * Workspace invitation created and credential returned once
+     * Application or workspace invitation created and email queued
      */
-    201: unknown;
+    201: ApplicationInvitation;
 };
 
-export type RevokeWorkspaceInvitationData = {
+export type CreateApplicationInvitationControlResponse = CreateApplicationInvitationControlResponses[keyof CreateApplicationInvitationControlResponses];
+
+export type RevokeApplicationInvitationControlData = {
     body?: never;
     path: {
         application_id: Uuid;
         invitation_id: Uuid;
     };
     query?: never;
-    url: '/v1/control/applications/{application_id}/workspace-invitations/{invitation_id}';
+    url: '/v1/control/applications/{application_id}/invitations/{invitation_id}';
 };
 
-export type RevokeWorkspaceInvitationResponses = {
+export type RevokeApplicationInvitationControlResponses = {
     /**
-     * Pending workspace invitation revoked
+     * Pending invitation revoked
      */
     204: void;
 };
 
-export type RevokeWorkspaceInvitationResponse = RevokeWorkspaceInvitationResponses[keyof RevokeWorkspaceInvitationResponses];
+export type RevokeApplicationInvitationControlResponse = RevokeApplicationInvitationControlResponses[keyof RevokeApplicationInvitationControlResponses];
+
+export type GetApplicationInvitationControlData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/invitations/{invitation_id}';
+};
+
+export type GetApplicationInvitationControlResponses = {
+    /**
+     * Invitation detail
+     */
+    200: ApplicationInvitation;
+};
+
+export type GetApplicationInvitationControlResponse = GetApplicationInvitationControlResponses[keyof GetApplicationInvitationControlResponses];
+
+export type ResendApplicationInvitationControlData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/invitations/{invitation_id}/resend';
+};
+
+export type ResendApplicationInvitationControlErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    429: Problem;
+};
+
+export type ResendApplicationInvitationControlError = ResendApplicationInvitationControlErrors[keyof ResendApplicationInvitationControlErrors];
+
+export type ResendApplicationInvitationControlResponses = {
+    /**
+     * Invitation credentials rotated and localized email queued
+     */
+    202: InvitationResent;
+};
+
+export type ResendApplicationInvitationControlResponse = ResendApplicationInvitationControlResponses[keyof ResendApplicationInvitationControlResponses];
 
 export type ListUsersData = {
     body?: never;
@@ -3179,15 +6150,15 @@ export type ListUsersData = {
 
 export type ListUsersResponses = {
     /**
-     * Cursor page
+     * Successful listUsers response.
      */
-    200: Page;
+    200: UserPage;
 };
 
 export type ListUsersResponse = ListUsersResponses[keyof ListUsersResponses];
 
 export type CreateUserData = {
-    body: Object;
+    body: CreateUserWritable;
     path: {
         application_id: Uuid;
     };
@@ -3199,8 +6170,10 @@ export type CreateUserResponses = {
     /**
      * User created
      */
-    201: unknown;
+    201: User;
 };
+
+export type CreateUserResponse = CreateUserResponses[keyof CreateUserResponses];
 
 export type GetUserData = {
     body?: never;
@@ -3216,11 +6189,13 @@ export type GetUserResponses = {
     /**
      * User details
      */
-    200: unknown;
+    200: User;
 };
 
+export type GetUserResponse = GetUserResponses[keyof GetUserResponses];
+
 export type UpdateUserData = {
-    body: Object;
+    body: UpdateUser;
     path: {
         application_id: Uuid;
         user_id: Uuid;
@@ -3239,7 +6214,7 @@ export type UpdateUserResponses = {
 export type UpdateUserResponse = UpdateUserResponses[keyof UpdateUserResponses];
 
 export type SuspendUserData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         user_id: Uuid;
@@ -3258,7 +6233,7 @@ export type SuspendUserResponses = {
 export type SuspendUserResponse = SuspendUserResponses[keyof SuspendUserResponses];
 
 export type RestoreUserData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         user_id: Uuid;
@@ -3277,7 +6252,7 @@ export type RestoreUserResponses = {
 export type RestoreUserResponse = RestoreUserResponses[keyof RestoreUserResponses];
 
 export type VerifyUserEmailData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         user_id: Uuid;
@@ -3296,7 +6271,7 @@ export type VerifyUserEmailResponses = {
 export type VerifyUserEmailResponse = VerifyUserEmailResponses[keyof VerifyUserEmailResponses];
 
 export type UnverifyUserEmailData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         user_id: Uuid;
@@ -3315,7 +6290,7 @@ export type UnverifyUserEmailResponses = {
 export type UnverifyUserEmailResponse = UnverifyUserEmailResponses[keyof UnverifyUserEmailResponses];
 
 export type VerifyUserOrganizationData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         user_id: Uuid;
@@ -3334,7 +6309,7 @@ export type VerifyUserOrganizationResponses = {
 export type VerifyUserOrganizationResponse = VerifyUserOrganizationResponses[keyof VerifyUserOrganizationResponses];
 
 export type UnverifyUserOrganizationData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         user_id: Uuid;
@@ -3364,9 +6339,9 @@ export type ListUserSessionsData = {
 
 export type ListUserSessionsResponses = {
     /**
-     * Cursor page
+     * Successful listUserSessions response.
      */
-    200: Page;
+    200: SessionPage;
 };
 
 export type ListUserSessionsResponse = ListUserSessionsResponses[keyof ListUserSessionsResponses];
@@ -3385,8 +6360,10 @@ export type RevokeUserSessionsResponses = {
     /**
      * All active user sessions revoked
      */
-    200: unknown;
+    200: RevokedSessionCount;
 };
+
+export type RevokeUserSessionsResponse = RevokeUserSessionsResponses[keyof RevokeUserSessionsResponses];
 
 export type ListUserAddressesData = {
     body?: never;
@@ -3400,9 +6377,9 @@ export type ListUserAddressesData = {
 
 export type ListUserAddressesResponses = {
     /**
-     * Cursor page
+     * Successful listUserAddresses response.
      */
-    200: Page;
+    200: AddressPage;
 };
 
 export type ListUserAddressesResponse = ListUserAddressesResponses[keyof ListUserAddressesResponses];
@@ -3418,9 +6395,9 @@ export type ListOAuthConsentsData = {
 
 export type ListOAuthConsentsResponses = {
     /**
-     * Cursor page
+     * Successful listOAuthConsents response.
      */
-    200: Page;
+    200: OAuthConsentPage;
 };
 
 export type ListOAuthConsentsResponse = ListOAuthConsentsResponses[keyof ListOAuthConsentsResponses];
@@ -3456,9 +6433,9 @@ export type ListFeaturesData = {
 
 export type ListFeaturesResponses = {
     /**
-     * Cursor page
+     * Successful listFeatures response.
      */
-    200: Page;
+    200: FeaturePage;
 };
 
 export type ListFeaturesResponse = ListFeaturesResponses[keyof ListFeaturesResponses];
@@ -3485,8 +6462,10 @@ export type CreateFeatureResponses = {
     /**
      * Feature created
      */
-    201: unknown;
+    201: Feature;
 };
+
+export type CreateFeatureResponse = CreateFeatureResponses[keyof CreateFeatureResponses];
 
 export type PasswordSignUpData = {
     body: PasswordSignUpWritable;
@@ -3543,7 +6522,7 @@ export type PasswordSignInResponses = {
 export type PasswordSignInResponse = PasswordSignInResponses[keyof PasswordSignInResponses];
 
 export type AuthMethodsData = {
-    body: Object;
+    body?: never;
     path: {
         application_id: Uuid;
     };
@@ -3555,8 +6534,10 @@ export type AuthMethodsResponses = {
     /**
      * Enumeration-safe enabled authentication methods
      */
-    200: unknown;
+    200: AuthMethods;
 };
+
+export type AuthMethodsResponse = AuthMethodsResponses[keyof AuthMethodsResponses];
 
 export type EmailStartData = {
     body: EmailStart;
@@ -3571,8 +6552,10 @@ export type EmailStartResponses = {
     /**
      * Enumeration-safe challenge accepted
      */
-    202: unknown;
+    202: ChallengeAccepted;
 };
+
+export type EmailStartResponse = EmailStartResponses[keyof EmailStartResponses];
 
 export type EmailVerifyData = {
     body: EmailVerifyWritable;
@@ -3593,9 +6576,7 @@ export type EmailVerifyResponses = {
 export type EmailVerifyResponse = EmailVerifyResponses[keyof EmailVerifyResponses];
 
 export type RefreshData = {
-    body: {
-        refresh_token: string;
-    };
+    body: RefreshToken;
     path: {
         application_id: Uuid;
     };
@@ -3613,7 +6594,7 @@ export type RefreshResponses = {
 export type RefreshResponse = RefreshResponses[keyof RefreshResponses];
 
 export type PasswordResetStartData = {
-    body: Object;
+    body: PasswordResetStart;
     path: {
         application_id: Uuid;
     };
@@ -3625,11 +6606,13 @@ export type PasswordResetStartResponses = {
     /**
      * Enumeration-safe reset challenge accepted
      */
-    202: unknown;
+    202: ChallengeAccepted;
 };
 
+export type PasswordResetStartResponse = PasswordResetStartResponses[keyof PasswordResetStartResponses];
+
 export type PasswordResetVerifyData = {
-    body: Object;
+    body: PasswordResetVerifyWritable;
     path: {
         application_id: Uuid;
     };
@@ -3657,15 +6640,15 @@ export type ListAuthProvidersData = {
 
 export type ListAuthProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listAuthProviders response.
      */
-    200: Page;
+    200: AuthProviderPage;
 };
 
 export type ListAuthProvidersResponse = ListAuthProvidersResponses[keyof ListAuthProvidersResponses];
 
 export type StartGoogleAuthData = {
-    body: Object;
+    body: ExternalAuthStartRequest;
     path: {
         application_id: Uuid;
     };
@@ -3677,20 +6660,20 @@ export type StartGoogleAuthResponses = {
     /**
      * Google authorization URL with state, nonce, and S256 PKCE
      */
-    201: unknown;
+    201: ExternalAuthStart;
 };
+
+export type StartGoogleAuthResponse = StartGoogleAuthResponses[keyof StartGoogleAuthResponses];
 
 export type GoogleAuthCallbackData = {
     body?: never;
-    path: {
-        application_id: Uuid;
-    };
+    path?: never;
     query?: never;
-    url: '/v1/applications/{application_id}/auth/providers/google/callback';
+    url: '/v1/auth/providers/google/callback';
 };
 
 export type ExchangeGoogleAuthData = {
-    body: Object;
+    body: ExternalAuthExchange;
     path: {
         application_id: Uuid;
     };
@@ -3708,7 +6691,7 @@ export type ExchangeGoogleAuthResponses = {
 export type ExchangeGoogleAuthResponse = ExchangeGoogleAuthResponses[keyof ExchangeGoogleAuthResponses];
 
 export type StartAppleAuthData = {
-    body: Object;
+    body: ExternalAuthStartRequest;
     path: {
         application_id: Uuid;
     };
@@ -3720,8 +6703,10 @@ export type StartAppleAuthResponses = {
     /**
      * Apple authorization URL with state and nonce
      */
-    201: unknown;
+    201: ExternalAuthStart;
 };
+
+export type StartAppleAuthResponse = StartAppleAuthResponses[keyof StartAppleAuthResponses];
 
 export type AppleAuthCallbackData = {
     body?: {
@@ -3730,15 +6715,13 @@ export type AppleAuthCallbackData = {
         user?: string;
         error?: string;
     };
-    path: {
-        application_id: Uuid;
-    };
+    path?: never;
     query?: never;
-    url: '/v1/applications/{application_id}/auth/providers/apple/callback';
+    url: '/v1/auth/providers/apple/callback';
 };
 
 export type ExchangeAppleAuthData = {
-    body: Object;
+    body: ExternalAuthExchange;
     path: {
         application_id: Uuid;
     };
@@ -3756,7 +6739,7 @@ export type ExchangeAppleAuthResponses = {
 export type ExchangeAppleAuthResponse = ExchangeAppleAuthResponses[keyof ExchangeAppleAuthResponses];
 
 export type VerifyMfaData = {
-    body: Object;
+    body: VerifyMfaWritable;
     path: {
         application_id: Uuid;
     };
@@ -3783,7 +6766,7 @@ export type VerifyMfaResponses = {
 export type VerifyMfaResponse = VerifyMfaResponses[keyof VerifyMfaResponses];
 
 export type BeginWebAuthnAuthenticationData = {
-    body: Object;
+    body: BeginWebAuthnAuthentication;
     path: {
         application_id: Uuid;
     };
@@ -3795,11 +6778,13 @@ export type BeginWebAuthnAuthenticationResponses = {
     /**
      * WebAuthn assertion options and opaque ceremony identifier
      */
-    201: unknown;
+    201: WebAuthnChallenge;
 };
 
+export type BeginWebAuthnAuthenticationResponse = BeginWebAuthnAuthenticationResponses[keyof BeginWebAuthnAuthenticationResponses];
+
 export type FinishWebAuthnAuthenticationData = {
-    body: Object;
+    body: FinishWebAuthnCeremony;
     path: {
         application_id: Uuid;
     };
@@ -3824,6 +6809,60 @@ export type FinishWebAuthnAuthenticationResponses = {
 };
 
 export type FinishWebAuthnAuthenticationResponse = FinishWebAuthnAuthenticationResponses[keyof FinishWebAuthnAuthenticationResponses];
+
+export type ExchangeApplicationInvitationData = {
+    body: ExchangeInvitationWritable;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/auth/invitations/exchange';
+};
+
+export type ExchangeApplicationInvitationErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    401: Problem;
+};
+
+export type ExchangeApplicationInvitationError = ExchangeApplicationInvitationErrors[keyof ExchangeApplicationInvitationErrors];
+
+export type ExchangeApplicationInvitationResponses = {
+    /**
+     * Invitation accepted and a short-lived PKCE-bound authorization code returned
+     */
+    200: InvitationExchangeResult;
+};
+
+export type ExchangeApplicationInvitationResponse = ExchangeApplicationInvitationResponses[keyof ExchangeApplicationInvitationResponses];
+
+export type RedeemApplicationInvitationData = {
+    body: RedeemInvitation;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/auth/invitations/token';
+};
+
+export type RedeemApplicationInvitationErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    401: Problem;
+};
+
+export type RedeemApplicationInvitationError = RedeemApplicationInvitationErrors[keyof RedeemApplicationInvitationErrors];
+
+export type RedeemApplicationInvitationResponses = {
+    /**
+     * Authentication completed or MFA challenge returned
+     */
+    200: TokenResponse;
+};
+
+export type RedeemApplicationInvitationResponse = RedeemApplicationInvitationResponses[keyof RedeemApplicationInvitationResponses];
 
 export type DeleteMyAccountData = {
     body?: never;
@@ -3917,9 +6956,9 @@ export type ListPersonalApiKeysError = ListPersonalApiKeysErrors[keyof ListPerso
 
 export type ListPersonalApiKeysResponses = {
     /**
-     * Cursor page
+     * Successful listPersonalAPIKeys response.
      */
-    200: Page;
+    200: PersonalApiKeyPage;
 };
 
 export type ListPersonalApiKeysResponse = ListPersonalApiKeysResponses[keyof ListPersonalApiKeysResponses];
@@ -3937,8 +6976,10 @@ export type CreatePersonalApiKeyResponses = {
     /**
      * Key created and secret returned once
      */
-    201: unknown;
+    201: PersonalApiKeyCreated;
 };
+
+export type CreatePersonalApiKeyResponse = CreatePersonalApiKeyResponses[keyof CreatePersonalApiKeyResponses];
 
 export type PublicCatalogData = {
     body?: never;
@@ -3951,9 +6992,9 @@ export type PublicCatalogData = {
 
 export type PublicCatalogResponses = {
     /**
-     * Cursor page
+     * Successful publicCatalog response.
      */
-    200: Page;
+    200: ProductPage;
 };
 
 export type PublicCatalogResponse = PublicCatalogResponses[keyof PublicCatalogResponses];
@@ -3969,9 +7010,9 @@ export type ListProductsData = {
 
 export type ListProductsResponses = {
     /**
-     * Cursor page
+     * Successful listProducts response.
      */
-    200: Page;
+    200: ProductPage;
 };
 
 export type ListProductsResponse = ListProductsResponses[keyof ListProductsResponses];
@@ -3989,8 +7030,10 @@ export type CreateProductResponses = {
     /**
      * Product created
      */
-    201: unknown;
+    201: Product;
 };
+
+export type CreateProductResponse = CreateProductResponses[keyof CreateProductResponses];
 
 export type ListPricesData = {
     body?: never;
@@ -4004,9 +7047,9 @@ export type ListPricesData = {
 
 export type ListPricesResponses = {
     /**
-     * Cursor page
+     * Successful listPrices response.
      */
-    200: Page;
+    200: PricePage;
 };
 
 export type ListPricesResponse = ListPricesResponses[keyof ListPricesResponses];
@@ -4025,8 +7068,10 @@ export type CreatePriceResponses = {
     /**
      * Immutable price created
      */
-    201: unknown;
+    201: Price;
 };
+
+export type CreatePriceResponse = CreatePriceResponses[keyof CreatePriceResponses];
 
 export type GetProductData = {
     body?: never;
@@ -4042,8 +7087,10 @@ export type GetProductResponses = {
     /**
      * Product details
      */
-    200: unknown;
+    200: Product;
 };
+
+export type GetProductResponse = GetProductResponses[keyof GetProductResponses];
 
 export type UpdateProductData = {
     body: UpdateProduct;
@@ -4075,15 +7122,15 @@ export type ListEntitlementsData = {
 
 export type ListEntitlementsResponses = {
     /**
-     * Cursor page
+     * Successful listEntitlements response.
      */
-    200: Page;
+    200: EntitlementGrantPage;
 };
 
 export type ListEntitlementsResponse = ListEntitlementsResponses[keyof ListEntitlementsResponses];
 
 export type CreateEntitlementData = {
-    body: Object;
+    body: CreateEntitlement;
     path: {
         application_id: Uuid;
     };
@@ -4095,8 +7142,10 @@ export type CreateEntitlementResponses = {
     /**
      * Entitlement grant created
      */
-    201: unknown;
+    201: EntitlementGrant;
 };
+
+export type CreateEntitlementResponse = CreateEntitlementResponses[keyof CreateEntitlementResponses];
 
 export type GetEntitlementData = {
     body?: never;
@@ -4112,11 +7161,13 @@ export type GetEntitlementResponses = {
     /**
      * Entitlement grant, effective state, and append-only actions
      */
-    200: unknown;
+    200: EntitlementGrant;
 };
 
+export type GetEntitlementResponse = GetEntitlementResponses[keyof GetEntitlementResponses];
+
 export type RevokeEntitlementData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         entitlement_id: Uuid;
@@ -4134,8 +7185,27 @@ export type RevokeEntitlementResponses = {
 
 export type RevokeEntitlementResponse = RevokeEntitlementResponses[keyof RevokeEntitlementResponses];
 
+export type AdjustEntitlementData = {
+    body: AdjustEntitlement;
+    path: {
+        application_id: Uuid;
+        entitlement_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/entitlements/{entitlement_id}/adjust';
+};
+
+export type AdjustEntitlementResponses = {
+    /**
+     * Append-only expiry adjustment recorded
+     */
+    204: void;
+};
+
+export type AdjustEntitlementResponse = AdjustEntitlementResponses[keyof AdjustEntitlementResponses];
+
 export type RestoreEntitlementData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         entitlement_id: Uuid;
@@ -4164,9 +7234,9 @@ export type ListLocalEntitlementRequestsData = {
 
 export type ListLocalEntitlementRequestsResponses = {
     /**
-     * Cursor page
+     * Successful listLocalEntitlementRequests response.
      */
-    200: Page;
+    200: LocalEntitlementRequestPage;
 };
 
 export type ListLocalEntitlementRequestsResponse = ListLocalEntitlementRequestsResponses[keyof ListLocalEntitlementRequestsResponses];
@@ -4185,11 +7255,13 @@ export type GetLocalEntitlementRequestResponses = {
     /**
      * Local request with immutable snapshots and action history
      */
-    200: unknown;
+    200: LocalEntitlementRequest;
 };
 
+export type GetLocalEntitlementRequestResponse = GetLocalEntitlementRequestResponses[keyof GetLocalEntitlementRequestResponses];
+
 export type ApproveLocalEntitlementRequestData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         request_id: Uuid;
@@ -4202,11 +7274,13 @@ export type ApproveLocalEntitlementRequestResponses = {
     /**
      * Request approved exactly once
      */
-    200: unknown;
+    200: LocalEntitlementApproval;
 };
 
+export type ApproveLocalEntitlementRequestResponse = ApproveLocalEntitlementRequestResponses[keyof ApproveLocalEntitlementRequestResponses];
+
 export type RejectLocalEntitlementRequestData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         request_id: Uuid;
@@ -4225,7 +7299,7 @@ export type RejectLocalEntitlementRequestResponses = {
 export type RejectLocalEntitlementRequestResponse = RejectLocalEntitlementRequestResponses[keyof RejectLocalEntitlementRequestResponses];
 
 export type ReopenLocalEntitlementRequestData = {
-    body: Object;
+    body: AuditReason;
     path: {
         application_id: Uuid;
         request_id: Uuid;
@@ -4259,8 +7333,10 @@ export type LocalEntitlementCheckoutResponses = {
     /**
      * Pending local entitlement request
      */
-    201: unknown;
+    201: LocalEntitlementRequest;
 };
+
+export type LocalEntitlementCheckoutResponse = LocalEntitlementCheckoutResponses[keyof LocalEntitlementCheckoutResponses];
 
 export type ListMyLocalEntitlementRequestsData = {
     body?: never;
@@ -4273,9 +7349,9 @@ export type ListMyLocalEntitlementRequestsData = {
 
 export type ListMyLocalEntitlementRequestsResponses = {
     /**
-     * Cursor page
+     * Successful listMyLocalEntitlementRequests response.
      */
-    200: Page;
+    200: LocalEntitlementRequestPage;
 };
 
 export type ListMyLocalEntitlementRequestsResponse = ListMyLocalEntitlementRequestsResponses[keyof ListMyLocalEntitlementRequestsResponses];
@@ -4294,8 +7370,10 @@ export type GetMyLocalEntitlementRequestResponses = {
     /**
      * Own local request with immutable snapshots and action history
      */
-    200: unknown;
+    200: LocalEntitlementRequest;
 };
+
+export type GetMyLocalEntitlementRequestResponse = GetMyLocalEntitlementRequestResponses[keyof GetMyLocalEntitlementRequestResponses];
 
 export type CancelMyLocalEntitlementRequestData = {
     body?: never;
@@ -4334,8 +7412,10 @@ export type ListMyEntitlementsResponses = {
     /**
      * Effective user entitlements, optionally merged with one accessible workspace and full provenance
      */
-    200: unknown;
+    200: EffectiveEntitlements;
 };
+
+export type ListMyEntitlementsResponse = ListMyEntitlementsResponses[keyof ListMyEntitlementsResponses];
 
 export type ListBillingProvidersData = {
     body?: never;
@@ -4348,9 +7428,9 @@ export type ListBillingProvidersData = {
 
 export type ListBillingProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listBillingProviders response.
      */
-    200: Page;
+    200: BillingProviderPage;
 };
 
 export type ListBillingProvidersResponse = ListBillingProvidersResponses[keyof ListBillingProvidersResponses];
@@ -4368,8 +7448,10 @@ export type CreateBillingProviderResponses = {
     /**
      * Billing provider configured
      */
-    201: unknown;
+    201: BillingProvider;
 };
+
+export type CreateBillingProviderResponse = CreateBillingProviderResponses[keyof CreateBillingProviderResponses];
 
 export type DisableBillingProviderData = {
     body?: never;
@@ -4413,11 +7495,13 @@ export type GetBillingProviderResponses = {
     /**
      * Secret-free provider connection
      */
-    200: unknown;
+    200: BillingProvider;
 };
 
+export type GetBillingProviderResponse = GetBillingProviderResponses[keyof GetBillingProviderResponses];
+
 export type UpdateBillingProviderData = {
-    body: Object;
+    body: UpdateBillingProviderWritable;
     path: {
         application_id: Uuid;
         provider_id: Uuid;
@@ -4470,8 +7554,10 @@ export type CreateCheckoutSessionResponses = {
     /**
      * Provider checkout created
      */
-    201: unknown;
+    201: CheckoutSession;
 };
+
+export type CreateCheckoutSessionResponse = CreateCheckoutSessionResponses[keyof CreateCheckoutSessionResponses];
 
 export type GetCheckoutSessionData = {
     body?: never;
@@ -4487,11 +7573,13 @@ export type GetCheckoutSessionResponses = {
     /**
      * Checkout status and redirect URI
      */
-    200: unknown;
+    200: CheckoutSession;
 };
 
+export type GetCheckoutSessionResponse = GetCheckoutSessionResponses[keyof GetCheckoutSessionResponses];
+
 export type CreateBillingPortalSessionData = {
-    body: Object;
+    body: CreatePortalSession;
     headers?: {
         'Idempotency-Key'?: string;
     };
@@ -4506,8 +7594,10 @@ export type CreateBillingPortalSessionResponses = {
     /**
      * Customer portal session created
      */
-    201: unknown;
+    201: PortalSession;
 };
+
+export type CreateBillingPortalSessionResponse = CreateBillingPortalSessionResponses[keyof CreateBillingPortalSessionResponses];
 
 export type ListSubscriptionsData = {
     body?: never;
@@ -4520,9 +7610,9 @@ export type ListSubscriptionsData = {
 
 export type ListSubscriptionsResponses = {
     /**
-     * Cursor page
+     * Successful listSubscriptions response.
      */
-    200: Page;
+    200: SubscriptionPage;
 };
 
 export type ListSubscriptionsResponse = ListSubscriptionsResponses[keyof ListSubscriptionsResponses];
@@ -4541,11 +7631,13 @@ export type GetSubscriptionResponses = {
     /**
      * Subscription details
      */
-    200: unknown;
+    200: Subscription;
 };
 
+export type GetSubscriptionResponse = GetSubscriptionResponses[keyof GetSubscriptionResponses];
+
 export type CancelSubscriptionData = {
-    body: Object;
+    body: CancelSubscription;
     headers?: {
         'Idempotency-Key'?: string;
     };
@@ -4589,10 +7681,7 @@ export type ResumeSubscriptionResponses = {
 export type ResumeSubscriptionResponse = ResumeSubscriptionResponses[keyof ResumeSubscriptionResponses];
 
 export type ChangeSubscriptionPriceData = {
-    body: {
-        price_id: Uuid;
-        proration_behavior?: 'create_prorations' | 'always_invoice' | 'none';
-    };
+    body: ChangeSubscriptionPrice;
     headers?: {
         'Idempotency-Key'?: string;
     };
@@ -4608,8 +7697,10 @@ export type ChangeSubscriptionPriceResponses = {
     /**
      * Subscription price changed and synchronized
      */
-    200: unknown;
+    200: Subscription;
 };
+
+export type ChangeSubscriptionPriceResponse = ChangeSubscriptionPriceResponses[keyof ChangeSubscriptionPriceResponses];
 
 export type ListInvoicesData = {
     body?: never;
@@ -4622,9 +7713,9 @@ export type ListInvoicesData = {
 
 export type ListInvoicesResponses = {
     /**
-     * Cursor page
+     * Successful listInvoices response.
      */
-    200: Page;
+    200: InvoicePage;
 };
 
 export type ListInvoicesResponse = ListInvoicesResponses[keyof ListInvoicesResponses];
@@ -4643,8 +7734,10 @@ export type GetInvoiceResponses = {
     /**
      * Normalized invoice details
      */
-    200: unknown;
+    200: Invoice;
 };
+
+export type GetInvoiceResponse = GetInvoiceResponses[keyof GetInvoiceResponses];
 
 export type ListPaymentsData = {
     body?: never;
@@ -4657,9 +7750,9 @@ export type ListPaymentsData = {
 
 export type ListPaymentsResponses = {
     /**
-     * Cursor page
+     * Successful listPayments response.
      */
-    200: Page;
+    200: PaymentPage;
 };
 
 export type ListPaymentsResponse = ListPaymentsResponses[keyof ListPaymentsResponses];
@@ -4678,11 +7771,13 @@ export type GetPaymentResponses = {
     /**
      * Normalized payment details
      */
-    200: unknown;
+    200: Payment;
 };
 
+export type GetPaymentResponse = GetPaymentResponses[keyof GetPaymentResponses];
+
 export type CreateRefundData = {
-    body: Object;
+    body: CreateRefund;
     headers?: {
         'Idempotency-Key'?: string;
     };
@@ -4698,8 +7793,10 @@ export type CreateRefundResponses = {
     /**
      * Full or partial refund created
      */
-    201: unknown;
+    201: Refund;
 };
+
+export type CreateRefundResponse = CreateRefundResponses[keyof CreateRefundResponses];
 
 export type ListRefundsData = {
     body?: never;
@@ -4712,9 +7809,9 @@ export type ListRefundsData = {
 
 export type ListRefundsResponses = {
     /**
-     * Cursor page
+     * Successful listRefunds response.
      */
-    200: Page;
+    200: RefundPage;
 };
 
 export type ListRefundsResponse = ListRefundsResponses[keyof ListRefundsResponses];
@@ -4733,8 +7830,10 @@ export type GetRefundResponses = {
     /**
      * Normalized refund details
      */
-    200: unknown;
+    200: Refund;
 };
+
+export type GetRefundResponse = GetRefundResponses[keyof GetRefundResponses];
 
 export type ListDisputesData = {
     body?: never;
@@ -4747,9 +7846,9 @@ export type ListDisputesData = {
 
 export type ListDisputesResponses = {
     /**
-     * Cursor page
+     * Successful listDisputes response.
      */
-    200: Page;
+    200: DisputePage;
 };
 
 export type ListDisputesResponse = ListDisputesResponses[keyof ListDisputesResponses];
@@ -4768,8 +7867,10 @@ export type GetDisputeResponses = {
     /**
      * Normalized dispute details
      */
-    200: unknown;
+    200: Dispute;
 };
+
+export type GetDisputeResponse = GetDisputeResponses[keyof GetDisputeResponses];
 
 export type GetBillingStatisticsData = {
     body?: never;
@@ -4787,8 +7888,10 @@ export type GetBillingStatisticsResponses = {
     /**
      * Bounded revenue, refund, and lifecycle statistics
      */
-    200: unknown;
+    200: BillingStatistics;
 };
+
+export type GetBillingStatisticsResponse = GetBillingStatisticsResponses[keyof GetBillingStatisticsResponses];
 
 export type ListBillingProviderEventsData = {
     body?: never;
@@ -4801,9 +7904,9 @@ export type ListBillingProviderEventsData = {
 
 export type ListBillingProviderEventsResponses = {
     /**
-     * Cursor page
+     * Successful listBillingProviderEvents response.
      */
-    200: Page;
+    200: BillingProviderEventPage;
 };
 
 export type ListBillingProviderEventsResponse = ListBillingProviderEventsResponses[keyof ListBillingProviderEventsResponses];
@@ -4844,8 +7947,10 @@ export type CreateBillingReconciliationRunResponses = {
     /**
      * Reconciliation queued transactionally
      */
-    202: unknown;
+    202: ReconciliationAccepted;
 };
+
+export type CreateBillingReconciliationRunResponse = CreateBillingReconciliationRunResponses[keyof CreateBillingReconciliationRunResponses];
 
 export type ListBillingReconciliationRunsData = {
     body?: never;
@@ -4858,9 +7963,9 @@ export type ListBillingReconciliationRunsData = {
 
 export type ListBillingReconciliationRunsResponses = {
     /**
-     * Cursor page
+     * Successful listBillingReconciliationRuns response.
      */
-    200: Page;
+    200: ReconciliationRunPage;
 };
 
 export type ListBillingReconciliationRunsResponse = ListBillingReconciliationRunsResponses[keyof ListBillingReconciliationRunsResponses];
@@ -4879,8 +7984,10 @@ export type GetBillingReconciliationRunResponses = {
     /**
      * Reconciliation findings, repairs, and status
      */
-    200: unknown;
+    200: ReconciliationRun;
 };
+
+export type GetBillingReconciliationRunResponse = GetBillingReconciliationRunResponses[keyof GetBillingReconciliationRunResponses];
 
 export type GetMyBillingSummaryData = {
     body?: never;
@@ -4895,8 +8002,10 @@ export type GetMyBillingSummaryResponses = {
     /**
      * Current billing resource counts
      */
-    200: unknown;
+    200: BillingSummary;
 };
+
+export type GetMyBillingSummaryResponse = GetMyBillingSummaryResponses[keyof GetMyBillingSummaryResponses];
 
 export type ListMySubscriptionsData = {
     body?: never;
@@ -4909,9 +8018,9 @@ export type ListMySubscriptionsData = {
 
 export type ListMySubscriptionsResponses = {
     /**
-     * Cursor page
+     * Successful listMySubscriptions response.
      */
-    200: Page;
+    200: SubscriptionPage;
 };
 
 export type ListMySubscriptionsResponse = ListMySubscriptionsResponses[keyof ListMySubscriptionsResponses];
@@ -4927,9 +8036,9 @@ export type ListMyInvoicesData = {
 
 export type ListMyInvoicesResponses = {
     /**
-     * Cursor page
+     * Successful listMyInvoices response.
      */
-    200: Page;
+    200: InvoicePage;
 };
 
 export type ListMyInvoicesResponse = ListMyInvoicesResponses[keyof ListMyInvoicesResponses];
@@ -4945,9 +8054,9 @@ export type ListMyPaymentsData = {
 
 export type ListMyPaymentsResponses = {
     /**
-     * Cursor page
+     * Successful listMyPayments response.
      */
-    200: Page;
+    200: PaymentPage;
 };
 
 export type ListMyPaymentsResponse = ListMyPaymentsResponses[keyof ListMyPaymentsResponses];
@@ -4963,9 +8072,9 @@ export type ListMySessionsData = {
 
 export type ListMySessionsResponses = {
     /**
-     * Cursor page
+     * Successful listMySessions response.
      */
-    200: Page;
+    200: SessionPage;
 };
 
 export type ListMySessionsResponse = ListMySessionsResponses[keyof ListMySessionsResponses];
@@ -4983,11 +8092,13 @@ export type EmailVerificationStartResponses = {
     /**
      * Verification challenge accepted
      */
-    202: unknown;
+    202: ChallengeAccepted;
 };
 
+export type EmailVerificationStartResponse = EmailVerificationStartResponses[keyof EmailVerificationStartResponses];
+
 export type EmailVerificationVerifyData = {
-    body: Object;
+    body: AccountChallengeWritable;
     path: {
         application_id: Uuid;
     };
@@ -5005,7 +8116,7 @@ export type EmailVerificationVerifyResponses = {
 export type EmailVerificationVerifyResponse = EmailVerificationVerifyResponses[keyof EmailVerificationVerifyResponses];
 
 export type EmailChangeStartData = {
-    body: Object;
+    body: EmailAddress;
     path: {
         application_id: Uuid;
     };
@@ -5017,11 +8128,13 @@ export type EmailChangeStartResponses = {
     /**
      * Email change challenge accepted
      */
-    202: unknown;
+    202: ChallengeAccepted;
 };
 
+export type EmailChangeStartResponse = EmailChangeStartResponses[keyof EmailChangeStartResponses];
+
 export type EmailChangeVerifyData = {
-    body: Object;
+    body: AccountChallengeWritable;
     path: {
         application_id: Uuid;
     };
@@ -5039,7 +8152,7 @@ export type EmailChangeVerifyResponses = {
 export type EmailChangeVerifyResponse = EmailChangeVerifyResponses[keyof EmailChangeVerifyResponses];
 
 export type PasswordChangeData = {
-    body: Object;
+    body: PasswordChange;
     path: {
         application_id: Uuid;
     };
@@ -5069,8 +8182,10 @@ export type ExportMyAccountResponses = {
     /**
      * Portable account export
      */
-    200: unknown;
+    200: AccountExport;
 };
+
+export type ExportMyAccountResponse = ExportMyAccountResponses[keyof ExportMyAccountResponses];
 
 export type AnonymizeMyAccountData = {
     body?: never;
@@ -5101,15 +8216,15 @@ export type ListMyMfaMethodsData = {
 
 export type ListMyMfaMethodsResponses = {
     /**
-     * Cursor page
+     * Successful listMyMFAMethods response.
      */
-    200: Page;
+    200: MfaMethodPage;
 };
 
 export type ListMyMfaMethodsResponse = ListMyMfaMethodsResponses[keyof ListMyMfaMethodsResponses];
 
 export type StartTotpEnrollmentData = {
-    body: Object;
+    body: StartTotp;
     path: {
         application_id: Uuid;
     };
@@ -5121,11 +8236,13 @@ export type StartTotpEnrollmentResponses = {
     /**
      * One-time TOTP secret and provisioning URI
      */
-    201: unknown;
+    201: MfaEnrollment;
 };
 
+export type StartTotpEnrollmentResponse = StartTotpEnrollmentResponses[keyof StartTotpEnrollmentResponses];
+
 export type ActivateTotpEnrollmentData = {
-    body: Object;
+    body: ActivateTotp;
     path: {
         application_id: Uuid;
         method_id: Uuid;
@@ -5138,11 +8255,13 @@ export type ActivateTotpEnrollmentResponses = {
     /**
      * TOTP activated and recovery codes returned once
      */
-    200: unknown;
+    200: MfaActivation;
 };
 
+export type ActivateTotpEnrollmentResponse = ActivateTotpEnrollmentResponses[keyof ActivateTotpEnrollmentResponses];
+
 export type BeginWebAuthnRegistrationData = {
-    body: Object;
+    body: BeginWebAuthnRegistration;
     path: {
         application_id: Uuid;
     };
@@ -5154,11 +8273,13 @@ export type BeginWebAuthnRegistrationResponses = {
     /**
      * WebAuthn credential creation options and opaque ceremony identifier
      */
-    201: unknown;
+    201: WebAuthnChallenge;
 };
 
+export type BeginWebAuthnRegistrationResponse = BeginWebAuthnRegistrationResponses[keyof BeginWebAuthnRegistrationResponses];
+
 export type FinishWebAuthnRegistrationData = {
-    body: Object;
+    body: FinishWebAuthnCeremony;
     path: {
         application_id: Uuid;
     };
@@ -5170,8 +8291,10 @@ export type FinishWebAuthnRegistrationResponses = {
     /**
      * WebAuthn credential activated and recovery codes returned once when created
      */
-    200: unknown;
+    200: MfaActivation;
 };
+
+export type FinishWebAuthnRegistrationResponse = FinishWebAuthnRegistrationResponses[keyof FinishWebAuthnRegistrationResponses];
 
 export type DisableMfaMethodData = {
     body?: never;
@@ -5205,11 +8328,13 @@ export type RegenerateRecoveryCodesResponses = {
     /**
      * Replacement recovery codes returned once
      */
-    200: unknown;
+    200: RecoveryCodes;
 };
 
+export type RegenerateRecoveryCodesResponse = RegenerateRecoveryCodesResponses[keyof RegenerateRecoveryCodesResponses];
+
 export type StartGoogleLinkData = {
-    body: Object;
+    body: ExternalAuthStartRequest;
     path: {
         application_id: Uuid;
     };
@@ -5221,11 +8346,13 @@ export type StartGoogleLinkResponses = {
     /**
      * Authenticated Google account-link authorization URL
      */
-    201: unknown;
+    201: ExternalAuthStart;
 };
 
+export type StartGoogleLinkResponse = StartGoogleLinkResponses[keyof StartGoogleLinkResponses];
+
 export type StartAppleLinkData = {
-    body: Object;
+    body: ExternalAuthStartRequest;
     path: {
         application_id: Uuid;
     };
@@ -5237,8 +8364,10 @@ export type StartAppleLinkResponses = {
     /**
      * Authenticated Apple account-link authorization URL
      */
-    201: unknown;
+    201: ExternalAuthStart;
 };
+
+export type StartAppleLinkResponse = StartAppleLinkResponses[keyof StartAppleLinkResponses];
 
 export type ListMyIdentitiesData = {
     body?: never;
@@ -5251,9 +8380,9 @@ export type ListMyIdentitiesData = {
 
 export type ListMyIdentitiesResponses = {
     /**
-     * Cursor page
+     * Successful listMyIdentities response.
      */
-    200: Page;
+    200: ExternalIdentityPage;
 };
 
 export type ListMyIdentitiesResponse = ListMyIdentitiesResponses[keyof ListMyIdentitiesResponses];
@@ -5344,15 +8473,15 @@ export type ListMyAddressesData = {
 
 export type ListMyAddressesResponses = {
     /**
-     * Cursor page
+     * Successful listMyAddresses response.
      */
-    200: Page;
+    200: AddressPage;
 };
 
 export type ListMyAddressesResponse = ListMyAddressesResponses[keyof ListMyAddressesResponses];
 
 export type CreateMyAddressData = {
-    body: Object;
+    body: CreateAddress;
     path: {
         application_id: Uuid;
     };
@@ -5364,8 +8493,10 @@ export type CreateMyAddressResponses = {
     /**
      * Address created
      */
-    201: unknown;
+    201: Address;
 };
+
+export type CreateMyAddressResponse = CreateMyAddressResponses[keyof CreateMyAddressResponses];
 
 export type DeleteMyAddressData = {
     body?: never;
@@ -5387,7 +8518,7 @@ export type DeleteMyAddressResponses = {
 export type DeleteMyAddressResponse = DeleteMyAddressResponses[keyof DeleteMyAddressResponses];
 
 export type UpdateMyAddressData = {
-    body: Object;
+    body: UpdateAddress;
     path: {
         application_id: Uuid;
         address_id: Uuid;
@@ -5437,11 +8568,13 @@ export type GetMyBillingProfileResponses = {
     /**
      * Current user billing profile
      */
-    200: unknown;
+    200: BillingProfile;
 };
 
+export type GetMyBillingProfileResponse = GetMyBillingProfileResponses[keyof GetMyBillingProfileResponses];
+
 export type UpdateMyBillingProfileData = {
-    body: Object;
+    body: UpdateBillingProfile;
     path: {
         application_id: Uuid;
     };
@@ -5469,15 +8602,15 @@ export type ListMyWorkspacesData = {
 
 export type ListMyWorkspacesResponses = {
     /**
-     * Cursor page
+     * Successful listMyWorkspaces response.
      */
-    200: Page;
+    200: WorkspacePage;
 };
 
 export type ListMyWorkspacesResponse = ListMyWorkspacesResponses[keyof ListMyWorkspacesResponses];
 
 export type CreateMyWorkspaceData = {
-    body: Object;
+    body: CreateWorkspace;
     path: {
         application_id: Uuid;
     };
@@ -5489,8 +8622,10 @@ export type CreateMyWorkspaceResponses = {
     /**
      * Workspace created with the current user as owner
      */
-    201: unknown;
+    201: Workspace;
 };
+
+export type CreateMyWorkspaceResponse = CreateMyWorkspaceResponses[keyof CreateMyWorkspaceResponses];
 
 export type ArchiveMyWorkspaceData = {
     body?: never;
@@ -5525,11 +8660,13 @@ export type GetMyWorkspaceResponses = {
     /**
      * Accessible workspace details
      */
-    200: unknown;
+    200: Workspace;
 };
 
+export type GetMyWorkspaceResponse = GetMyWorkspaceResponses[keyof GetMyWorkspaceResponses];
+
 export type UpdateMyWorkspaceData = {
-    body: Object;
+    body: UpdateWorkspace;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -5559,9 +8696,9 @@ export type ListMyWorkspaceMembersData = {
 
 export type ListMyWorkspaceMembersResponses = {
     /**
-     * Cursor page
+     * Successful listMyWorkspaceMembers response.
      */
-    200: Page;
+    200: WorkspaceMemberPage;
 };
 
 export type ListMyWorkspaceMembersResponse = ListMyWorkspaceMembersResponses[keyof ListMyWorkspaceMembersResponses];
@@ -5587,7 +8724,7 @@ export type RemoveMyWorkspaceMemberResponses = {
 export type RemoveMyWorkspaceMemberResponse = RemoveMyWorkspaceMemberResponses[keyof RemoveMyWorkspaceMemberResponses];
 
 export type ReplaceMyWorkspaceMemberRolesData = {
-    body: Object;
+    body: ReplaceWorkspaceMemberRoles;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -5601,8 +8738,10 @@ export type ReplaceMyWorkspaceMemberRolesResponses = {
     /**
      * Workspace member roles replaced
      */
-    200: unknown;
+    200: WorkspaceMember;
 };
+
+export type ReplaceMyWorkspaceMemberRolesResponse = ReplaceMyWorkspaceMemberRolesResponses[keyof ReplaceMyWorkspaceMemberRolesResponses];
 
 export type TransferMyWorkspaceOwnershipData = {
     body: OwnershipTransfer2;
@@ -5642,8 +8781,27 @@ export type LeaveWorkspaceResponses = {
 
 export type LeaveWorkspaceResponse = LeaveWorkspaceResponses[keyof LeaveWorkspaceResponses];
 
+export type ListMyWorkspaceInvitationsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/invitations';
+};
+
+export type ListMyWorkspaceInvitationsResponses = {
+    /**
+     * Successful listMyWorkspaceInvitations response.
+     */
+    200: ApplicationInvitationPage;
+};
+
+export type ListMyWorkspaceInvitationsResponse = ListMyWorkspaceInvitationsResponses[keyof ListMyWorkspaceInvitationsResponses];
+
 export type CreateMyWorkspaceInvitationData = {
-    body: Object;
+    body: CreateInvitation;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -5654,10 +8812,202 @@ export type CreateMyWorkspaceInvitationData = {
 
 export type CreateMyWorkspaceInvitationResponses = {
     /**
-     * Workspace invitation created
+     * Workspace invitation created and email queued
      */
-    201: unknown;
+    201: ApplicationInvitation;
 };
+
+export type CreateMyWorkspaceInvitationResponse = CreateMyWorkspaceInvitationResponses[keyof CreateMyWorkspaceInvitationResponses];
+
+export type RevokeMyWorkspaceInvitationData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/invitations/{invitation_id}';
+};
+
+export type RevokeMyWorkspaceInvitationResponses = {
+    /**
+     * Pending workspace invitation revoked
+     */
+    204: void;
+};
+
+export type RevokeMyWorkspaceInvitationResponse = RevokeMyWorkspaceInvitationResponses[keyof RevokeMyWorkspaceInvitationResponses];
+
+export type ResendMyWorkspaceInvitationData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/invitations/{invitation_id}/resend';
+};
+
+export type ResendMyWorkspaceInvitationErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    429: Problem;
+};
+
+export type ResendMyWorkspaceInvitationError = ResendMyWorkspaceInvitationErrors[keyof ResendMyWorkspaceInvitationErrors];
+
+export type ResendMyWorkspaceInvitationResponses = {
+    /**
+     * Workspace invitation credentials rotated and email queued
+     */
+    202: InvitationResent;
+};
+
+export type ResendMyWorkspaceInvitationResponse = ResendMyWorkspaceInvitationResponses[keyof ResendMyWorkspaceInvitationResponses];
+
+export type ListMyWorkspaceAccessData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/access';
+};
+
+export type ListMyWorkspaceAccessResponses = {
+    /**
+     * Successful listMyWorkspaceAccess response.
+     */
+    200: WorkspaceAccessPage;
+};
+
+export type ListMyWorkspaceAccessResponse = ListMyWorkspaceAccessResponses[keyof ListMyWorkspaceAccessResponses];
+
+export type ListWorkspacePermissionGrantsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+    };
+    query?: {
+        subject_type?: 'user' | 'client';
+        subject_id?: Uuid;
+        status?: 'active' | 'revoked';
+    };
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/permission-grants';
+};
+
+export type ListWorkspacePermissionGrantsErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ListWorkspacePermissionGrantsError = ListWorkspacePermissionGrantsErrors[keyof ListWorkspacePermissionGrantsErrors];
+
+export type ListWorkspacePermissionGrantsResponses = {
+    /**
+     * Successful listWorkspacePermissionGrants response.
+     */
+    200: PermissionGrantPage;
+};
+
+export type ListWorkspacePermissionGrantsResponse = ListWorkspacePermissionGrantsResponses[keyof ListWorkspacePermissionGrantsResponses];
+
+export type CreateWorkspacePermissionGrantData = {
+    body: PermissionGrantBody;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+    };
+    query?: {
+        subject_type?: 'user' | 'client';
+        subject_id?: Uuid;
+        status?: 'active' | 'revoked';
+    };
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/permission-grants';
+};
+
+export type CreateWorkspacePermissionGrantErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type CreateWorkspacePermissionGrantError = CreateWorkspacePermissionGrantErrors[keyof CreateWorkspacePermissionGrantErrors];
+
+export type CreateWorkspacePermissionGrantResponses = {
+    /**
+     * Workspace direct permission grant created
+     */
+    201: PermissionGrant;
+};
+
+export type CreateWorkspacePermissionGrantResponse = CreateWorkspacePermissionGrantResponses[keyof CreateWorkspacePermissionGrantResponses];
+
+export type RevokeWorkspacePermissionGrantData = {
+    body?: never;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        grant_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/permission-grants/{grant_id}';
+};
+
+export type RevokeWorkspacePermissionGrantErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+};
+
+export type RevokeWorkspacePermissionGrantError = RevokeWorkspacePermissionGrantErrors[keyof RevokeWorkspacePermissionGrantErrors];
+
+export type RevokeWorkspacePermissionGrantResponses = {
+    /**
+     * Workspace direct permission grant revoked
+     */
+    204: void;
+};
+
+export type RevokeWorkspacePermissionGrantResponse = RevokeWorkspacePermissionGrantResponses[keyof RevokeWorkspacePermissionGrantResponses];
+
+export type GetWorkspacePermissionGrantData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        grant_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/permission-grants/{grant_id}';
+};
+
+export type GetWorkspacePermissionGrantResponses = {
+    /**
+     * Workspace direct permission grant
+     */
+    200: PermissionGrant;
+};
+
+export type GetWorkspacePermissionGrantResponse = GetWorkspacePermissionGrantResponses[keyof GetWorkspacePermissionGrantResponses];
 
 export type GetWorkspaceBillingProfileData = {
     body?: never;
@@ -5673,11 +9023,13 @@ export type GetWorkspaceBillingProfileResponses = {
     /**
      * Workspace billing profile
      */
-    200: unknown;
+    200: BillingProfile;
 };
 
+export type GetWorkspaceBillingProfileResponse = GetWorkspaceBillingProfileResponses[keyof GetWorkspaceBillingProfileResponses];
+
 export type UpdateWorkspaceBillingProfileData = {
-    body: Object;
+    body: UpdateBillingProfile;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -5707,15 +9059,15 @@ export type ListWorkspaceAddressesData = {
 
 export type ListWorkspaceAddressesResponses = {
     /**
-     * Cursor page
+     * Successful listWorkspaceAddresses response.
      */
-    200: Page;
+    200: AddressPage;
 };
 
 export type ListWorkspaceAddressesResponse = ListWorkspaceAddressesResponses[keyof ListWorkspaceAddressesResponses];
 
 export type CreateWorkspaceAddressData = {
-    body: Object;
+    body: CreateAddress;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -5728,8 +9080,10 @@ export type CreateWorkspaceAddressResponses = {
     /**
      * Workspace billing address created
      */
-    201: unknown;
+    201: Address;
 };
+
+export type CreateWorkspaceAddressResponse = CreateWorkspaceAddressResponses[keyof CreateWorkspaceAddressResponses];
 
 export type DeleteWorkspaceAddressData = {
     body?: never;
@@ -5752,7 +9106,7 @@ export type DeleteWorkspaceAddressResponses = {
 export type DeleteWorkspaceAddressResponse = DeleteWorkspaceAddressResponses[keyof DeleteWorkspaceAddressResponses];
 
 export type UpdateWorkspaceAddressData = {
-    body: Object;
+    body: UpdateAddress;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -5791,7 +9145,7 @@ export type ActivateWorkspaceAddressResponses = {
 
 export type ActivateWorkspaceAddressResponse = ActivateWorkspaceAddressResponses[keyof ActivateWorkspaceAddressResponses];
 
-export type ListMyWorkspaceInvitationsData = {
+export type ListMyPendingInvitationsData = {
     body?: never;
     path: {
         application_id: Uuid;
@@ -5800,34 +9154,17 @@ export type ListMyWorkspaceInvitationsData = {
     url: '/v1/applications/{application_id}/me/workspace-invitations';
 };
 
-export type ListMyWorkspaceInvitationsResponses = {
+export type ListMyPendingInvitationsResponses = {
     /**
-     * Cursor page
+     * Successful listMyPendingInvitations response.
      */
-    200: Page;
+    200: ApplicationInvitationPage;
 };
 
-export type ListMyWorkspaceInvitationsResponse = ListMyWorkspaceInvitationsResponses[keyof ListMyWorkspaceInvitationsResponses];
-
-export type AcceptMyWorkspaceInvitationData = {
-    body: Object;
-    path: {
-        application_id: Uuid;
-        invitation_id: Uuid;
-    };
-    query?: never;
-    url: '/v1/applications/{application_id}/me/workspace-invitations/{invitation_id}/accept';
-};
-
-export type AcceptMyWorkspaceInvitationResponses = {
-    /**
-     * Workspace invitation accepted atomically
-     */
-    200: unknown;
-};
+export type ListMyPendingInvitationsResponse = ListMyPendingInvitationsResponses[keyof ListMyPendingInvitationsResponses];
 
 export type CheckMyPermissionsData = {
-    body: Object;
+    body: PermissionCheck;
     path: {
         application_id: Uuid;
     };
@@ -5839,8 +9176,10 @@ export type CheckMyPermissionsResponses = {
     /**
      * Permission decisions with role explanations
      */
-    200: unknown;
+    200: PermissionCheckResult;
 };
+
+export type CheckMyPermissionsResponse = CheckMyPermissionsResponses[keyof CheckMyPermissionsResponses];
 
 export type ListMyOAuthConsentsData = {
     body?: never;
@@ -5853,9 +9192,9 @@ export type ListMyOAuthConsentsData = {
 
 export type ListMyOAuthConsentsResponses = {
     /**
-     * Cursor page
+     * Successful listMyOAuthConsents response.
      */
-    200: Page;
+    200: OAuthConsentPage;
 };
 
 export type ListMyOAuthConsentsResponse = ListMyOAuthConsentsResponses[keyof ListMyOAuthConsentsResponses];
@@ -5924,9 +9263,9 @@ export type ListEventsData = {
 
 export type ListEventsResponses = {
     /**
-     * Cursor page
+     * Successful listEvents response.
      */
-    200: Page;
+    200: EventPage;
 };
 
 export type ListEventsResponse = ListEventsResponses[keyof ListEventsResponses];
@@ -5961,9 +9300,9 @@ export type ListEventTypesData = {
 
 export type ListEventTypesResponses = {
     /**
-     * Cursor page
+     * Successful listEventTypes response.
      */
-    200: Page;
+    200: EventTypePage;
 };
 
 export type ListEventTypesResponse = ListEventTypesResponses[keyof ListEventTypesResponses];
@@ -5990,8 +9329,10 @@ export type CreateEventTypeResponses = {
     /**
      * Application event type registered
      */
-    201: unknown;
+    201: EventTypeDefinition;
 };
+
+export type CreateEventTypeResponse = CreateEventTypeResponses[keyof CreateEventTypeResponses];
 
 export type ArchiveEventTypeData = {
     body?: never;
@@ -6070,9 +9411,9 @@ export type ListAuditLogsData = {
 
 export type ListAuditLogsResponses = {
     /**
-     * Cursor page
+     * Successful listAuditLogs response.
      */
-    200: Page;
+    200: AuditRecordPage;
 };
 
 export type ListAuditLogsResponse = ListAuditLogsResponses[keyof ListAuditLogsResponses];
@@ -6091,11 +9432,13 @@ export type GetAuditLogResponses = {
     /**
      * Audit record detail
      */
-    200: unknown;
+    200: AuditRecord;
 };
 
+export type GetAuditLogResponse = GetAuditLogResponses[keyof GetAuditLogResponses];
+
 export type CreateAuditExportData = {
-    body: Object;
+    body: AuditExport;
     path: {
         application_id: Uuid;
     };
@@ -6107,8 +9450,10 @@ export type CreateAuditExportResponses = {
     /**
      * Encrypted one-hour audit export created
      */
-    201: unknown;
+    201: AuditExportRecord;
 };
+
+export type CreateAuditExportResponse = CreateAuditExportResponses[keyof CreateAuditExportResponses];
 
 export type GetAuditExportData = {
     body?: never;
@@ -6124,8 +9469,10 @@ export type GetAuditExportResponses = {
     /**
      * Decrypted audit export before expiry
      */
-    200: unknown;
+    200: AuditExportRecord;
 };
+
+export type GetAuditExportResponse = GetAuditExportResponses[keyof GetAuditExportResponses];
 
 export type ListWebhooksData = {
     body?: never;
@@ -6138,15 +9485,15 @@ export type ListWebhooksData = {
 
 export type ListWebhooksResponses = {
     /**
-     * Cursor page
+     * Successful listWebhooks response.
      */
-    200: Page;
+    200: WebhookPage;
 };
 
 export type ListWebhooksResponse = ListWebhooksResponses[keyof ListWebhooksResponses];
 
 export type CreateWebhookData = {
-    body: Object;
+    body: CreateWebhook;
     path: {
         application_id: Uuid;
     };
@@ -6158,8 +9505,10 @@ export type CreateWebhookResponses = {
     /**
      * Webhook created and secret returned once
      */
-    201: unknown;
+    201: Webhook;
 };
+
+export type CreateWebhookResponse = CreateWebhookResponses[keyof CreateWebhookResponses];
 
 export type DisableWebhookData = {
     body?: never;
@@ -6203,11 +9552,13 @@ export type GetWebhookResponses = {
     /**
      * Webhook endpoint and delivery statistics
      */
-    200: unknown;
+    200: Webhook;
 };
 
+export type GetWebhookResponse = GetWebhookResponses[keyof GetWebhookResponses];
+
 export type UpdateWebhookData = {
-    body: Object;
+    body: UpdateWebhook;
     path: {
         application_id: Uuid;
         webhook_id: Uuid;
@@ -6260,8 +9611,10 @@ export type TestWebhookResponses = {
     /**
      * Targeted signed test delivery queued
      */
-    202: unknown;
+    202: WebhookTestAccepted;
 };
+
+export type TestWebhookResponse = TestWebhookResponses[keyof TestWebhookResponses];
 
 export type RotateWebhookSecretData = {
     body?: never;
@@ -6277,8 +9630,10 @@ export type RotateWebhookSecretResponses = {
     /**
      * Webhook secret rotated and returned once
      */
-    200: unknown;
+    200: SecretCredential;
 };
+
+export type RotateWebhookSecretResponse = RotateWebhookSecretResponses[keyof RotateWebhookSecretResponses];
 
 export type ListWebhookDeliveriesData = {
     body?: never;
@@ -6291,9 +9646,9 @@ export type ListWebhookDeliveriesData = {
 
 export type ListWebhookDeliveriesResponses = {
     /**
-     * Cursor page
+     * Successful listWebhookDeliveries response.
      */
-    200: Page;
+    200: WebhookDeliveryPage;
 };
 
 export type ListWebhookDeliveriesResponse = ListWebhookDeliveriesResponses[keyof ListWebhookDeliveriesResponses];
@@ -6321,8 +9676,10 @@ export type GetWebhookDeliveryResponses = {
     /**
      * Webhook delivery history detail
      */
-    200: unknown;
+    200: WebhookDelivery;
 };
+
+export type GetWebhookDeliveryResponse = GetWebhookDeliveryResponses[keyof GetWebhookDeliveryResponses];
 
 export type ReplayWebhookDeliveryData = {
     body?: never;
@@ -6354,9 +9711,9 @@ export type ListNotificationProvidersData = {
 
 export type ListNotificationProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listNotificationProviders response.
      */
-    200: Page;
+    200: NotificationProviderPage;
 };
 
 export type ListNotificationProvidersResponse = ListNotificationProvidersResponses[keyof ListNotificationProvidersResponses];
@@ -6374,8 +9731,10 @@ export type CreateNotificationProviderResponses = {
     /**
      * SMTP provider stored
      */
-    201: unknown;
+    201: NotificationProvider;
 };
+
+export type CreateNotificationProviderResponse = CreateNotificationProviderResponses[keyof CreateNotificationProviderResponses];
 
 export type DisableNotificationProviderData = {
     body?: never;
@@ -6410,11 +9769,13 @@ export type GetNotificationProviderResponses = {
     /**
      * Redacted provider configuration and health
      */
-    200: unknown;
+    200: NotificationProvider;
 };
 
+export type GetNotificationProviderResponse = GetNotificationProviderResponses[keyof GetNotificationProviderResponses];
+
 export type UpdateNotificationProviderData = {
-    body: Object;
+    body: UpdateSmtpProviderWritable;
     path: {
         application_id: Uuid;
         provider_id: Uuid;
@@ -6427,8 +9788,10 @@ export type UpdateNotificationProviderResponses = {
     /**
      * Redacted updated provider configuration
      */
-    200: unknown;
+    200: NotificationProvider;
 };
+
+export type UpdateNotificationProviderResponse = UpdateNotificationProviderResponses[keyof UpdateNotificationProviderResponses];
 
 export type VerifyNotificationProviderData = {
     body?: never;
@@ -6459,7 +9822,7 @@ export type VerifyNotificationProviderResponses = {
 export type VerifyNotificationProviderResponse = VerifyNotificationProviderResponses[keyof VerifyNotificationProviderResponses];
 
 export type TestNotificationProviderData = {
-    body: Object;
+    body: TestNotificationProvider;
     headers?: {
         'Idempotency-Key'?: string;
     };
@@ -6475,8 +9838,10 @@ export type TestNotificationProviderResponses = {
     /**
      * Provider-specific test notification queued
      */
-    202: unknown;
+    202: NotificationQueued;
 };
+
+export type TestNotificationProviderResponse = TestNotificationProviderResponses[keyof TestNotificationProviderResponses];
 
 export type ListSenderIdentitiesData = {
     body?: never;
@@ -6489,15 +9854,15 @@ export type ListSenderIdentitiesData = {
 
 export type ListSenderIdentitiesResponses = {
     /**
-     * Cursor page
+     * Successful listSenderIdentities response.
      */
-    200: Page;
+    200: SenderIdentityPage;
 };
 
 export type ListSenderIdentitiesResponse = ListSenderIdentitiesResponses[keyof ListSenderIdentitiesResponses];
 
 export type CreateSenderIdentityData = {
-    body: Object;
+    body: CreateSenderIdentity;
     path: {
         application_id: Uuid;
     };
@@ -6509,8 +9874,10 @@ export type CreateSenderIdentityResponses = {
     /**
      * Sender identity created
      */
-    201: unknown;
+    201: SenderIdentity;
 };
+
+export type CreateSenderIdentityResponse = CreateSenderIdentityResponses[keyof CreateSenderIdentityResponses];
 
 export type SetDefaultSenderIdentityData = {
     body?: never;
@@ -6540,15 +9907,15 @@ export type ListInstallationNotificationTemplatesData = {
 
 export type ListInstallationNotificationTemplatesResponses = {
     /**
-     * Cursor page
+     * Successful listInstallationNotificationTemplates response.
      */
-    200: Page;
+    200: NotificationTemplatePage;
 };
 
 export type ListInstallationNotificationTemplatesResponse = ListInstallationNotificationTemplatesResponses[keyof ListInstallationNotificationTemplatesResponses];
 
 export type CreateInstallationNotificationTemplateData = {
-    body: Object;
+    body: CreateNotificationTemplate;
     path?: never;
     query?: never;
     url: '/v1/control/installation/notification-templates';
@@ -6558,8 +9925,10 @@ export type CreateInstallationNotificationTemplateResponses = {
     /**
      * Installation template draft created
      */
-    201: unknown;
+    201: NotificationTemplate;
 };
+
+export type CreateInstallationNotificationTemplateResponse = CreateInstallationNotificationTemplateResponses[keyof CreateInstallationNotificationTemplateResponses];
 
 export type ListInstallationNotificationTemplateVariablesData = {
     body?: never;
@@ -6572,8 +9941,10 @@ export type ListInstallationNotificationTemplateVariablesResponses = {
     /**
      * Installation template variables and samples
      */
-    200: unknown;
+    200: TemplateVariables;
 };
+
+export type ListInstallationNotificationTemplateVariablesResponse = ListInstallationNotificationTemplateVariablesResponses[keyof ListInstallationNotificationTemplateVariablesResponses];
 
 export type GetInstallationNotificationTemplateData = {
     body?: never;
@@ -6588,11 +9959,13 @@ export type GetInstallationNotificationTemplateResponses = {
     /**
      * Installation template and immutable history
      */
-    200: unknown;
+    200: NotificationTemplate;
 };
 
+export type GetInstallationNotificationTemplateResponse = GetInstallationNotificationTemplateResponses[keyof GetInstallationNotificationTemplateResponses];
+
 export type UpdateInstallationNotificationTemplateData = {
-    body: Object;
+    body: UpdateNotificationTemplate;
     path: {
         template_id: Uuid;
     };
@@ -6604,11 +9977,13 @@ export type UpdateInstallationNotificationTemplateResponses = {
     /**
      * New installation template draft version created
      */
-    201: unknown;
+    201: NotificationTemplate;
 };
 
+export type UpdateInstallationNotificationTemplateResponse = UpdateInstallationNotificationTemplateResponses[keyof UpdateInstallationNotificationTemplateResponses];
+
 export type PreviewInstallationNotificationTemplateData = {
-    body: Object;
+    body: PreviewNotificationTemplate;
     path: {
         template_id: Uuid;
     };
@@ -6620,8 +9995,10 @@ export type PreviewInstallationNotificationTemplateResponses = {
     /**
      * Safely rendered installation template preview
      */
-    200: unknown;
+    200: NotificationTemplatePreview;
 };
+
+export type PreviewInstallationNotificationTemplateResponse = PreviewInstallationNotificationTemplateResponses[keyof PreviewInstallationNotificationTemplateResponses];
 
 export type PublishInstallationNotificationTemplateData = {
     body?: never;
@@ -6670,15 +10047,15 @@ export type ListNotificationTemplatesData = {
 
 export type ListNotificationTemplatesResponses = {
     /**
-     * Cursor page
+     * Successful listNotificationTemplates response.
      */
-    200: Page;
+    200: NotificationTemplatePage;
 };
 
 export type ListNotificationTemplatesResponse = ListNotificationTemplatesResponses[keyof ListNotificationTemplatesResponses];
 
 export type CreateNotificationTemplateData = {
-    body: Object;
+    body: CreateNotificationTemplate;
     path: {
         application_id: Uuid;
     };
@@ -6690,8 +10067,10 @@ export type CreateNotificationTemplateResponses = {
     /**
      * Immutable draft template version created
      */
-    201: unknown;
+    201: NotificationTemplate;
 };
+
+export type CreateNotificationTemplateResponse = CreateNotificationTemplateResponses[keyof CreateNotificationTemplateResponses];
 
 export type ListNotificationTemplateVariablesData = {
     body?: never;
@@ -6706,8 +10085,10 @@ export type ListNotificationTemplateVariablesResponses = {
     /**
      * Built-in notification template variables and sample values
      */
-    200: unknown;
+    200: TemplateVariables;
 };
+
+export type ListNotificationTemplateVariablesResponse = ListNotificationTemplateVariablesResponses[keyof ListNotificationTemplateVariablesResponses];
 
 export type GetNotificationTemplateData = {
     body?: never;
@@ -6723,11 +10104,13 @@ export type GetNotificationTemplateResponses = {
     /**
      * Template version and immutable version history
      */
-    200: unknown;
+    200: NotificationTemplate;
 };
 
+export type GetNotificationTemplateResponse = GetNotificationTemplateResponses[keyof GetNotificationTemplateResponses];
+
 export type UpdateNotificationTemplateData = {
-    body: Object;
+    body: UpdateNotificationTemplate;
     path: {
         application_id: Uuid;
         template_id: Uuid;
@@ -6740,11 +10123,13 @@ export type UpdateNotificationTemplateResponses = {
     /**
      * New immutable draft version created
      */
-    201: unknown;
+    201: NotificationTemplate;
 };
 
+export type UpdateNotificationTemplateResponse = UpdateNotificationTemplateResponses[keyof UpdateNotificationTemplateResponses];
+
 export type PreviewNotificationTemplateData = {
-    body: Object;
+    body: PreviewNotificationTemplate;
     path: {
         application_id: Uuid;
         template_id: Uuid;
@@ -6757,8 +10142,10 @@ export type PreviewNotificationTemplateResponses = {
     /**
      * Safely rendered preview without delivery
      */
-    200: unknown;
+    200: NotificationTemplatePreview;
 };
+
+export type PreviewNotificationTemplateResponse = PreviewNotificationTemplateResponses[keyof PreviewNotificationTemplateResponses];
 
 export type PublishNotificationTemplateData = {
     body?: never;
@@ -6809,33 +10196,12 @@ export type ListNotificationsData = {
 
 export type ListNotificationsResponses = {
     /**
-     * Cursor page
+     * Successful listNotifications response.
      */
-    200: Page;
+    200: NotificationPage;
 };
 
 export type ListNotificationsResponse = ListNotificationsResponses[keyof ListNotificationsResponses];
-
-export type QueueNotificationData = {
-    body: QueueNotification;
-    headers?: {
-        'Idempotency-Key'?: string;
-    };
-    path: {
-        application_id: Uuid;
-    };
-    query?: never;
-    url: '/v1/control/applications/{application_id}/notifications';
-};
-
-export type QueueNotificationResponses = {
-    /**
-     * Rendered locale-aware template snapshot queued or suppressed by preference
-     */
-    202: QueuedNotification;
-};
-
-export type QueueNotificationResponse = QueueNotificationResponses[keyof QueueNotificationResponses];
 
 export type GetNotificationStatisticsData = {
     body?: never;
@@ -6850,8 +10216,10 @@ export type GetNotificationStatisticsResponses = {
     /**
      * Notification and attempt status totals
      */
-    200: unknown;
+    200: NotificationStatistics;
 };
+
+export type GetNotificationStatisticsResponse = GetNotificationStatisticsResponses[keyof GetNotificationStatisticsResponses];
 
 export type GetNotificationData = {
     body?: never;
@@ -6867,8 +10235,10 @@ export type GetNotificationResponses = {
     /**
      * Notification metadata, attachment metadata, and attempts without encrypted payload
      */
-    200: unknown;
+    200: Notification;
 };
+
+export type GetNotificationResponse = GetNotificationResponses[keyof GetNotificationResponses];
 
 export type RetryNotificationData = {
     body?: never;
@@ -6900,15 +10270,15 @@ export type ListMyNotificationPreferencesData = {
 
 export type ListMyNotificationPreferencesResponses = {
     /**
-     * Cursor page
+     * Successful listMyNotificationPreferences response.
      */
-    200: Page;
+    200: NotificationPreferencePage;
 };
 
 export type ListMyNotificationPreferencesResponse = ListMyNotificationPreferencesResponses[keyof ListMyNotificationPreferencesResponses];
 
 export type UpdateMyNotificationPreferenceData = {
-    body: Object;
+    body: UpdateNotificationPreference;
     path: {
         application_id: Uuid;
         category: 'transactional' | 'billing' | 'product' | 'marketing';
@@ -6935,15 +10305,15 @@ export type ListInstallationStorageProvidersData = {
 
 export type ListInstallationStorageProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listInstallationStorageProviders response.
      */
-    200: Page;
+    200: StorageProviderPage;
 };
 
 export type ListInstallationStorageProvidersResponse = ListInstallationStorageProvidersResponses[keyof ListInstallationStorageProvidersResponses];
 
 export type CreateInstallationStorageProviderData = {
-    body: StorageProvider;
+    body: StorageProviderBody;
     path?: never;
     query?: never;
     url: '/v1/control/installation/storage/providers';
@@ -6953,8 +10323,10 @@ export type CreateInstallationStorageProviderResponses = {
     /**
      * Storage provider stored without exposing credentials
      */
-    201: unknown;
+    201: StorageProvider;
 };
+
+export type CreateInstallationStorageProviderResponse = CreateInstallationStorageProviderResponses[keyof CreateInstallationStorageProviderResponses];
 
 export type DisableInstallationStorageProviderData = {
     body?: never;
@@ -7001,11 +10373,13 @@ export type GetInstallationStorageProviderResponses = {
     /**
      * Secret-free storage provider
      */
-    200: unknown;
+    200: StorageProvider;
 };
 
+export type GetInstallationStorageProviderResponse = GetInstallationStorageProviderResponses[keyof GetInstallationStorageProviderResponses];
+
 export type UpdateInstallationStorageProviderData = {
-    body: Object;
+    body: UpdateStorageProviderWritable;
     path: {
         provider_id: Uuid;
     };
@@ -7017,8 +10391,10 @@ export type UpdateInstallationStorageProviderResponses = {
     /**
      * Storage provider updated and marked unverified
      */
-    200: unknown;
+    200: StorageProvider;
 };
+
+export type UpdateInstallationStorageProviderResponse = UpdateInstallationStorageProviderResponses[keyof UpdateInstallationStorageProviderResponses];
 
 export type VerifyInstallationStorageProviderData = {
     body?: never;
@@ -7060,8 +10436,10 @@ export type EnableInstallationStorageProviderResponses = {
     /**
      * Provider re-enabled
      */
-    200: unknown;
+    200: StorageProviderStatus;
 };
+
+export type EnableInstallationStorageProviderResponse = EnableInstallationStorageProviderResponses[keyof EnableInstallationStorageProviderResponses];
 
 export type ListOrganizationStorageProvidersData = {
     body?: never;
@@ -7074,15 +10452,15 @@ export type ListOrganizationStorageProvidersData = {
 
 export type ListOrganizationStorageProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listOrganizationStorageProviders response.
      */
-    200: Page;
+    200: StorageProviderPage;
 };
 
 export type ListOrganizationStorageProvidersResponse = ListOrganizationStorageProvidersResponses[keyof ListOrganizationStorageProvidersResponses];
 
 export type CreateOrganizationStorageProviderData = {
-    body: StorageProvider;
+    body: StorageProviderBody;
     path: {
         organization_id: Uuid;
     };
@@ -7094,8 +10472,10 @@ export type CreateOrganizationStorageProviderResponses = {
     /**
      * Organization storage override stored
      */
-    201: unknown;
+    201: StorageProvider;
 };
+
+export type CreateOrganizationStorageProviderResponse = CreateOrganizationStorageProviderResponses[keyof CreateOrganizationStorageProviderResponses];
 
 export type DisableOrganizationStorageProviderData = {
     body?: never;
@@ -7144,11 +10524,13 @@ export type GetOrganizationStorageProviderResponses = {
     /**
      * Secret-free storage provider
      */
-    200: unknown;
+    200: StorageProvider;
 };
 
+export type GetOrganizationStorageProviderResponse = GetOrganizationStorageProviderResponses[keyof GetOrganizationStorageProviderResponses];
+
 export type UpdateOrganizationStorageProviderData = {
-    body: Object;
+    body: UpdateStorageProviderWritable;
     path: {
         organization_id: Uuid;
         provider_id: Uuid;
@@ -7161,8 +10543,10 @@ export type UpdateOrganizationStorageProviderResponses = {
     /**
      * Storage provider updated and marked unverified
      */
-    200: unknown;
+    200: StorageProvider;
 };
+
+export type UpdateOrganizationStorageProviderResponse = UpdateOrganizationStorageProviderResponses[keyof UpdateOrganizationStorageProviderResponses];
 
 export type VerifyOrganizationStorageProviderData = {
     body?: never;
@@ -7197,8 +10581,10 @@ export type EnableOrganizationStorageProviderResponses = {
     /**
      * Provider re-enabled
      */
-    200: unknown;
+    200: StorageProviderStatus;
 };
+
+export type EnableOrganizationStorageProviderResponse = EnableOrganizationStorageProviderResponses[keyof EnableOrganizationStorageProviderResponses];
 
 export type ListApplicationStorageProvidersData = {
     body?: never;
@@ -7211,15 +10597,15 @@ export type ListApplicationStorageProvidersData = {
 
 export type ListApplicationStorageProvidersResponses = {
     /**
-     * Cursor page
+     * Successful listApplicationStorageProviders response.
      */
-    200: Page;
+    200: StorageProviderPage;
 };
 
 export type ListApplicationStorageProvidersResponse = ListApplicationStorageProvidersResponses[keyof ListApplicationStorageProvidersResponses];
 
 export type CreateApplicationStorageProviderData = {
-    body: StorageProvider;
+    body: StorageProviderBody;
     path: {
         application_id: Uuid;
     };
@@ -7231,8 +10617,10 @@ export type CreateApplicationStorageProviderResponses = {
     /**
      * Application storage override stored
      */
-    201: unknown;
+    201: StorageProvider;
 };
+
+export type CreateApplicationStorageProviderResponse = CreateApplicationStorageProviderResponses[keyof CreateApplicationStorageProviderResponses];
 
 export type DisableApplicationStorageProviderData = {
     body?: never;
@@ -7281,11 +10669,13 @@ export type GetApplicationStorageProviderResponses = {
     /**
      * Secret-free storage provider
      */
-    200: unknown;
+    200: StorageProvider;
 };
 
+export type GetApplicationStorageProviderResponse = GetApplicationStorageProviderResponses[keyof GetApplicationStorageProviderResponses];
+
 export type UpdateApplicationStorageProviderData = {
-    body: Object;
+    body: UpdateStorageProviderWritable;
     path: {
         application_id: Uuid;
         provider_id: Uuid;
@@ -7298,8 +10688,10 @@ export type UpdateApplicationStorageProviderResponses = {
     /**
      * Storage provider updated and marked unverified
      */
-    200: unknown;
+    200: StorageProvider;
 };
+
+export type UpdateApplicationStorageProviderResponse = UpdateApplicationStorageProviderResponses[keyof UpdateApplicationStorageProviderResponses];
 
 export type VerifyApplicationStorageProviderData = {
     body?: never;
@@ -7334,8 +10726,10 @@ export type EnableApplicationStorageProviderResponses = {
     /**
      * Provider re-enabled
      */
-    200: unknown;
+    200: StorageProviderStatus;
 };
+
+export type EnableApplicationStorageProviderResponse = EnableApplicationStorageProviderResponses[keyof EnableApplicationStorageProviderResponses];
 
 export type CreateInstallationStorageUploadData = {
     body: StorageUpload;
@@ -7369,8 +10763,10 @@ export type CompleteInstallationStorageUploadResponses = {
     /**
      * Upload verified
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type CompleteInstallationStorageUploadResponse = CompleteInstallationStorageUploadResponses[keyof CompleteInstallationStorageUploadResponses];
 
 export type ListInstallationStorageObjectsData = {
     body?: never;
@@ -7381,9 +10777,9 @@ export type ListInstallationStorageObjectsData = {
 
 export type ListInstallationStorageObjectsResponses = {
     /**
-     * Cursor page
+     * Successful listInstallationStorageObjects response.
      */
-    200: Page;
+    200: StorageObjectPage;
 };
 
 export type ListInstallationStorageObjectsResponse = ListInstallationStorageObjectsResponses[keyof ListInstallationStorageObjectsResponses];
@@ -7424,8 +10820,10 @@ export type GetInstallationStorageObjectResponses = {
     /**
      * Installation asset metadata
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type GetInstallationStorageObjectResponse = GetInstallationStorageObjectResponses[keyof GetInstallationStorageObjectResponses];
 
 export type DownloadInstallationStorageObjectData = {
     body?: never;
@@ -7440,8 +10838,10 @@ export type DownloadInstallationStorageObjectResponses = {
     /**
      * Public or short-lived private URL
      */
-    200: unknown;
+    200: StorageDownload;
 };
+
+export type DownloadInstallationStorageObjectResponse = DownloadInstallationStorageObjectResponses[keyof DownloadInstallationStorageObjectResponses];
 
 export type ListOrganizationStorageObjectsData = {
     body?: never;
@@ -7454,9 +10854,9 @@ export type ListOrganizationStorageObjectsData = {
 
 export type ListOrganizationStorageObjectsResponses = {
     /**
-     * Cursor page
+     * Successful listOrganizationStorageObjects response.
      */
-    200: Page;
+    200: StorageObjectPage;
 };
 
 export type ListOrganizationStorageObjectsResponse = ListOrganizationStorageObjectsResponses[keyof ListOrganizationStorageObjectsResponses];
@@ -7499,8 +10899,10 @@ export type GetOrganizationStorageObjectResponses = {
     /**
      * Organization object metadata
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type GetOrganizationStorageObjectResponse = GetOrganizationStorageObjectResponses[keyof GetOrganizationStorageObjectResponses];
 
 export type DownloadOrganizationStorageObjectData = {
     body?: never;
@@ -7516,8 +10918,10 @@ export type DownloadOrganizationStorageObjectResponses = {
     /**
      * Public or short-lived private URL
      */
-    200: unknown;
+    200: StorageDownload;
 };
+
+export type DownloadOrganizationStorageObjectResponse = DownloadOrganizationStorageObjectResponses[keyof DownloadOrganizationStorageObjectResponses];
 
 export type CreateControlApplicationStorageUploadData = {
     body: StorageUpload;
@@ -7535,8 +10939,10 @@ export type CreateControlApplicationStorageUploadResponses = {
     /**
      * Presigned application asset upload
      */
-    201: unknown;
+    201: StorageUploadAuthorization;
 };
+
+export type CreateControlApplicationStorageUploadResponse = CreateControlApplicationStorageUploadResponses[keyof CreateControlApplicationStorageUploadResponses];
 
 export type CompleteControlApplicationStorageUploadData = {
     body?: never;
@@ -7552,8 +10958,10 @@ export type CompleteControlApplicationStorageUploadResponses = {
     /**
      * Upload verified
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type CompleteControlApplicationStorageUploadResponse = CompleteControlApplicationStorageUploadResponses[keyof CompleteControlApplicationStorageUploadResponses];
 
 export type ListControlApplicationStorageObjectsData = {
     body?: never;
@@ -7566,9 +10974,9 @@ export type ListControlApplicationStorageObjectsData = {
 
 export type ListControlApplicationStorageObjectsResponses = {
     /**
-     * Cursor page
+     * Successful listControlApplicationStorageObjects response.
      */
-    200: Page;
+    200: StorageObjectPage;
 };
 
 export type ListControlApplicationStorageObjectsResponse = ListControlApplicationStorageObjectsResponses[keyof ListControlApplicationStorageObjectsResponses];
@@ -7611,8 +11019,10 @@ export type GetControlApplicationStorageObjectResponses = {
     /**
      * Application object metadata
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type GetControlApplicationStorageObjectResponse = GetControlApplicationStorageObjectResponses[keyof GetControlApplicationStorageObjectResponses];
 
 export type DownloadControlApplicationStorageObjectData = {
     body?: never;
@@ -7628,8 +11038,10 @@ export type DownloadControlApplicationStorageObjectResponses = {
     /**
      * Public or short-lived private URL
      */
-    200: unknown;
+    200: StorageDownload;
 };
+
+export type DownloadControlApplicationStorageObjectResponse = DownloadControlApplicationStorageObjectResponses[keyof DownloadControlApplicationStorageObjectResponses];
 
 export type CreateApplicationStorageUploadData = {
     body: StorageUpload;
@@ -7647,8 +11059,10 @@ export type CreateApplicationStorageUploadResponses = {
     /**
      * Presigned application-owned upload
      */
-    201: unknown;
+    201: StorageUploadAuthorization;
 };
+
+export type CreateApplicationStorageUploadResponse = CreateApplicationStorageUploadResponses[keyof CreateApplicationStorageUploadResponses];
 
 export type CompleteApplicationStorageUploadData = {
     body?: never;
@@ -7664,8 +11078,10 @@ export type CompleteApplicationStorageUploadResponses = {
     /**
      * Upload verified
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type CompleteApplicationStorageUploadResponse = CompleteApplicationStorageUploadResponses[keyof CompleteApplicationStorageUploadResponses];
 
 export type ListApplicationStorageObjectsData = {
     body?: never;
@@ -7678,9 +11094,9 @@ export type ListApplicationStorageObjectsData = {
 
 export type ListApplicationStorageObjectsResponses = {
     /**
-     * Cursor page
+     * Successful listApplicationStorageObjects response.
      */
-    200: Page;
+    200: StorageObjectPage;
 };
 
 export type ListApplicationStorageObjectsResponse = ListApplicationStorageObjectsResponses[keyof ListApplicationStorageObjectsResponses];
@@ -7718,8 +11134,10 @@ export type GetApplicationStorageObjectResponses = {
     /**
      * Application object metadata
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type GetApplicationStorageObjectResponse = GetApplicationStorageObjectResponses[keyof GetApplicationStorageObjectResponses];
 
 export type DownloadApplicationStorageObjectData = {
     body?: never;
@@ -7735,8 +11153,10 @@ export type DownloadApplicationStorageObjectResponses = {
     /**
      * Public or short-lived private URL
      */
-    200: unknown;
+    200: StorageDownload;
 };
+
+export type DownloadApplicationStorageObjectResponse = DownloadApplicationStorageObjectResponses[keyof DownloadApplicationStorageObjectResponses];
 
 export type CreateMyStorageUploadData = {
     body: StorageUpload;
@@ -7754,8 +11174,10 @@ export type CreateMyStorageUploadResponses = {
     /**
      * Presigned user-owned upload
      */
-    201: unknown;
+    201: StorageUploadAuthorization;
 };
+
+export type CreateMyStorageUploadResponse = CreateMyStorageUploadResponses[keyof CreateMyStorageUploadResponses];
 
 export type CompleteMyStorageUploadData = {
     body?: never;
@@ -7771,8 +11193,10 @@ export type CompleteMyStorageUploadResponses = {
     /**
      * Upload verified
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type CompleteMyStorageUploadResponse = CompleteMyStorageUploadResponses[keyof CompleteMyStorageUploadResponses];
 
 export type ListMyStorageObjectsData = {
     body?: never;
@@ -7785,9 +11209,9 @@ export type ListMyStorageObjectsData = {
 
 export type ListMyStorageObjectsResponses = {
     /**
-     * Cursor page
+     * Successful listMyStorageObjects response.
      */
-    200: Page;
+    200: StorageObjectPage;
 };
 
 export type ListMyStorageObjectsResponse = ListMyStorageObjectsResponses[keyof ListMyStorageObjectsResponses];
@@ -7825,8 +11249,10 @@ export type GetMyStorageObjectResponses = {
     /**
      * User object metadata
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type GetMyStorageObjectResponse = GetMyStorageObjectResponses[keyof GetMyStorageObjectResponses];
 
 export type DownloadMyStorageObjectData = {
     body?: never;
@@ -7842,8 +11268,10 @@ export type DownloadMyStorageObjectResponses = {
     /**
      * Public or short-lived private URL
      */
-    200: unknown;
+    200: StorageDownload;
 };
+
+export type DownloadMyStorageObjectResponse = DownloadMyStorageObjectResponses[keyof DownloadMyStorageObjectResponses];
 
 export type CreateWorkspaceStorageUploadData = {
     body: StorageUpload;
@@ -7862,8 +11290,10 @@ export type CreateWorkspaceStorageUploadResponses = {
     /**
      * Presigned workspace-owned upload
      */
-    201: unknown;
+    201: StorageUploadAuthorization;
 };
+
+export type CreateWorkspaceStorageUploadResponse = CreateWorkspaceStorageUploadResponses[keyof CreateWorkspaceStorageUploadResponses];
 
 export type CompleteWorkspaceStorageUploadData = {
     body?: never;
@@ -7880,8 +11310,10 @@ export type CompleteWorkspaceStorageUploadResponses = {
     /**
      * Upload verified
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type CompleteWorkspaceStorageUploadResponse = CompleteWorkspaceStorageUploadResponses[keyof CompleteWorkspaceStorageUploadResponses];
 
 export type ListWorkspaceStorageObjectsData = {
     body?: never;
@@ -7895,9 +11327,9 @@ export type ListWorkspaceStorageObjectsData = {
 
 export type ListWorkspaceStorageObjectsResponses = {
     /**
-     * Cursor page
+     * Successful listWorkspaceStorageObjects response.
      */
-    200: Page;
+    200: StorageObjectPage;
 };
 
 export type ListWorkspaceStorageObjectsResponse = ListWorkspaceStorageObjectsResponses[keyof ListWorkspaceStorageObjectsResponses];
@@ -7937,8 +11369,10 @@ export type GetWorkspaceStorageObjectResponses = {
     /**
      * Workspace object metadata
      */
-    200: unknown;
+    200: StorageObject;
 };
+
+export type GetWorkspaceStorageObjectResponse = GetWorkspaceStorageObjectResponses[keyof GetWorkspaceStorageObjectResponses];
 
 export type DownloadWorkspaceStorageObjectData = {
     body?: never;
@@ -7955,8 +11389,10 @@ export type DownloadWorkspaceStorageObjectResponses = {
     /**
      * Public or short-lived private URL
      */
-    200: unknown;
+    200: StorageDownload;
 };
+
+export type DownloadWorkspaceStorageObjectResponse = DownloadWorkspaceStorageObjectResponses[keyof DownloadWorkspaceStorageObjectResponses];
 
 export type OidcDiscoveryData = {
     body?: never;
@@ -7969,8 +11405,10 @@ export type OidcDiscoveryResponses = {
     /**
      * OpenID Provider metadata
      */
-    200: unknown;
+    200: OidcDiscovery;
 };
+
+export type OidcDiscoveryResponse = OidcDiscoveryResponses[keyof OidcDiscoveryResponses];
 
 export type OidcJwksData = {
     body?: never;
@@ -7983,8 +11421,10 @@ export type OidcJwksResponses = {
     /**
      * Active and retiring JSON Web Keys
      */
-    200: unknown;
+    200: Jwks;
 };
+
+export type OidcJwksResponse = OidcJwksResponses[keyof OidcJwksResponses];
 
 export type BeginOidcAuthorizationData = {
     body?: never;
@@ -8005,8 +11445,10 @@ export type BeginOidcAuthorizationResponses = {
     /**
      * Headless consent interaction
      */
-    200: unknown;
+    200: AuthorizationRedirect;
 };
+
+export type BeginOidcAuthorizationResponse = BeginOidcAuthorizationResponses[keyof BeginOidcAuthorizationResponses];
 
 export type DecideOidcAuthorizationData = {
     body: OAuthAuthorizationDecision;
@@ -8019,8 +11461,10 @@ export type DecideOidcAuthorizationResponses = {
     /**
      * Headless authorization response containing redirect_to when JSON is requested
      */
-    200: unknown;
+    200: AuthorizationRedirect;
 };
+
+export type DecideOidcAuthorizationResponse = DecideOidcAuthorizationResponses[keyof DecideOidcAuthorizationResponses];
 
 export type ExchangeOidcTokenData = {
     body: OAuthToken;
@@ -8040,8 +11484,10 @@ export type ExchangeOidcTokenResponses = {
     /**
      * OAuth token response
      */
-    200: unknown;
+    200: TokenResponse;
 };
+
+export type ExchangeOidcTokenResponse = ExchangeOidcTokenResponses[keyof ExchangeOidcTokenResponses];
 
 export type RevokeOidcTokenData = {
     body: OAuthTokenCredential;
@@ -8054,8 +11500,10 @@ export type RevokeOidcTokenResponses = {
     /**
      * Token revoked or already inactive
      */
-    200: unknown;
+    200: EmptyResponse;
 };
+
+export type RevokeOidcTokenResponse = RevokeOidcTokenResponses[keyof RevokeOidcTokenResponses];
 
 export type IntrospectOidcTokenData = {
     body: OAuthTokenCredential;
@@ -8068,8 +11516,10 @@ export type IntrospectOidcTokenResponses = {
     /**
      * RFC 7662 token state
      */
-    200: unknown;
+    200: TokenIntrospection;
 };
+
+export type IntrospectOidcTokenResponse = IntrospectOidcTokenResponses[keyof IntrospectOidcTokenResponses];
 
 export type OidcUserinfoData = {
     body?: never;
@@ -8091,8 +11541,10 @@ export type OidcUserinfoResponses = {
     /**
      * OpenID Connect claims
      */
-    200: unknown;
+    200: UserInfo;
 };
+
+export type OidcUserinfoResponse = OidcUserinfoResponses[keyof OidcUserinfoResponses];
 
 export type StripeWebhookData = {
     body: unknown;
@@ -8119,8 +11571,10 @@ export type StripeWebhookResponses = {
     /**
      * Event stored and processed
      */
-    200: unknown;
+    200: WebhookAcknowledgement;
 };
+
+export type StripeWebhookResponse = StripeWebhookResponses[keyof StripeWebhookResponses];
 
 export type ManagementListOrganizationsData = {
     body?: never;
@@ -8133,9 +11587,9 @@ export type ManagementListOrganizationsData = {
 
 export type ManagementListOrganizationsResponses = {
     /**
-     * Cursor page
+     * Successful managementListOrganizations response.
      */
-    200: Page;
+    200: OrganizationPage;
 };
 
 export type ManagementListOrganizationsResponse = ManagementListOrganizationsResponses[keyof ManagementListOrganizationsResponses];
@@ -8149,10 +11603,12 @@ export type ManagementCreateOrganizationData = {
 
 export type ManagementCreateOrganizationResponses = {
     /**
-     * Organization provisioned without an operator membership
+     * Organization provisioned without a Platform user membership
      */
-    201: unknown;
+    201: Organization;
 };
+
+export type ManagementCreateOrganizationResponse = ManagementCreateOrganizationResponses[keyof ManagementCreateOrganizationResponses];
 
 export type ManagementRetireOrganizationData = {
     body?: never;
@@ -8185,8 +11641,10 @@ export type ManagementGetOrganizationResponses = {
     /**
      * Organization details
      */
-    200: unknown;
+    200: Organization;
 };
+
+export type ManagementGetOrganizationResponse = ManagementGetOrganizationResponses[keyof ManagementGetOrganizationResponses];
 
 export type ManagementUpdateOrganizationData = {
     body: Rename;
@@ -8285,9 +11743,9 @@ export type ManagementListApplicationsData = {
 
 export type ManagementListApplicationsResponses = {
     /**
-     * Cursor page
+     * Successful managementListApplications response.
      */
-    200: Page;
+    200: ApplicationPage;
 };
 
 export type ManagementListApplicationsResponse = ManagementListApplicationsResponses[keyof ManagementListApplicationsResponses];
@@ -8314,8 +11772,10 @@ export type ManagementCreateApplicationResponses = {
     /**
      * Application provisioned
      */
-    201: unknown;
+    201: Application;
 };
+
+export type ManagementCreateApplicationResponse = ManagementCreateApplicationResponses[keyof ManagementCreateApplicationResponses];
 
 export type ManagementRetireApplicationData = {
     body?: never;

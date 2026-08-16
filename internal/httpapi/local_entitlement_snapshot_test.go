@@ -33,7 +33,7 @@ func TestLocalEntitlementApprovalUsesCheckoutFeatureSnapshot(t *testing.T) {
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
 
 	organizationID, applicationID := kernel.NewID(), kernel.NewID()
-	userID, operatorID, productID, priceID, featureID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
+	userID, controlUserID, productID, priceID, featureID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
 	suffix := applicationID.String()
 	statements := []struct {
 		query string
@@ -41,7 +41,7 @@ func TestLocalEntitlementApprovalUsesCheckoutFeatureSnapshot(t *testing.T) {
 	}{
 		{`INSERT INTO organizations(id,name,slug) VALUES($1,'Test',$2)`, []any{organizationID, "snapshot-" + suffix}},
 		{`INSERT INTO applications(id,organization_id,name,slug) VALUES($1,$2,'Test',$3)`, []any{applicationID, organizationID, "snapshot-" + suffix}},
-		{`INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, []any{operatorID, "operator-" + suffix + "@example.test"}},
+		{`INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, []any{controlUserID, "control_user-" + suffix + "@example.test"}},
 		{`INSERT INTO users(id,application_id,email,normalized_email) VALUES($1,$2,$3,$3)`, []any{userID, applicationID, "user-" + suffix + "@example.test"}},
 		{`INSERT INTO products(id,application_id,key,name,status) VALUES($1,$2,$3,'Local','active')`, []any{productID, applicationID, "product-" + suffix}},
 		{`INSERT INTO prices(id,application_id,product_id,key,mode,amount_minor,currency,validity_seconds) VALUES($1,$2,$3,$4,'local',1000,'CHF',3600)`, []any{priceID, applicationID, productID, "price-" + suffix}},
@@ -54,7 +54,8 @@ func TestLocalEntitlementApprovalUsesCheckoutFeatureSnapshot(t *testing.T) {
 		}
 	}
 
-	checkoutRequest := requestWithRoute(t, "POST", `/`, map[string]any{"price_id": priceID}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "user", ID: userID.String()})
+	externalReference := "local-order-" + suffix
+	checkoutRequest := requestWithRoute(t, "POST", `/`, map[string]any{"price_id": priceID, "external_reference": externalReference}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "user", ID: userID.String()})
 	checkoutResponse := httptest.NewRecorder()
 	server.createLocalCheckout(checkoutResponse, checkoutRequest)
 	if checkoutResponse.Code != 201 {
@@ -72,7 +73,7 @@ func TestLocalEntitlementApprovalUsesCheckoutFeatureSnapshot(t *testing.T) {
 
 	approveRequest := requestWithRoute(t, "POST", `/`, map[string]any{"reason": "verified"}, map[string]string{
 		"application_id": applicationID.String(), "request_id": checkout.ID,
-	}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	approveResponse := httptest.NewRecorder()
 	server.approveLocalRequest(approveResponse, approveRequest)
 	if approveResponse.Code != 200 {
@@ -88,6 +89,25 @@ func TestLocalEntitlementApprovalUsesCheckoutFeatureSnapshot(t *testing.T) {
 	}
 	if value, ok := features["access-"+suffix].(bool); !ok || !value {
 		t.Fatalf("approval used mutable catalog state: %#v", features)
+	}
+	var requestReference, grantReference string
+	if err = db.QueryRow(context.Background(), `SELECT r.external_reference,g.external_reference
+FROM local_entitlement_requests r JOIN entitlement_grants g ON g.source_id=r.id AND g.source_type='local_request'
+WHERE r.id=$1`, checkout.ID).Scan(&requestReference, &grantReference); err != nil {
+		t.Fatal(err)
+	}
+	if requestReference != externalReference || grantReference != externalReference {
+		t.Fatalf("external reference was not preserved: request=%q grant=%q", requestReference, grantReference)
+	}
+	var createdEventReference, approvedEventReference string
+	if err = db.QueryRow(context.Background(), `SELECT
+(SELECT data->>'external_reference' FROM domain_events WHERE application_id=$1 AND event_type='local_entitlement_request.created' AND subject=$2),
+(SELECT data->>'external_reference' FROM domain_events WHERE application_id=$1 AND event_type='local_entitlement_request.approved' AND subject=$2)`,
+		applicationID, "local_entitlement_request/"+checkout.ID).Scan(&createdEventReference, &approvedEventReference); err != nil {
+		t.Fatal(err)
+	}
+	if createdEventReference != externalReference || approvedEventReference != externalReference {
+		t.Fatalf("external reference was omitted from local lifecycle events: created=%q approved=%q", createdEventReference, approvedEventReference)
 	}
 }
 

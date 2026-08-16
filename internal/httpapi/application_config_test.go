@@ -29,19 +29,19 @@ func TestApplicationConfigurationExposureAndEnforcement(t *testing.T) {
 	defer db.Close()
 	vault, _ := secure.NewVault(make([]byte, 32))
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
-	operatorID, organizationID, applicationID := kernel.NewID(), kernel.NewID(), kernel.NewID()
+	controlUserID, organizationID, applicationID := kernel.NewID(), kernel.NewID(), kernel.NewID()
 	userID, keyID, delegationID, sessionID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
 	suffix := applicationID.String()
 	statements := []struct {
 		query string
 		args  []any
 	}{
-		{`INSERT INTO operators(id,email,normalized_email,display_name) VALUES($1,$2,$2,'Configuration owner')`, []any{operatorID, "config-" + suffix + "@platform93.test"}},
+		{`INSERT INTO control_users(id,email,normalized_email,display_name) VALUES($1,$2,$2,'Configuration owner')`, []any{controlUserID, "config-" + suffix + "@platform93.test"}},
 		{`INSERT INTO organizations(id,name,slug) VALUES($1,'Configuration test',$2)`, []any{organizationID, "config-" + suffix}},
-		{`INSERT INTO applications(id,organization_id,name,slug,internal_config) VALUES($1,$2,'Configuration test',$3,$4)`, []any{applicationID, organizationID, "config-" + suffix, `{"registration_mode":"public","password_enabled":true,"passwordless_enabled":true,"personal_api_keys_enabled":true,"delegation_enabled":true}`}},
+		{`INSERT INTO applications(id,organization_id,name,slug,internal_config) VALUES($1,$2,'Configuration test',$3,$4)`, []any{applicationID, organizationID, "config-" + suffix, `{"registration_mode":"public","password_enabled":true,"passwordless_enabled":true,"personal_api_keys_enabled":true,"delegation_enabled":true,"user_invitations_enabled":false,"custom_token_claim_keys":[]}`}},
 		{`INSERT INTO users(id,application_id,email,normalized_email) VALUES($1,$2,$3,$3)`, []any{userID, applicationID, "user-" + suffix + "@platform93.test"}},
 		{`INSERT INTO personal_api_keys(id,application_id,user_id,token_prefix,token_digest,expires_at) VALUES($1,$2,$3,'p93_pat_test',$4,now()+interval '1 day')`, []any{keyID, applicationID, userID, []byte("key-" + suffix)}},
-		{`INSERT INTO delegations(id,application_id,operator_id,user_id,reason,redirect_uri,permissions,exchange_digest,expires_at) VALUES($1,$2,$3,$4,'Support','https://app.example/callback',ARRAY['read'],$5,now()+interval '1 day')`, []any{delegationID, applicationID, operatorID, userID, []byte("delegation-" + suffix)}},
+		{`INSERT INTO delegations(id,application_id,control_user_id,user_id,reason,redirect_uri,permissions,exchange_digest,expires_at) VALUES($1,$2,$3,$4,'Support','https://app.example/callback',ARRAY[$5],$6,now()+interval '1 day')`, []any{delegationID, applicationID, controlUserID, userID, "/applications/" + applicationID.String() + "/read", []byte("delegation-" + suffix)}},
 		{`INSERT INTO user_sessions(id,application_id,user_id,delegation_id,refresh_digest,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '1 day')`, []any{sessionID, applicationID, userID, delegationID, []byte("session-" + suffix)}},
 	}
 	for _, statement := range statements {
@@ -52,7 +52,7 @@ func TestApplicationConfigurationExposureAndEnforcement(t *testing.T) {
 
 	publicRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{
 		"brand_name": "Example", "support_url": "https://example.test/help",
-	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	publicRequest.Header.Set("If-Match", kernel.ETag(1))
 	publicResponse := httptest.NewRecorder()
 	server.updatePublicApplicationConfig(publicResponse, publicRequest)
@@ -63,7 +63,7 @@ func TestApplicationConfigurationExposureAndEnforcement(t *testing.T) {
 	internalRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{
 		"registration_mode": "invite_only", "password_enabled": true, "passwordless_enabled": true,
 		"personal_api_keys_enabled": false, "delegation_enabled": false,
-	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	internalRequest.Header.Set("If-Match", kernel.ETag(2))
 	internalResponse := httptest.NewRecorder()
 	server.updateInternalApplicationConfig(internalResponse, internalRequest)

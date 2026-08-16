@@ -37,6 +37,7 @@ func TestStripeEventsNormalizeOutOfOrder(t *testing.T) {
 	productID, priceID, connectionID := kernel.NewID(), kernel.NewID(), kernel.NewID()
 	customerID, checkoutID, subjectID := kernel.NewID(), kernel.NewID(), kernel.NewID()
 	suffix := applicationID.String()
+	externalReference := "stripe-order-" + suffix
 	providerCiphertext, err := vault.Encrypt([]byte("sk_test"), "billing-provider:"+connectionID.String()+":secret")
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +53,7 @@ func TestStripeEventsNormalizeOutOfOrder(t *testing.T) {
 		{`INSERT INTO prices(id,application_id,product_id,key,mode,amount_minor,currency,interval_unit,interval_count) VALUES($1,$2,$3,$4,'recurring',1000,'CHF','month',1)`, []any{priceID, applicationID, productID, "price-" + suffix}},
 		{`INSERT INTO provider_connections(id,application_id,provider,public_id,api_version,secret_ciphertext) VALUES($1,$2,'stripe',$3,$4,$5)`, []any{connectionID, applicationID, "stripe_" + suffix, stripeAPIVersion, providerCiphertext}},
 		{`INSERT INTO billing_customers(id,application_id,subject_type,subject_id,provider_connection_id,provider_customer_id) VALUES($1,$2,'user',$3,$4,'cus_test')`, []any{customerID, applicationID, subjectID, connectionID}},
-		{`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri) VALUES($1,$2,'user',$3,$4,$5,'open','{}','https://app.test/success','https://app.test/cancel')`, []any{checkoutID, applicationID, subjectID, priceID, connectionID}},
+		{`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri,external_reference) VALUES($1,$2,'user',$3,$4,$5,'open','{}','https://app.test/success','https://app.test/cancel',$6)`, []any{checkoutID, applicationID, subjectID, priceID, connectionID, externalReference}},
 	}
 	for _, statement := range statements {
 		if _, err = db.Exec(ctx, statement.query, statement.args...); err != nil {
@@ -103,6 +104,17 @@ func TestStripeEventsNormalizeOutOfOrder(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err = server.normalizeStripeRefund(ctx, applicationID.String(), connectionID.String(), map[string]any{
+		"id": "re_test", "payment_intent": "pi_test", "status": "succeeded", "amount": float64(500), "currency": "chf",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = server.normalizeStripeDispute(ctx, applicationID.String(), connectionID.String(), map[string]any{
+		"id": "dp_test", "payment_intent": "pi_test", "status": "needs_response", "amount": float64(1000), "currency": "chf",
+		"evidence_details": map[string]any{"due_by": float64(1_900_000_000)},
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	var refundLinked, disputeLinked, paymentInvoiceLinked, invoiceSubscriptionLinked bool
 	if err = db.QueryRow(ctx, `SELECT
@@ -125,6 +137,31 @@ FROM subscriptions WHERE application_id=$1 AND provider_subscription_id='sub_tes
 	}
 	if storedStart.Unix() != periodStart || storedEnd.Unix() != periodEnd || grants != 1 {
 		t.Fatalf("unexpected period or grants: %s %s %d", storedStart, storedEnd, grants)
+	}
+	var checkoutReference, subscriptionReference, invoiceReference, paymentReference, grantReference string
+	if err = db.QueryRow(ctx, `SELECT
+(SELECT external_reference FROM checkout_sessions WHERE id=$1),
+(SELECT external_reference FROM subscriptions WHERE application_id=$2 AND provider_subscription_id='sub_test'),
+(SELECT external_reference FROM invoices WHERE application_id=$2 AND provider_invoice_id='in_test'),
+(SELECT external_reference FROM payments WHERE application_id=$2 AND provider_payment_id='pi_test'),
+(SELECT external_reference FROM entitlement_grants WHERE application_id=$2 AND source_type='subscription')`, checkoutID, applicationID).
+		Scan(&checkoutReference, &subscriptionReference, &invoiceReference, &paymentReference, &grantReference); err != nil {
+		t.Fatal(err)
+	}
+	if checkoutReference != externalReference || subscriptionReference != externalReference || invoiceReference != externalReference ||
+		paymentReference != externalReference || grantReference != externalReference {
+		t.Fatalf("external reference propagation failed: checkout=%q subscription=%q invoice=%q payment=%q grant=%q",
+			checkoutReference, subscriptionReference, invoiceReference, paymentReference, grantReference)
+	}
+	var refundEventReference, disputeEventReference string
+	if err = db.QueryRow(ctx, `SELECT
+(SELECT data->>'external_reference' FROM domain_events WHERE application_id=$1 AND event_type='billing.refund.updated' ORDER BY occurred_at DESC,id DESC LIMIT 1),
+(SELECT data->>'external_reference' FROM domain_events WHERE application_id=$1 AND event_type='billing.dispute.updated' ORDER BY occurred_at DESC,id DESC LIMIT 1)`, applicationID).
+		Scan(&refundEventReference, &disputeEventReference); err != nil {
+		t.Fatal(err)
+	}
+	if refundEventReference != externalReference || disputeEventReference != externalReference {
+		t.Fatalf("external reference was omitted from related lifecycle events: refund=%q dispute=%q", refundEventReference, disputeEventReference)
 	}
 	if err = server.normalizeStripeSubscription(ctx, applicationID.String(), connectionID.String(), map[string]any{
 		"id": "sub_test", "status": "active", "metadata": map[string]any{"platform93_checkout_id": checkoutID.String()},

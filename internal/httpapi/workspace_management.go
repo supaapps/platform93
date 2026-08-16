@@ -64,7 +64,13 @@ func (s *Server) updateWorkspace(w http.ResponseWriter, r *http.Request) {
 		}
 		metadata = encoded
 	}
-	result, err := s.app.DB.Exec(r.Context(), `UPDATE workspaces SET
+	tx, err := s.app.DB.Begin(r.Context())
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "The workspace could not be updated.")
+		return
+	}
+	defer rollback(tx, r.Context())
+	result, err := tx.Exec(r.Context(), `UPDATE workspaces SET
 name=CASE WHEN $1::text IS NULL THEN name ELSE $1 END,
 metadata=CASE WHEN $2::jsonb IS NULL THEN metadata ELSE $2 END,
 version=version+1,updated_at=now() WHERE id=$3 AND application_id=$4 AND version=$5 AND deleted_at IS NULL`, request.Name, metadata, chi.URLParam(r, "workspace_id"), chi.URLParam(r, "application_id"), version)
@@ -72,12 +78,27 @@ version=version+1,updated_at=now() WHERE id=$3 AND application_id=$4 AND version
 		kernel.WriteProblem(w, r, http.StatusConflict, "workspace_version_conflict", "The workspace changed concurrently.")
 		return
 	}
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if parseErr == nil {
+		changedFields := []string{}
+		if request.Name != nil {
+			changedFields = append(changedFields, "name")
+		}
+		if request.Metadata != nil {
+			changedFields = append(changedFields, "metadata")
+		}
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "workspace.updated", "workspace/"+chi.URLParam(r, "workspace_id"), actor(r), map[string]any{"workspace_id": chi.URLParam(r, "workspace_id"), "changed_fields": changedFields, "status": "active"})
+	}
+	if parseErr != nil || err != nil || tx.Commit(r.Context()) != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "workspace_update_failed", "The workspace could not be updated.")
+		return
+	}
 	w.Header().Set("ETag", kernel.ETag(version+1))
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) deleteWorkspace(w http.ResponseWriter, r *http.Request) {
-	if !s.isWorkspaceOwnerOrOperator(r) {
+	if !s.isWorkspaceOwnerOrControlUser(r) {
 		kernel.WriteProblem(w, r, http.StatusForbidden, "workspace_owner_required", "The workspace owner or an organization administrator is required.")
 		return
 	}
@@ -94,14 +115,18 @@ WHERE id=$1 AND application_id=$2 AND deleted_at IS NULL`, workspaceID, applicat
 		kernel.WriteProblem(w, r, http.StatusNotFound, "workspace_not_found", "The active workspace was not found.")
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `UPDATE workspace_invitations SET revoked_at=COALESCE(revoked_at,now())
+	if _, err = tx.Exec(r.Context(), `UPDATE application_invitations SET revoked_at=COALESCE(revoked_at,now()),updated_at=now()
 WHERE workspace_id=$1 AND application_id=$2 AND accepted_at IS NULL`, workspaceID, applicationID); err == nil {
 		_, err = tx.Exec(r.Context(), `DELETE FROM role_assignments WHERE workspace_id=$1 AND application_id=$2`, workspaceID, applicationID)
 	}
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `DELETE FROM workspace_memberships WHERE workspace_id=$1 AND application_id=$2`, workspaceID, applicationID)
 	}
-	if err != nil || tx.Commit(r.Context()) != nil {
+	parsedApplicationID, parseErr := uuid.Parse(applicationID)
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &parsedApplicationID, "workspace.archived", "workspace/"+workspaceID, actor(r), map[string]any{"workspace_id": workspaceID, "status": "archived"})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "workspace_retirement_failed", "The workspace could not be retired atomically.")
 		return
 	}
@@ -191,6 +216,8 @@ AND EXISTS(SELECT 1 FROM users WHERE id=$4 AND application_id=$1 AND status='act
 		kernel.WriteProblem(w, r, http.StatusConflict, "workspace_owner_not_member", "The workspace owner cannot also be stored as a member.")
 		return
 	}
+	var existingMember bool
+	_ = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workspace_memberships WHERE application_id=$1 AND workspace_id=$2 AND user_id=$3)`, applicationID, workspaceID, userID).Scan(&existingMember)
 	_, err = tx.Exec(r.Context(), `INSERT INTO workspace_memberships(application_id,workspace_id,user_id)
 VALUES($1,$2,$3) ON CONFLICT(workspace_id,user_id) DO NOTHING`, applicationID, workspaceID, userID)
 	if err == nil {
@@ -201,7 +228,15 @@ VALUES($1,$2,$3) ON CONFLICT(workspace_id,user_id) DO NOTHING`, applicationID, w
 			_, err = tx.Exec(r.Context(), `INSERT INTO role_assignments(id,application_id,user_id,role_id,workspace_id) VALUES($1,$2,$3,$4,$5)`, kernel.NewID(), applicationID, userID, roleID, workspaceID)
 		}
 	}
-	if err != nil || tx.Commit(r.Context()) != nil {
+	parsedApplicationID, parseErr := uuid.Parse(applicationID)
+	if err == nil && parseErr == nil {
+		eventType := "workspace.member_added"
+		if existingMember {
+			eventType = "workspace.member_updated"
+		}
+		_, err = s.app.Emit(r.Context(), tx, &parsedApplicationID, eventType, "workspace/"+workspaceID, actor(r), map[string]any{"workspace_id": workspaceID, "user_id": userID, "role_keys": request.RoleKeys, "status": "active"})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "workspace_membership_update_failed", "Workspace membership could not be updated atomically.")
 		return
 	}
@@ -224,7 +259,11 @@ func (s *Server) deleteWorkspaceMember(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = tx.QueryRow(r.Context(), `DELETE FROM workspace_memberships WHERE application_id=$1 AND workspace_id=$2 AND user_id=$3 RETURNING user_id`, chi.URLParam(r, "application_id"), chi.URLParam(r, "workspace_id"), chi.URLParam(r, "user_id")).Scan(&removed)
 	}
-	if err != nil || tx.Commit(r.Context()) != nil {
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "workspace.member_removed", "workspace/"+chi.URLParam(r, "workspace_id"), actor(r), map[string]any{"workspace_id": chi.URLParam(r, "workspace_id"), "user_id": chi.URLParam(r, "user_id"), "status": "removed"})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "workspace_member_not_found", "The workspace member was not found.")
 		return
 	}
@@ -300,7 +339,7 @@ func (s *Server) leaveWorkspace(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusForbidden, "user_required", "Only application users can leave a workspace.")
 		return
 	}
-	if s.isWorkspaceOwnerOrOperator(r) {
+	if s.isWorkspaceOwnerOrControlUser(r) {
 		kernel.WriteProblem(w, r, http.StatusConflict, "workspace_owner_cannot_leave", "Transfer workspace ownership before leaving.")
 		return
 	}
@@ -315,7 +354,11 @@ func (s *Server) leaveWorkspace(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = tx.QueryRow(r.Context(), `DELETE FROM workspace_memberships WHERE application_id=$1 AND workspace_id=$2 AND user_id=$3 RETURNING user_id`, chi.URLParam(r, "application_id"), chi.URLParam(r, "workspace_id"), actor(r).ID).Scan(&removed)
 	}
-	if err != nil || tx.Commit(r.Context()) != nil {
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "workspace.member_removed", "workspace/"+chi.URLParam(r, "workspace_id"), actor(r), map[string]any{"workspace_id": chi.URLParam(r, "workspace_id"), "user_id": actor(r).ID, "status": "removed"})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "workspace_membership_not_found", "The user is not a member of this workspace.")
 		return
 	}
@@ -323,7 +366,7 @@ func (s *Server) leaveWorkspace(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) canAccessWorkspace(r *http.Request, manage bool) bool {
-	if actor(r).Type == "operator" {
+	if actor(r).Type == "control_user" {
 		return true
 	}
 	applicationID, workspaceID := chi.URLParam(r, "application_id"), chi.URLParam(r, "workspace_id")
@@ -346,8 +389,8 @@ FROM workspaces WHERE id=$1 AND application_id=$2 AND deleted_at IS NULL`, works
 	return false
 }
 
-func (s *Server) isWorkspaceOwnerOrOperator(r *http.Request) bool {
-	if actor(r).Type == "operator" {
+func (s *Server) isWorkspaceOwnerOrControlUser(r *http.Request) bool {
+	if actor(r).Type == "control_user" {
 		return true
 	}
 	var owner bool

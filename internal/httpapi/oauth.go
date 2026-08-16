@@ -128,15 +128,29 @@ WHERE id=$1 AND application_id=$2 AND user_id=$3 AND revoked_at IS NULL`, curren
 		return
 	}
 	session := oauthserver.NewSession(current.ID, email, provider.KID, s.app.Now().UTC())
+	customClaims, claimsErr := s.customClaimsForUser(r.Context(), chi.URLParam(r, "application_id"), current.ID)
+	if claimsErr != nil {
+		provider.OAuth.WriteAuthorizeError(r.Context(), w, request, fosite.ErrServerError)
+		return
+	}
+	effective, accessErr := s.userEffectiveAccess(r, applicationID, current.ID)
+	if accessErr != nil {
+		provider.OAuth.WriteAuthorizeError(r.Context(), w, request, fosite.ErrServerError)
+		return
+	}
+	if current.DelegatedBy != "" {
+		effective.Roles = emptyRoleClaims()
+	}
 	session.AccessClaims.Extra = map[string]any{
 		"application_id": chi.URLParam(r, "application_id"), "client_id": request.GetClient().GetID(),
 		"token_kind": "access", "email": email, "email_verified": emailVerified,
 		"is_org_verified": orgVerified, "locale": locale, "actor_type": "user", "scope": strings.Join(current.Permissions, " "),
-		"sid": current.SessionID, "amr": amr,
+		"sid": current.SessionID, "amr": amr, "custom_claims": customClaims, "roles": effective.Roles,
 	}
 	session.IDClaims.Extra = map[string]any{
 		"application_id": chi.URLParam(r, "application_id"), "email": email, "email_verified": emailVerified,
 		"is_org_verified": orgVerified, "locale": locale, "actor_type": "user", "given_name": firstName, "family_name": lastName, "sid": current.SessionID,
+		"custom_claims": customClaims, "roles": effective.Roles,
 	}
 	session.IDClaims.AuthTime = authenticatedAt
 	session.IDClaims.AuthenticationMethodsReferences = amr
@@ -214,12 +228,17 @@ func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 	request.GrantAudience(s.app.ApplicationAudience(applicationID))
 	if request.GetGrantTypes().ExactOne("client_credentials") {
 		clientID := request.GetClient().GetID()
-		replaceApplicationScopes(request, s.clientScopes(r, applicationID, clientID))
+		effective, accessErr := s.clientEffectiveAccess(r, applicationID, clientID)
+		if accessErr != nil {
+			provider.OAuth.WriteAccessError(r.Context(), w, request, fosite.ErrInvalidGrant)
+			return
+		}
+		replaceApplicationScopes(request, effective.Scopes)
 		session.Subject = clientID
 		session.AccessClaims.Subject = clientID
 		session.AccessClaims.Extra = map[string]any{
 			"application_id": chi.URLParam(r, "application_id"), "client_id": clientID,
-			"token_kind": "machine", "actor_type": "client", "amr": []string{"client_credentials"},
+			"token_kind": "machine", "actor_type": "client", "amr": []string{"client_credentials"}, "roles": effective.Roles,
 		}
 		request.SetSession(session)
 	} else if request.GetGrantTypes().ExactOne("refresh_token") || request.GetGrantTypes().ExactOne("authorization_code") {
@@ -235,7 +254,28 @@ WHERE id=$1 AND application_id=$2 AND status='active')`, storedSession.Subject, 
 			provider.OAuth.WriteAccessError(r.Context(), w, request, fosite.ErrInvalidGrant)
 			return
 		}
-		replaceApplicationScopes(request, s.scopes(r, applicationID, storedSession.Subject))
+		effective, accessErr := s.userEffectiveAccess(r, applicationID, storedSession.Subject)
+		if accessErr != nil {
+			provider.OAuth.WriteAccessError(r.Context(), w, request, fosite.ErrInvalidGrant)
+			return
+		}
+		replaceApplicationScopes(request, effective.Scopes)
+		customClaims, claimsErr := s.customClaimsForUser(r.Context(), applicationID.String(), storedSession.Subject)
+		if claimsErr != nil {
+			provider.OAuth.WriteAccessError(r.Context(), w, request, fosite.ErrInvalidGrant)
+			return
+		}
+		if storedSession.AccessClaims.Extra == nil {
+			storedSession.AccessClaims.Extra = map[string]any{}
+		}
+		storedSession.AccessClaims.Extra["custom_claims"] = customClaims
+		storedSession.AccessClaims.Extra["roles"] = effective.Roles
+		if storedSession.IDClaims.Extra == nil {
+			storedSession.IDClaims.Extra = map[string]any{}
+		}
+		storedSession.IDClaims.Extra["custom_claims"] = customClaims
+		storedSession.IDClaims.Extra["roles"] = effective.Roles
+		request.SetSession(storedSession)
 	}
 	response, err := provider.OAuth.NewAccessResponse(r.Context(), request)
 	if err != nil {
@@ -296,6 +336,21 @@ FROM users WHERE id=$1 AND application_id=$2`, subject, chi.URLParam(r, "applica
 		return
 	}
 	result := map[string]any{"sub": subject, "is_org_verified": orgVerified}
+	applicationID, applicationErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if applicationErr != nil {
+		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_token", "The token application is invalid.")
+		return
+	}
+	if effective, accessErr := s.userEffectiveAccess(r, applicationID, subject); accessErr == nil {
+		result["roles"] = effective.Roles
+		result["scope"] = strings.Join(effective.Scopes, " ")
+	} else {
+		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_authorization_data", "The subject authorization data is invalid.")
+		return
+	}
+	if customClaims, claimsErr := s.customClaimsForUser(r.Context(), chi.URLParam(r, "application_id"), subject); claimsErr == nil && len(customClaims) > 0 {
+		result["custom_claims"] = customClaims
+	}
 	if request.GetGrantedScopes().Has("email") {
 		result["email"] = email
 		result["email_verified"] = verified

@@ -50,12 +50,13 @@ $verifier = new Verifier($issuer.'/', $fixture['audience'], $fixture['applicatio
 foreach ($fixture['cases'] as $case) {
     $now = time();
     $claims = ['iss' => $issuer, 'sub' => 'user-1', 'aud' => [$fixture['audience']], 'exp' => $now + 300, 'iat' => $now, 'nbf' => $now - 1,
-        'application_id' => $fixture['application_id'], 'token_kind' => 'access', 'actor_type' => 'user', 'scope' => '/applications/app/profile/read'];
+        'application_id' => $fixture['application_id'], 'token_kind' => 'access', 'actor_type' => 'user',
+        'scope' => '/applications/'.$fixture['application_id'].'/profile/read', 'roles' => ['application' => ['member'], 'workspaces' => new stdClass()]];
     $kid = 'primary';
     $key = $primaryPEM;
     switch ($case['mutation']) {
         case 'machine': $claims['token_kind'] = 'machine'; $claims['actor_type'] = 'client'; break;
-        case 'delegated': $claims['act'] = ['sub' => 'operator-1', 'type' => 'operator']; break;
+        case 'delegated': $claims['act'] = ['sub' => 'control_user-1', 'type' => 'control_user']; $claims['roles'] = ['application' => [], 'workspaces' => new stdClass()]; break;
         case 'wrong_issuer': $claims['iss'] = 'https://wrong.example'; break;
         case 'wrong_audience': $claims['aud'] = ['wrong-api']; break;
         case 'wrong_application': $claims['application_id'] = '01900000-0000-7000-8000-000000000000'; break;
@@ -66,11 +67,21 @@ foreach ($fixture['cases'] as $case) {
         case 'missing_application': unset($claims['application_id']); break;
         case 'missing_token_kind': unset($claims['token_kind']); break;
         case 'missing_actor_type': unset($claims['actor_type']); break;
-        case 'operator_actor': $claims['actor_type'] = 'operator'; break;
+        case 'missing_roles': unset($claims['roles']); break;
+        case 'space_injected_scope': $claims['scope'] .= '  /applications/'.$fixture['application_id'].'/billing/write'; break;
+        case 'tab_injected_scope': $claims['scope'] .= "\t/applications/".$fixture['application_id'].'/billing/write'; break;
+        case 'unicode_injected_scope': $claims['scope'] .= "\u{200B}/applications/".$fixture['application_id'].'/billing/write'; break;
+        case 'encoded_space_scope': $claims['scope'] = '/applications/'.$fixture['application_id'].'/billing%20write'; break;
+        case 'cross_application_scope': $claims['scope'] = '/applications/01900000-0000-7000-8000-000000000000/billing/read'; break;
+        case 'embedded_wildcard_scope': $claims['scope'] = '/applications/'.$fixture['application_id'].'/billing/*/write'; break;
+        case 'duplicate_scope': $claims['scope'] .= ' '.$claims['scope']; break;
+        case 'invalid_roles': $claims['roles'] = ['application' => ['billing admin'], 'workspaces' => new stdClass()]; break;
+        case 'delegated_roles': $claims['act'] = ['sub' => 'control_user-1', 'type' => 'control_user']; break;
+        case 'control_user_actor': $claims['actor_type'] = 'control_user'; break;
         case 'missing_kid': $kid = null; break;
         case 'unknown_kid': $kid = 'unknown'; break;
         case 'wrong_signature': $key = $wrongPEM; break;
-        case 'delegated_wrong_actor_type': $claims['act'] = ['sub' => 'operator-1', 'type' => 'user']; break;
+        case 'delegated_wrong_actor_type': $claims['act'] = ['sub' => 'control_user-1', 'type' => 'user']; break;
     }
     $token = JWT::encode($claims, $key, 'RS256', $kid, ['typ' => 'JWT']);
     if ($case['mutation'] === 'wrong_algorithm') {

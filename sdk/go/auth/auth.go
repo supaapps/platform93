@@ -11,27 +11,41 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
 
 type Claims struct {
-	Issuer        string   `json:"iss"`
-	Subject       string   `json:"sub"`
-	Audience      []string `json:"aud"`
-	ExpiresAt     int64    `json:"exp"`
-	IssuedAt      int64    `json:"iat"`
-	NotBefore     int64    `json:"nbf"`
-	ApplicationID string   `json:"application_id"`
-	TokenKind     string   `json:"token_kind"`
-	ActorType     string   `json:"actor_type"`
-	Scope         string   `json:"scope"`
-	Locale        string   `json:"locale,omitempty"`
-	EmailVerified bool     `json:"email_verified"`
-	IsOrgVerified bool     `json:"is_org_verified"`
-	Actor         *Actor   `json:"act,omitempty"`
+	Issuer        string         `json:"iss"`
+	Subject       string         `json:"sub"`
+	Audience      []string       `json:"aud"`
+	ExpiresAt     int64          `json:"exp"`
+	IssuedAt      int64          `json:"iat"`
+	NotBefore     int64          `json:"nbf"`
+	ApplicationID string         `json:"application_id"`
+	TokenKind     string         `json:"token_kind"`
+	ActorType     string         `json:"actor_type"`
+	Scope         string         `json:"scope"`
+	Roles         RoleClaims     `json:"roles"`
+	Locale        string         `json:"locale,omitempty"`
+	EmailVerified bool           `json:"email_verified"`
+	IsOrgVerified bool           `json:"is_org_verified"`
+	CustomClaims  map[string]any `json:"custom_claims,omitempty"`
+	Actor         *Actor         `json:"act,omitempty"`
 }
+
+type RoleClaims struct {
+	Application []string            `json:"application"`
+	Workspaces  map[string][]string `json:"workspaces"`
+}
+
+var (
+	permissionSegment = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+	roleKey           = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
+	workspaceKey      = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+)
 
 type Actor struct {
 	Subject string `json:"sub"`
@@ -80,8 +94,14 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
 	if json.Unmarshal(payload, &claims) != nil || claims.Issuer != strings.TrimRight(v.Issuer, "/") || claims.Subject == "" || claims.IssuedAt == 0 || claims.IssuedAt > now.Add(30*time.Second).Unix() || claims.ApplicationID != v.ApplicationID || claims.ExpiresAt <= now.Unix() || claims.NotBefore == 0 || claims.NotBefore > now.Add(30*time.Second).Unix() || !contains(claims.Audience, v.Audience) || claims.TokenKind == "access" && claims.ActorType != "user" || claims.TokenKind == "machine" && claims.ActorType != "client" || claims.TokenKind != "access" && claims.TokenKind != "machine" {
 		return Claims{}, fmt.Errorf("token claims rejected")
 	}
-	if claims.Actor != nil && (claims.TokenKind != "access" || claims.Actor.Type != "operator" || claims.Actor.Subject == "") {
+	if claims.Actor != nil && (claims.TokenKind != "access" || claims.Actor.Type != "control_user" || claims.Actor.Subject == "") {
 		return Claims{}, fmt.Errorf("delegated token actor rejected")
+	}
+	if !validScopeClaim(claims.Scope, v.ApplicationID) || !validRoleClaims(claims.Roles) {
+		return Claims{}, fmt.Errorf("token authorization claims rejected")
+	}
+	if claims.Actor != nil && (len(claims.Roles.Application) != 0 || len(claims.Roles.Workspaces) != 0) {
+		return Claims{}, fmt.Errorf("delegated token roles rejected")
 	}
 	return claims, nil
 }
@@ -152,7 +172,10 @@ func (c Claims) HasPermission(permission string) bool {
 }
 
 func permissionMatches(granted, wanted string) bool {
-	if granted == wanted || granted == "*" {
+	if !validAbsolutePermission(granted) || !validAbsolutePermission(wanted) {
+		return false
+	}
+	if granted == wanted {
 		return true
 	}
 	if !strings.HasSuffix(granted, "/*") {
@@ -160,4 +183,76 @@ func permissionMatches(granted, wanted string) bool {
 	}
 	base := strings.TrimSuffix(granted, "/*")
 	return wanted == base || strings.HasPrefix(wanted, base+"/")
+}
+
+func validScopeClaim(scope, applicationID string) bool {
+	if scope == "" {
+		return true
+	}
+	if scope != strings.TrimSpace(scope) || strings.ContainsAny(scope, "\t\r\n") || strings.Contains(scope, "  ") {
+		return false
+	}
+	seen := map[string]struct{}{}
+	prefix := "/applications/" + applicationID + "/"
+	for _, value := range strings.Split(scope, " ") {
+		if _, duplicate := seen[value]; duplicate {
+			return false
+		}
+		seen[value] = struct{}{}
+		if value == "openid" || value == "profile" || value == "email" || value == "offline_access" {
+			continue
+		}
+		if !strings.HasPrefix(value, prefix) || !validAbsolutePermission(value) {
+			return false
+		}
+	}
+	return true
+}
+
+func validAbsolutePermission(value string) bool {
+	if !strings.HasPrefix(value, "/") || strings.ContainsAny(value, " :\\%\t\r\n") {
+		return false
+	}
+	segments := strings.Split(value[1:], "/")
+	if len(segments) < 3 {
+		return false
+	}
+	for index, segment := range segments {
+		if segment == "*" {
+			if index != len(segments)-1 {
+				return false
+			}
+			continue
+		}
+		if !permissionSegment.MatchString(segment) {
+			return false
+		}
+	}
+	return true
+}
+
+func validRoleClaims(roles RoleClaims) bool {
+	if roles.Application == nil || roles.Workspaces == nil || !uniqueRoles(roles.Application) {
+		return false
+	}
+	for workspaceID, values := range roles.Workspaces {
+		if !workspaceKey.MatchString(workspaceID) || values == nil || !uniqueRoles(values) {
+			return false
+		}
+	}
+	return true
+}
+
+func uniqueRoles(values []string) bool {
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		if !roleKey.MatchString(value) {
+			return false
+		}
+		if _, duplicate := seen[value]; duplicate {
+			return false
+		}
+		seen[value] = struct{}{}
+	}
+	return true
 }

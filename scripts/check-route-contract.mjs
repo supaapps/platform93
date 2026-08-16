@@ -7,7 +7,7 @@ const routePattern = /r(?:\.With\([^\n]*?\))?\.(Get|Post|Put|Patch|Delete)\("([^
 for (const match of server.matchAll(routePattern)) {
   let path = match[2];
   if (!path.startsWith("/")) continue;
-  if (/^\/(setup|control|management|applications)(\/|$)/.test(path)) {
+  if (/^\/(setup|control|management|applications|auth)(\/|$)/.test(path)) {
     path = `/v1${path}`;
   }
   mounted.add(`${match[1].toUpperCase()} ${path}`);

@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"regexp"
 	"strings"
 )
+
+const maxRedirectURILength = 2048
+
+var nativeRedirectSchemePattern = regexp.MustCompile(`^[a-z][a-z0-9+.-]*$`)
 
 type applicationFlowConfig struct {
 	OAuthClientID         string `json:"oauth_client_id"`
@@ -73,7 +78,7 @@ WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, applicationID
 	signIn, signInErr := url.Parse(config.SignInRedirectURI)
 	invitation, invitationErr := url.Parse(config.InvitationRedirectURI)
 	if signInErr != nil || invitationErr != nil || !allowedApplicationRedirect(signIn) || !allowedApplicationRedirect(invitation) {
-		return errors.New("flow redirects must be absolute HTTPS URLs; HTTP is allowed only for localhost development")
+		return errors.New("flow redirects must use HTTPS, loopback HTTP, or an approved native application scheme")
 	}
 	if !strings.EqualFold(signIn.Scheme, invitation.Scheme) || !strings.EqualFold(signIn.Host, invitation.Host) {
 		return errors.New("invitation_redirect_uri must use the same origin as sign_in_redirect_uri")
@@ -82,14 +87,65 @@ WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, applicationID
 }
 
 func allowedApplicationRedirect(value *url.URL) bool {
-	if value == nil || value.Host == "" || value.User != nil || value.Fragment != "" {
+	if value == nil || !value.IsAbs() || value.Opaque != "" || value.Host == "" || value.User != nil || value.Fragment != "" {
 		return false
 	}
-	if value.Scheme == "https" {
+	scheme := strings.ToLower(value.Scheme)
+	if !nativeRedirectSchemePattern.MatchString(scheme) {
+		return false
+	}
+	if scheme == "https" {
 		return true
 	}
 	host := strings.ToLower(value.Hostname())
-	return value.Scheme == "http" && (host == "localhost" || host == "127.0.0.1" || host == "::1")
+	if scheme == "http" {
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	}
+	_, reserved := map[string]struct{}{
+		"about": {}, "blob": {}, "data": {}, "file": {}, "ftp": {}, "ftps": {}, "javascript": {},
+		"mailto": {}, "tel": {}, "vbscript": {}, "ws": {}, "wss": {},
+	}[scheme]
+	return !reserved
+}
+
+func validateRedirectURI(raw string, allowNative bool) error {
+	if raw == "" || len(raw) > maxRedirectURILength || raw != strings.TrimSpace(raw) || strings.ContainsAny(raw, "\\\r\n\t") {
+		return errors.New("redirect URI must be a valid absolute URI without whitespace")
+	}
+	value, err := url.Parse(raw)
+	if err != nil || !allowedApplicationRedirect(value) {
+		return errors.New("redirect URI must use HTTPS, loopback HTTP, or an approved native application scheme")
+	}
+	if value.Scheme != "https" && value.Scheme != "http" && !allowNative {
+		return errors.New("native application redirect schemes are allowed only for public clients")
+	}
+	return nil
+}
+
+func isNativeRedirectURI(raw string) bool {
+	value, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(value.Scheme)
+	return scheme != "http" && scheme != "https"
+}
+
+func validateClientRedirectURIs(clientType string, values []string) error {
+	if clientType == "machine" && len(values) > 0 {
+		return errors.New("machine clients cannot register redirect URIs")
+	}
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if _, exists := seen[value]; exists {
+			return errors.New("redirect URIs must be unique")
+		}
+		if err := validateRedirectURI(value, clientType == "public"); err != nil {
+			return err
+		}
+		seen[value] = struct{}{}
+	}
+	return nil
 }
 
 func (s *Server) loadApplicationFlowConfig(ctx context.Context, applicationID string) (applicationFlowConfig, error) {

@@ -15,28 +15,36 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	platformauthz "github.com/supaapps/platform93/internal/authorization"
 )
 
+type RoleClaims struct {
+	Application []string            `json:"application"`
+	Workspaces  map[string][]string `json:"workspaces"`
+}
+
 type Claims struct {
-	Issuer        string   `json:"iss"`
-	Subject       string   `json:"sub"`
-	Audience      []string `json:"aud"`
-	ExpiresAt     int64    `json:"exp"`
-	IssuedAt      int64    `json:"iat"`
-	NotBefore     int64    `json:"nbf"`
-	JWTID         string   `json:"jti"`
-	SessionID     string   `json:"sid,omitempty"`
-	ApplicationID string   `json:"application_id,omitempty"`
-	ClientID      string   `json:"client_id,omitempty"`
-	TokenKind     string   `json:"token_kind"`
-	ActorType     string   `json:"actor_type"`
-	Scope         string   `json:"scope,omitempty"`
-	Email         string   `json:"email,omitempty"`
-	Locale        string   `json:"locale,omitempty"`
-	EmailVerified bool     `json:"email_verified,omitempty"`
-	IsOrgVerified bool     `json:"is_org_verified,omitempty"`
-	AMR           []string `json:"amr,omitempty"`
-	Actor         *Actor   `json:"act,omitempty"`
+	Issuer        string         `json:"iss"`
+	Subject       string         `json:"sub"`
+	Audience      []string       `json:"aud"`
+	ExpiresAt     int64          `json:"exp"`
+	IssuedAt      int64          `json:"iat"`
+	NotBefore     int64          `json:"nbf"`
+	JWTID         string         `json:"jti"`
+	SessionID     string         `json:"sid,omitempty"`
+	ApplicationID string         `json:"application_id,omitempty"`
+	ClientID      string         `json:"client_id,omitempty"`
+	TokenKind     string         `json:"token_kind"`
+	ActorType     string         `json:"actor_type"`
+	Scope         string         `json:"scope,omitempty"`
+	Roles         RoleClaims     `json:"roles"`
+	Email         string         `json:"email,omitempty"`
+	Locale        string         `json:"locale,omitempty"`
+	EmailVerified bool           `json:"email_verified,omitempty"`
+	IsOrgVerified bool           `json:"is_org_verified,omitempty"`
+	CustomClaims  map[string]any `json:"custom_claims,omitempty"`
+	AMR           []string       `json:"amr,omitempty"`
+	Actor         *Actor         `json:"act,omitempty"`
 }
 
 type Actor struct {
@@ -70,6 +78,17 @@ func PublicJWK(kid string, key *rsa.PublicKey) map[string]any {
 }
 
 func Sign(privatePEM []byte, kid string, claims Claims) (string, error) {
+	if claims.ApplicationID != "" {
+		if err := platformauthz.ValidateScopeClaim(claims.Scope, claims.ApplicationID); err != nil {
+			return "", fmt.Errorf("refuse to sign invalid token scope: %w", err)
+		}
+		if err := validateRoleClaims(claims.Roles); err != nil {
+			return "", fmt.Errorf("refuse to sign invalid token roles: %w", err)
+		}
+		if claims.Actor != nil && (len(claims.Roles.Application) != 0 || len(claims.Roles.Workspaces) != 0) {
+			return "", fmt.Errorf("refuse to sign delegated token with normal roles")
+		}
+	}
 	block, _ := pem.Decode(privatePEM)
 	if block == nil {
 		return "", fmt.Errorf("invalid RSA private key")
@@ -122,7 +141,50 @@ func Verify(token string, resolve func(kid string) (*rsa.PublicKey, error), issu
 	if claims.Issuer != issuer || !contains(claims.Audience, audience) || claims.ExpiresAt <= now.Unix() || claims.NotBefore > now.Add(30*time.Second).Unix() {
 		return Claims{}, fmt.Errorf("token claims rejected")
 	}
+	if claims.ApplicationID != "" {
+		if err := platformauthz.ValidateScopeClaim(claims.Scope, claims.ApplicationID); err != nil {
+			return Claims{}, fmt.Errorf("token scope rejected: %w", err)
+		}
+		if err := validateRoleClaims(claims.Roles); err != nil {
+			return Claims{}, fmt.Errorf("token roles rejected: %w", err)
+		}
+		if claims.Actor != nil && (len(claims.Roles.Application) != 0 || len(claims.Roles.Workspaces) != 0) {
+			return Claims{}, fmt.Errorf("delegated token roles rejected")
+		}
+	}
 	return claims, nil
+}
+
+func validateRoleClaims(roles RoleClaims) error {
+	if roles.Application == nil || roles.Workspaces == nil {
+		return fmt.Errorf("structured roles claim is required")
+	}
+	seen := map[string]struct{}{}
+	for _, role := range roles.Application {
+		if err := platformauthz.ValidateRoleKey(role); err != nil {
+			return err
+		}
+		if _, duplicate := seen[role]; duplicate {
+			return fmt.Errorf("application role is duplicated")
+		}
+		seen[role] = struct{}{}
+	}
+	for workspaceID, workspaceRoles := range roles.Workspaces {
+		if _, err := uuid.Parse(workspaceID); err != nil || workspaceRoles == nil {
+			return fmt.Errorf("workspace role context is invalid")
+		}
+		workspaceSeen := map[string]struct{}{}
+		for _, role := range workspaceRoles {
+			if err := platformauthz.ValidateRoleKey(role); err != nil {
+				return err
+			}
+			if _, duplicate := workspaceSeen[role]; duplicate {
+				return fmt.Errorf("workspace role is duplicated")
+			}
+			workspaceSeen[role] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func contains(values []string, wanted string) bool {

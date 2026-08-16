@@ -47,7 +47,7 @@ SET ciphertext=EXCLUDED.ciphertext,metadata=EXCLUDED.metadata,updated_at=now()`,
 		return
 	}
 	kernel.WriteJSON(w, http.StatusOK, map[string]any{"provider": "google", "client_id": request.ClientID,
-		"callback_uri": s.googleCallbackURI(applicationID), "configured": true})
+		"callback_uri": s.googleCallbackURI(), "configured": true})
 }
 
 func (s *Server) listAuthProvidersLegacy(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +63,38 @@ WHERE application_id=$1 AND kind='auth_provider' AND name='google'`, chi.URLPara
 
 func (s *Server) startGoogleAuth(w http.ResponseWriter, r *http.Request) {
 	s.startGoogleAuthFlow(w, r, "", "")
+}
+
+func (s *Server) routeGoogleCallback(w http.ResponseWriter, r *http.Request) {
+	s.routeExternalAuthCallback(w, r, "google", s.googleCallback)
+}
+
+func (s *Server) routeAppleCallback(w http.ResponseWriter, r *http.Request) {
+	s.routeExternalAuthCallback(w, r, "apple", s.appleCallback)
+}
+
+func (s *Server) routeExternalAuthCallback(w http.ResponseWriter, r *http.Request, provider string, callback http.HandlerFunc) {
+	if err := r.ParseForm(); err != nil {
+		kernel.WriteProblem(w, r, http.StatusBadRequest, "invalid_external_auth_response", "The external authentication callback is invalid.")
+		return
+	}
+	state := r.Form.Get("state")
+	if state == "" {
+		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_external_auth_state", "The external authentication state is invalid or expired.")
+		return
+	}
+	if s.routeControlExternalCallback(w, r, provider, state) {
+		return
+	}
+	var applicationID string
+	err := s.app.DB.QueryRow(r.Context(), `SELECT application_id FROM external_auth_challenges
+WHERE provider=$1 AND state_digest=$2 AND consumed_at IS NULL AND expires_at>now()`, provider, s.app.Vault.Digest(state)).Scan(&applicationID)
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_external_auth_state", "The external authentication state is invalid or expired.")
+		return
+	}
+	chi.RouteContext(r.Context()).URLParams.Add("application_id", applicationID)
+	callback(w, r)
 }
 
 func (s *Server) startGoogleLink(w http.ResponseWriter, r *http.Request) {
@@ -92,9 +124,14 @@ func (s *Server) startGoogleAuthFlow(w http.ResponseWriter, r *http.Request, for
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "authenticated_link_required", "Linking Google requires a directly authenticated user session.")
 		return
 	}
+	if err := validateRedirectURI(request.RedirectURI, true); err != nil {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "redirect_uri_not_allowed", "The redirect URI is invalid or unsafe.")
+		return
+	}
 	var redirectAllowed bool
 	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients
-WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris))`, chi.URLParam(r, "application_id"), request.RedirectURI).Scan(&redirectAllowed)
+WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris)
+AND (NOT $3 OR client_type='public'))`, chi.URLParam(r, "application_id"), request.RedirectURI, isNativeRedirectURI(request.RedirectURI)).Scan(&redirectAllowed)
 	if !redirectAllowed {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "redirect_uri_not_allowed", "The redirect URI must exactly match an enabled client redirect URI.")
 		return
@@ -123,7 +160,7 @@ VALUES ($1,$2,'google',$3,$4,$5,$6,$7,$8,$9)`, challengeID, chi.URLParam(r, "app
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "google_auth_start_failed", "The Google authentication flow could not be started.")
 		return
 	}
-	config := s.googleOAuthConfig(chi.URLParam(r, "application_id"), provider)
+	config := s.googleOAuthConfig(provider)
 	options := []oauth2.AuthCodeOption{oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("nonce", nonce), oauth2.SetAuthURLParam("prompt", "select_account")}
 	if request.LoginHint != "" {
 		options = append(options, oauth2.SetAuthURLParam("login_hint", request.LoginHint))
@@ -160,7 +197,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,flow,requested_by_
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_exchange_failed")
 		return
 	}
-	config := s.googleOAuthConfig(chi.URLParam(r, "application_id"), provider)
+	config := s.googleOAuthConfig(provider)
 	token, err := config.Exchange(r.Context(), r.URL.Query().Get("code"), oauth2.VerifierOption(string(verifier)))
 	rawIDToken := ""
 	if err == nil && token != nil {
@@ -306,13 +343,13 @@ func (s *Server) googleProvider(r *http.Request) (googleProviderConfig, error) {
 	return googleProviderConfig{ID: config.ID, ClientID: config.ClientID, ClientSecret: config.Credentials["client_secret"]}, nil
 }
 
-func (s *Server) googleOAuthConfig(applicationID string, provider googleProviderConfig) oauth2.Config {
+func (s *Server) googleOAuthConfig(provider googleProviderConfig) oauth2.Config {
 	return oauth2.Config{ClientID: provider.ClientID, ClientSecret: provider.ClientSecret, Endpoint: google.Endpoint,
-		RedirectURL: s.googleCallbackURI(applicationID), Scopes: []string{oidc.ScopeOpenID, "email", "profile"}}
+		RedirectURL: s.googleCallbackURI(), Scopes: []string{oidc.ScopeOpenID, "email", "profile"}}
 }
 
-func (s *Server) googleCallbackURI(applicationID string) string {
-	return s.app.PublicURL + "/v1/applications/" + applicationID + "/auth/providers/google/callback"
+func (s *Server) googleCallbackURI() string {
+	return s.externalAuthCallbackURI("google")
 }
 
 func (s *Server) releaseExternalAuthChallenge(r *http.Request, challengeID string) {

@@ -480,7 +480,7 @@ func (s *Server) previewNotificationTemplateForScope(w http.ResponseWriter, r *h
 		if request.Variables == nil {
 			request.Variables = map[string]any{}
 		}
-		request.Variables["recipient_email"] = "operator@example.com"
+		request.Variables["recipient_email"] = "control_user@example.com"
 		request.Variables["current_year"] = time.Now().UTC().Year()
 	}
 	request.Variables["message_locale"] = template.Locale

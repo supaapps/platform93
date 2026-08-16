@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -12,18 +13,21 @@ import (
 )
 
 type applicationInternalConfig struct {
-	RegistrationMode       string `json:"registration_mode"`
-	PasswordEnabled        bool   `json:"password_enabled"`
-	PasswordlessEnabled    bool   `json:"passwordless_enabled"`
-	PersonalAPIKeysEnabled bool   `json:"personal_api_keys_enabled"`
-	DelegationEnabled      bool   `json:"delegation_enabled"`
+	RegistrationMode       string   `json:"registration_mode"`
+	PasswordEnabled        bool     `json:"password_enabled"`
+	PasswordlessEnabled    bool     `json:"passwordless_enabled"`
+	PersonalAPIKeysEnabled bool     `json:"personal_api_keys_enabled"`
+	DelegationEnabled      bool     `json:"delegation_enabled"`
+	UserInvitationsEnabled bool     `json:"user_invitations_enabled"`
+	CustomTokenClaimKeys   []string `json:"custom_token_claim_keys"`
 }
 
 func defaultApplicationInternalConfig() applicationInternalConfig {
 	return applicationInternalConfig{
-		RegistrationMode:    "public",
-		PasswordEnabled:     true,
-		PasswordlessEnabled: true,
+		RegistrationMode:     "public",
+		PasswordEnabled:      true,
+		PasswordlessEnabled:  true,
+		CustomTokenClaimKeys: []string{},
 	}
 }
 
@@ -75,7 +79,8 @@ func (s *Server) updateInternalApplicationConfig(w http.ResponseWriter, r *http.
 	}
 	allowed := map[string]bool{
 		"registration_mode": true, "password_enabled": true, "passwordless_enabled": true,
-		"personal_api_keys_enabled": true, "delegation_enabled": true,
+		"personal_api_keys_enabled": true, "delegation_enabled": true, "user_invitations_enabled": true,
+		"custom_token_claim_keys": true,
 	}
 	for key := range raw {
 		if !allowed[key] {
@@ -127,6 +132,16 @@ func (s *Server) updateInternalApplicationConfig(w http.ResponseWriter, r *http.
 				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_internal_config", "delegation_enabled must be boolean.")
 				return
 			}
+		case "user_invitations_enabled":
+			if json.Unmarshal(value, &current.UserInvitationsEnabled) != nil {
+				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_internal_config", "user_invitations_enabled must be boolean.")
+				return
+			}
+		case "custom_token_claim_keys":
+			if json.Unmarshal(value, &current.CustomTokenClaimKeys) != nil || !validCustomTokenClaimKeys(current.CustomTokenClaimKeys) {
+				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_custom_token_claim_keys", "Custom token claim keys must be a unique list of at most 32 safe attribute names.")
+				return
+			}
 		}
 	}
 	policy, policyErr := s.organizationPolicyForApplication(r.Context(), applicationID)
@@ -173,6 +188,25 @@ WHERE application_id=$1 AND revoked_at IS NULL`, applicationID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func validCustomTokenClaimKeys(values []string) bool {
+	if len(values) > 32 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
+		if value == "" || len(value) > 64 || seen[value] {
+			return false
+		}
+		for _, character := range value {
+			if character != '_' && character != '-' && character != '.' && (character < 'a' || character > 'z') && (character < 'A' || character > 'Z') && (character < '0' || character > '9') {
+				return false
+			}
+		}
+		seen[value] = true
+	}
+	return true
+}
+
 func (s *Server) internalApplicationConfig(r *http.Request) (applicationInternalConfig, error) {
 	return loadApplicationInternalConfig(r.Context(), s.app.DB, chi.URLParam(r, "application_id"))
 }
@@ -185,4 +219,28 @@ func (s *Server) registrationEnabled(r *http.Request) bool {
 func (s *Server) delegationEnabled(r *http.Request) bool {
 	config, err := s.internalApplicationConfig(r)
 	return err == nil && config.DelegationEnabled && s.organizationSettingEnabled(r.Context(), chi.URLParam(r, "application_id"), settingDelegation)
+}
+
+func (s *Server) customClaimsForUser(ctx context.Context, applicationID, userID string) (map[string]any, error) {
+	var configRaw, attributesRaw []byte
+	if err := s.app.DB.QueryRow(ctx, `SELECT a.internal_config,u.custom_attributes FROM applications a JOIN users u ON u.application_id=a.id
+WHERE a.id=$1 AND u.id=$2 AND a.deleted_at IS NULL AND u.status='active'`, applicationID, userID).Scan(&configRaw, &attributesRaw); err != nil {
+		return nil, err
+	}
+	config := defaultApplicationInternalConfig()
+	attributes := map[string]any{}
+	if json.Unmarshal(configRaw, &config) != nil || json.Unmarshal(attributesRaw, &attributes) != nil {
+		return nil, fmt.Errorf("stored application token claim configuration is invalid")
+	}
+	claims := map[string]any{}
+	for _, key := range config.CustomTokenClaimKeys {
+		if value, exists := attributes[key]; exists {
+			claims[key] = value
+		}
+	}
+	encoded, err := json.Marshal(claims)
+	if err != nil || len(encoded) > 4096 {
+		return nil, fmt.Errorf("custom token claims exceed 4096 bytes")
+	}
+	return claims, nil
 }

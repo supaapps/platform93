@@ -25,14 +25,15 @@ final class Verifier {
         } else $jwks = $item->get();
         $claims = (array) JWT::decode($token, JWK::parseKeySet($jwks, 'RS256'));
         $audiences = (array) ($claims['aud'] ?? []);
-        foreach (['iss','sub','aud','exp','iat','nbf','application_id','token_kind','actor_type','scope'] as $required) {
+        foreach (['iss','sub','aud','exp','iat','nbf','application_id','token_kind','actor_type','scope','roles'] as $required) {
             if (!array_key_exists($required, $claims)) throw new \UnexpectedValueException('Platform93 token claim missing');
         }
         $validActor = ($claims['token_kind'] ?? null) === 'access' && ($claims['actor_type'] ?? null) === 'user'
             || ($claims['token_kind'] ?? null) === 'machine' && ($claims['actor_type'] ?? null) === 'client';
         if (!is_string($claims['sub']) || $claims['sub'] === '' || ($claims['iss'] ?? null) !== $this->issuer || !in_array($this->audience, $audiences, true) || ($claims['application_id'] ?? null) !== $this->applicationId || !$validActor || !is_string($claims['scope']) || !is_int($claims['iat']) || $claims['iat'] > time() + JWT::$leeway) throw new \UnexpectedValueException('Platform93 token context rejected');
         $actor = (array) ($claims['act'] ?? []);
-        if ($actor !== [] && ($claims['token_kind'] !== 'access' || !is_string($actor['sub'] ?? null) || $actor['sub'] === '' || ($actor['type'] ?? null) !== 'operator')) throw new \UnexpectedValueException('Platform93 delegated token actor rejected');
+        if ($actor !== [] && ($claims['token_kind'] !== 'access' || !is_string($actor['sub'] ?? null) || $actor['sub'] === '' || ($actor['type'] ?? null) !== 'control_user')) throw new \UnexpectedValueException('Platform93 delegated token actor rejected');
+        if (!Permission::validateAuthorizationClaims($claims['scope'], $claims['roles'], $this->applicationId, $actor !== [])) throw new \UnexpectedValueException('Platform93 token authorization claims rejected');
         return new Claims($claims);
     }
 }

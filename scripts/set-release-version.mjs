@@ -5,7 +5,7 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version ?? "")) {
   throw new Error("usage: node scripts/set-release-version.mjs <semver>");
 }
 
-const manifests = ["sdk", "auth", "react", "server", "events"].map(
+const manifests = ["sdk", "auth", "expo", "react", "server", "events"].map(
   (name) => `sdk/typescript/${name}/package.json`,
 );
 for (const path of manifests) {

@@ -6,7 +6,7 @@ This is the public Platform93 source repository.
 - Never commit credentials, tokens, private keys, environment dumps, production data, or customer-specific context.
 - Do not copy private commercial plans or managed-service operations into this repository.
 - Public contracts must be represented in OpenAPI or versioned JSON Schema.
-- Preserve explicit separation between installation operators and application users.
+- Preserve explicit separation between Platform users and application users.
 - Add migrations for schema changes; never rely on automatic production synchronization.
 - Add tests for authorization, application isolation, idempotency, and public contract changes.
 - Refer to integrations generically as existing applications or other applications.

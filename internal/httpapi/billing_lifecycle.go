@@ -170,17 +170,17 @@ func (s *Server) createPortalSession(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getCheckoutSession(w http.ResponseWriter, r *http.Request) {
 	var id, subjectType, subjectID, priceID, status, successURI, cancelURI string
-	var providerID, providerSessionID, checkoutURI *string
+	var providerID, providerSessionID, checkoutURI, externalReference *string
 	var paymentMethods []string
 	var policy []byte
 	var createdAt, updatedAt time.Time
 	err := s.app.DB.QueryRow(r.Context(), `SELECT id,subject_type,subject_id,price_id,provider_connection_id,provider_session_id,
-status,payment_methods,policy_snapshot,success_uri,cancel_uri,checkout_uri,created_at,updated_at FROM checkout_sessions
+status,payment_methods,policy_snapshot,success_uri,cancel_uri,checkout_uri,external_reference,created_at,updated_at FROM checkout_sessions
 WHERE id=$1 AND application_id=$2 AND ((subject_type='user' AND subject_id=$3) OR
 (subject_type='workspace' AND workspace_accessible_to_user(application_id,subject_id,$3)))`,
 		chi.URLParam(r, "session_id"), chi.URLParam(r, "application_id"), actor(r).ID).
 		Scan(&id, &subjectType, &subjectID, &priceID, &providerID, &providerSessionID, &status, &paymentMethods, &policy,
-			&successURI, &cancelURI, &checkoutURI, &createdAt, &updatedAt)
+			&successURI, &cancelURI, &checkoutURI, &externalReference, &createdAt, &updatedAt)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "checkout_session_not_found", "The checkout session was not found.")
 		return
@@ -188,7 +188,7 @@ WHERE id=$1 AND application_id=$2 AND ((subject_type='user' AND subject_id=$3) O
 	kernel.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "subject_type": subjectType, "subject_id": subjectID,
 		"price_id": priceID, "provider_id": providerID, "provider_session_id": providerSessionID, "status": status,
 		"payment_methods": paymentMethods, "policy": decodeMap(policy), "success_uri": successURI, "cancel_uri": cancelURI,
-		"checkout_uri": checkoutURI, "created_at": createdAt, "updated_at": updatedAt})
+		"checkout_uri": checkoutURI, "external_reference": externalReference, "created_at": createdAt, "updated_at": updatedAt})
 }
 
 func (s *Server) listSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -204,7 +204,7 @@ func (s *Server) writeSubscriptions(w http.ResponseWriter, r *http.Request, user
 		filter = &userID
 	}
 	rows, err := s.app.DB.Query(r.Context(), `SELECT id,subject_type,subject_id,price_id,provider_connection_id,status,
-current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,created_at,updated_at
+current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,external_reference,created_at,updated_at
 FROM subscriptions s WHERE s.application_id=$1 AND ($2::uuid IS NULL OR
 s.subject_type='user' AND s.subject_id=$2::uuid OR s.subject_type='workspace' AND
 workspace_accessible_to_user(s.application_id,s.subject_id,$2::uuid))
@@ -219,11 +219,12 @@ ORDER BY created_at DESC,id DESC`, chi.URLParam(r, "application_id"), filter)
 		var id, subjectType, subjectID, priceID, providerID, status string
 		var periodStart, periodEnd, cancelAt, canceledAt, trialEnd *time.Time
 		var cancelAtPeriodEnd bool
+		var externalReference *string
 		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &subjectType, &subjectID, &priceID, &providerID, &status, &periodStart, &periodEnd, &cancelAt, &canceledAt, &trialEnd, &cancelAtPeriodEnd, &createdAt, &updatedAt) == nil {
+		if rows.Scan(&id, &subjectType, &subjectID, &priceID, &providerID, &status, &periodStart, &periodEnd, &cancelAt, &canceledAt, &trialEnd, &cancelAtPeriodEnd, &externalReference, &createdAt, &updatedAt) == nil {
 			items = append(items, map[string]any{"id": id, "subject_type": subjectType, "subject_id": subjectID, "price_id": priceID, "provider_id": providerID,
 				"status": status, "current_period_start": periodStart, "current_period_end": periodEnd, "cancel_at": cancelAt, "canceled_at": canceledAt,
-				"trial_end": trialEnd, "cancel_at_period_end": cancelAtPeriodEnd, "created_at": createdAt, "updated_at": updatedAt})
+				"trial_end": trialEnd, "cancel_at_period_end": cancelAtPeriodEnd, "external_reference": externalReference, "created_at": createdAt, "updated_at": updatedAt})
 		}
 	}
 	kernel.WriteJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})
@@ -233,18 +234,19 @@ func (s *Server) getSubscription(w http.ResponseWriter, r *http.Request) {
 	var id, subjectType, subjectID, priceID, providerID, status string
 	var periodStart, periodEnd, cancelAt, canceledAt, trialEnd *time.Time
 	var cancelAtPeriodEnd bool
+	var externalReference *string
 	var createdAt, updatedAt time.Time
 	err := s.app.DB.QueryRow(r.Context(), `SELECT id,subject_type,subject_id,price_id,provider_connection_id,status,
-current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,created_at,updated_at
+current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,external_reference,created_at,updated_at
 FROM subscriptions WHERE id=$1 AND application_id=$2`, chi.URLParam(r, "subscription_id"), chi.URLParam(r, "application_id")).
-		Scan(&id, &subjectType, &subjectID, &priceID, &providerID, &status, &periodStart, &periodEnd, &cancelAt, &canceledAt, &trialEnd, &cancelAtPeriodEnd, &createdAt, &updatedAt)
+		Scan(&id, &subjectType, &subjectID, &priceID, &providerID, &status, &periodStart, &periodEnd, &cancelAt, &canceledAt, &trialEnd, &cancelAtPeriodEnd, &externalReference, &createdAt, &updatedAt)
 	if err != nil {
 		kernel.WriteProblem(w, r, 404, "subscription_not_found", "The subscription was not found.")
 		return
 	}
 	kernel.WriteJSON(w, 200, map[string]any{"id": id, "subject_type": subjectType, "subject_id": subjectID, "price_id": priceID, "provider_id": providerID,
 		"status": status, "current_period_start": periodStart, "current_period_end": periodEnd, "cancel_at": cancelAt, "canceled_at": canceledAt,
-		"trial_end": trialEnd, "cancel_at_period_end": cancelAtPeriodEnd, "created_at": createdAt, "updated_at": updatedAt})
+		"trial_end": trialEnd, "cancel_at_period_end": cancelAtPeriodEnd, "external_reference": externalReference, "created_at": createdAt, "updated_at": updatedAt})
 }
 
 func (s *Server) cancelSubscription(w http.ResponseWriter, r *http.Request) {
@@ -383,7 +385,7 @@ func (s *Server) writeInvoices(w http.ResponseWriter, r *http.Request, userID st
 		filter = &userID
 	}
 	rows, err := s.app.DB.Query(r.Context(), `SELECT i.id,i.provider_connection_id,i.provider_invoice_id,i.subscription_id,i.status,
-i.amount_due_minor,i.amount_paid_minor,i.tax_minor,i.currency,i.due_at,i.paid_at,i.hosted_uri,i.created_at,i.updated_at
+i.amount_due_minor,i.amount_paid_minor,i.tax_minor,i.currency,i.due_at,i.paid_at,i.hosted_uri,i.external_reference,i.created_at,i.updated_at
 FROM invoices i LEFT JOIN billing_customers bc ON bc.id=i.billing_customer_id
 WHERE i.application_id=$1 AND ($2::uuid IS NULL OR bc.subject_type='user' AND bc.subject_id=$2::uuid OR
 bc.subject_type='workspace' AND workspace_accessible_to_user(i.application_id,bc.subject_id,$2::uuid))
@@ -396,14 +398,14 @@ ORDER BY i.created_at DESC,i.id DESC`, chi.URLParam(r, "application_id"), filter
 	items := []map[string]any{}
 	for rows.Next() {
 		var id, providerID, providerInvoiceID, status, currency string
-		var subscriptionID, hostedURI *string
+		var subscriptionID, hostedURI, externalReference *string
 		var dueAt, paidAt *time.Time
 		var due, paid, tax int64
 		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &providerID, &providerInvoiceID, &subscriptionID, &status, &due, &paid, &tax, &currency, &dueAt, &paidAt, &hostedURI, &createdAt, &updatedAt) == nil {
+		if rows.Scan(&id, &providerID, &providerInvoiceID, &subscriptionID, &status, &due, &paid, &tax, &currency, &dueAt, &paidAt, &hostedURI, &externalReference, &createdAt, &updatedAt) == nil {
 			items = append(items, map[string]any{"id": id, "provider_id": providerID, "provider_invoice_id": providerInvoiceID, "subscription_id": subscriptionID,
 				"status": status, "amount_due_minor": due, "amount_paid_minor": paid, "tax_minor": tax, "currency": currency, "due_at": dueAt, "paid_at": paidAt,
-				"hosted_uri": hostedURI, "created_at": createdAt, "updated_at": updatedAt})
+				"hosted_uri": hostedURI, "external_reference": externalReference, "created_at": createdAt, "updated_at": updatedAt})
 		}
 	}
 	kernel.WriteJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})
@@ -419,7 +421,7 @@ func (s *Server) writePayments(w http.ResponseWriter, r *http.Request, userID st
 		filter = &userID
 	}
 	rows, err := s.app.DB.Query(r.Context(), `SELECT p.id,p.provider_connection_id,p.provider_payment_id,p.checkout_session_id,p.invoice_id,
-p.status,p.amount_minor,p.amount_received_minor,p.currency,p.payment_method_type,p.failure_code,p.failure_message,p.created_at,p.updated_at
+p.status,p.amount_minor,p.amount_received_minor,p.currency,p.payment_method_type,p.failure_code,p.failure_message,p.external_reference,p.created_at,p.updated_at
 FROM payments p LEFT JOIN billing_customers bc ON bc.id=p.billing_customer_id WHERE p.application_id=$1
 AND ($2::uuid IS NULL OR bc.subject_type='user' AND bc.subject_id=$2::uuid OR
 bc.subject_type='workspace' AND workspace_accessible_to_user(p.application_id,bc.subject_id,$2::uuid))
@@ -432,13 +434,13 @@ ORDER BY p.created_at DESC,p.id DESC`, chi.URLParam(r, "application_id"), filter
 	items := []map[string]any{}
 	for rows.Next() {
 		var id, providerID, providerPaymentID, status, currency string
-		var checkoutID, invoiceID, method, failureCode, failureMessage *string
+		var checkoutID, invoiceID, method, failureCode, failureMessage, externalReference *string
 		var amount, received int64
 		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &providerID, &providerPaymentID, &checkoutID, &invoiceID, &status, &amount, &received, &currency, &method, &failureCode, &failureMessage, &createdAt, &updatedAt) == nil {
+		if rows.Scan(&id, &providerID, &providerPaymentID, &checkoutID, &invoiceID, &status, &amount, &received, &currency, &method, &failureCode, &failureMessage, &externalReference, &createdAt, &updatedAt) == nil {
 			items = append(items, map[string]any{"id": id, "provider_id": providerID, "provider_payment_id": providerPaymentID, "checkout_session_id": checkoutID,
 				"invoice_id": invoiceID, "status": status, "amount_minor": amount, "amount_received_minor": received, "currency": currency,
-				"payment_method_type": method, "failure_code": failureCode, "failure_message": failureMessage, "created_at": createdAt, "updated_at": updatedAt})
+				"payment_method_type": method, "failure_code": failureCode, "failure_message": failureMessage, "external_reference": externalReference, "created_at": createdAt, "updated_at": updatedAt})
 		}
 	}
 	kernel.WriteJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})

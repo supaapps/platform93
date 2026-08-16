@@ -73,3 +73,49 @@ test("configured application authorization creates an S256 PKCE request", async 
   assert.match(request.codeVerifier, /^[A-Za-z0-9_-]{43}$/);
   assert.match(authorization.searchParams.get("code_challenge"), /^[A-Za-z0-9_-]{43}$/);
 });
+
+test("native authorization can select a separately registered public client", async () => {
+  const fetch = async () => Response.json({
+    issuer: "https://platform93.test/oidc",
+    auth: { flows: { oauth_client_id: "web", sign_in_redirect_uri: "https://app.test/auth/callback" } },
+  });
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false });
+  const request = await auth.createAuthorizationRequest({ clientId: "mobile", redirectUri: "sampleapp://auth/callback" });
+  const authorization = new URL(request.authorizationUrl);
+  assert.equal(authorization.searchParams.get("client_id"), "mobile");
+  assert.equal(authorization.searchParams.get("redirect_uri"), "sampleapp://auth/callback");
+});
+
+test("external provider redirects exchange their one-time credential", async () => {
+  const calls = [];
+  const fetch = async (input, init = {}) => {
+    calls.push([String(input), JSON.parse(init.body ?? "{}")]);
+    if (String(input).endsWith("/auth/providers/google/start")) {
+      return Response.json({ provider: "google", authorize_url: "https://accounts.google.test/authorize", expires_in: 600 }, { status: 201 });
+    }
+    if (String(input).endsWith("/auth/providers/google/exchange")) return Response.json(tokens("native"));
+    throw new Error(`unexpected request ${input}`);
+  };
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false });
+  const start = await auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback", flow: "automatic" });
+  assert.equal(start.authorize_url, "https://accounts.google.test/authorize");
+  await auth.completeExternalAuthRedirect("google", "sampleapp://auth/callback?external_auth_exchange=exchange-value");
+  assert.equal(auth.snapshot().status, "authenticated");
+  assert.deepEqual(calls[0][1], { redirect_uri: "sampleapp://auth/callback", flow: "automatic" });
+  assert.deepEqual(calls[1][1], { exchange: "exchange-value" });
+});
+
+test("access token retrieval refreshes only when the current token expires", async () => {
+  let refreshes = 0;
+  const store = new MemoryTokenStore();
+  await store.saveRefreshToken("existing-refresh");
+  const fetch = async (input) => {
+    if (!String(input).endsWith("/auth/token/refresh")) throw new Error(`unexpected request ${input}`);
+    refreshes += 1;
+    return Response.json(tokens(`refresh-${refreshes}`));
+  };
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, adapter: new TokenStoreSessionAdapter(store) });
+  assert.equal(await auth.getAccessToken(), "access-refresh-1");
+  assert.equal(await auth.getAccessToken(), "access-refresh-1");
+  assert.equal(refreshes, 1);
+});

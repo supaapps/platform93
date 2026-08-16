@@ -14,13 +14,13 @@ Inheritance can be enabled or disabled after a provider is created without resub
 
 ## Authentication
 
-Google and Sign in with Apple can be configured at any scope. Each application still has its own users, external identities, challenges, sessions, redirect allowlist, and callback path even when it inherits provider credentials.
+Google and Sign in with Apple can be configured at any scope. Each application still has its own users, external identities, challenges, sessions, and consuming-application redirect allowlist even when it inherits provider credentials. The provider callback is installation-wide: Platform93 resolves the application from the random, single-use sign-in state stored before redirecting to the provider.
 
-Register these callback patterns with the provider:
+Register these exact callback URLs once with the provider:
 
 ```text
-https://platform.example/v1/applications/{application_id}/auth/providers/google/callback
-https://platform.example/v1/applications/{application_id}/auth/providers/apple/callback
+https://platform.example/v1/auth/providers/google/callback
+https://platform.example/v1/auth/providers/apple/callback
 ```
 
 Google requires a web OAuth client ID and client secret. Apple requires a Services ID, Team ID, Sign in with Apple Key ID, and ES256 private key. Apple posts the authorization result to the callback, so the public Platform93 URL must use HTTPS outside local development.

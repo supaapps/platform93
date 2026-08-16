@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	pathpkg "path"
 	"regexp"
@@ -45,7 +47,7 @@ func New(app *platform.App, adminAssets string) http.Handler {
 	s := &Server{app: app, adminAssets: adminAssets}
 	r := chi.NewRouter()
 	// Do not trust forwarding headers until an explicit trusted-proxy boundary is configured.
-	r.Use(middleware.Recoverer, s.requestContext, s.accessLog, s.securityHeaders)
+	r.Use(middleware.Recoverer, s.requestContext, s.accessLog, s.securityHeaders, s.cors)
 	r.Get("/healthz", s.health)
 	r.Get("/readyz", s.ready)
 	r.Get("/version", s.version)
@@ -56,20 +58,27 @@ func New(app *platform.App, adminAssets string) http.Handler {
 		r.Post("/setup/bootstrap", s.bootstrap)
 		r.With(s.requireSetup).Post("/setup/complete", s.completeSetup)
 		r.With(s.requireSetup).Post("/setup/notification-providers", s.createInstallationNotificationProvider)
-		r.Post("/control/auth/email/start", s.operatorEmailStart)
-		r.Post("/control/auth/email/verify", s.operatorEmailVerify)
-		r.Post("/control/auth/password", s.operatorPasswordLogin)
-		r.Post("/control/auth/token/refresh", s.refreshOperatorSession)
-		r.Post("/control/auth/logout", s.operatorLogout)
-		r.Post("/control/organization-invitations/accept", s.acceptOrganizationInvitation)
+		r.Get("/auth/providers/google/callback", s.routeGoogleCallback)
+		r.Post("/auth/providers/apple/callback", s.routeAppleCallback)
+		r.Get("/control/auth/methods", s.controlAuthMethods)
+		r.Post("/control/auth/providers/{provider}/start", s.startControlProviderLogin)
+		r.Post("/control/invitations/providers/{provider}/start", s.startControlInvitationProvider)
+		r.Post("/control/auth/email/start", s.controlUserEmailStart)
+		r.Post("/control/auth/email/verify", s.controlUserEmailVerify)
+		r.Post("/control/auth/password", s.controlUserPasswordLogin)
+		r.Post("/control/auth/token/refresh", s.refreshControlUserSession)
+		r.Post("/control/auth/logout", s.controlUserLogout)
+		r.Post("/control/invitations/accept", s.acceptOrganizationInvitation)
 		r.Group(func(r chi.Router) {
-			r.Use(s.requireOperator)
-			r.Get("/control/auth/sessions", s.listOperatorSessions)
-			r.Get("/control/auth/me", s.getOperatorAccount)
-			r.Patch("/control/auth/me", s.updateOperatorAccount)
-			r.Put("/control/auth/password", s.changeOperatorPassword)
-			r.Delete("/control/auth/sessions/{session_id}", s.revokeOperatorSession)
-			r.Post("/control/auth/logout-all", s.logoutAllOperatorSessions)
+			r.Use(s.requireControlUser)
+			r.Get("/control/auth/sessions", s.listControlUserSessions)
+			r.Get("/control/auth/me", s.getControlUserAccount)
+			r.Patch("/control/auth/me", s.updateControlUserAccount)
+			r.Put("/control/auth/password", s.changeControlUserPassword)
+			r.Post("/control/auth/providers/{provider}/link", s.startControlProviderLink)
+			r.Delete("/control/auth/identities/{identity_id}", s.unlinkControlUserIdentity)
+			r.Delete("/control/auth/sessions/{session_id}", s.revokeControlUserSession)
+			r.Post("/control/auth/logout-all", s.logoutAllControlUserSessions)
 			r.Get("/control/organizations", s.listOrganizations)
 			r.Get("/control/installation/management-api", s.getManagementAPIStatus)
 			r.Patch("/control/installation/management-api", s.updateManagementAPIStatus)
@@ -77,10 +86,15 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Post("/control/installation/management-clients", s.createManagementClient)
 			r.Post("/control/installation/management-clients/{management_client_id}/rotate-secret", s.rotateManagementClientSecret)
 			r.Delete("/control/installation/management-clients/{management_client_id}", s.disableManagementClient)
-			r.Get("/control/installation/operators", s.listInstallationOperators)
-			r.Post("/control/installation/operators", s.createInstallationOperator)
-			r.Patch("/control/installation/operators/{operator_id}", s.updateInstallationOperator)
-			r.Delete("/control/installation/operators/{operator_id}", s.deleteInstallationOperator)
+			r.Get("/control/installation/users", s.listInstallationControlUsers)
+			r.Patch("/control/installation/users/{control_user_id}", s.updateInstallationControlUser)
+			r.Delete("/control/installation/users/{control_user_id}", s.deleteInstallationControlUser)
+			r.Get("/control/installation/invitations", s.listInstallationControlUserInvitations)
+			r.Post("/control/installation/invitations", s.createInstallationControlUserInvitation)
+			r.Post("/control/installation/invitations/{invitation_id}/resend", s.resendInstallationControlUserInvitation)
+			r.Delete("/control/installation/invitations/{invitation_id}", s.revokeInstallationControlUserInvitation)
+			r.Get("/control/installation/auth-policy", s.getControlAuthPolicy)
+			r.Patch("/control/installation/auth-policy", s.updateControlAuthPolicy)
 			r.Post("/control/installation/notification-providers", s.createInstallationNotificationProvider)
 			r.Get("/control/installation/notification-providers", s.listInstallationNotificationProviders)
 			r.Get("/control/installation/notification-providers/{provider_id}", s.getInstallationNotificationProvider)
@@ -182,6 +196,7 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Delete("/control/applications/{application_id}/domains/{domain_id}", s.deleteApplicationDomain)
 			r.Post("/control/applications/{application_id}/clients", s.createClient)
 			r.Get("/control/applications/{application_id}/clients", s.listClients)
+			r.Get("/control/applications/{application_id}/clients/{client_id}", s.getClient)
 			r.Patch("/control/applications/{application_id}/clients/{client_id}", s.updateClient)
 			r.Post("/control/applications/{application_id}/clients/{client_id}/rotate-secret", s.rotateClientSecret)
 			r.Delete("/control/applications/{application_id}/clients/{client_id}", s.disableClient)
@@ -204,13 +219,20 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Post("/control/applications/{application_id}/role-assignments", s.assignRole)
 			r.Get("/control/applications/{application_id}/role-assignments", s.listRoleAssignments)
 			r.Delete("/control/applications/{application_id}/role-assignments/{assignment_id}", s.deleteRoleAssignment)
+			r.With(s.idempotent).Post("/control/applications/{application_id}/permission-grants", s.createPermissionGrant)
+			r.Get("/control/applications/{application_id}/permission-grants", s.listPermissionGrants)
+			r.Get("/control/applications/{application_id}/permission-grants/effective", s.effectivePermissionAccess)
+			r.Get("/control/applications/{application_id}/permission-grants/{grant_id}", s.getPermissionGrant)
+			r.Delete("/control/applications/{application_id}/permission-grants/{grant_id}", s.revokePermissionGrant)
 			r.Post("/control/applications/{application_id}/delegations", s.createDelegation)
 			r.Get("/control/applications/{application_id}/delegations", s.listDelegations)
 			r.Get("/control/applications/{application_id}/delegations/{delegation_id}", s.getDelegation)
 			r.Post("/control/applications/{application_id}/delegations/{delegation_id}/revoke", s.revokeDelegation)
-			r.Post("/control/applications/{application_id}/workspace-invitations", s.createWorkspaceInvitation)
-			r.Get("/control/applications/{application_id}/workspace-invitations", s.listWorkspaceInvitations)
-			r.Delete("/control/applications/{application_id}/workspace-invitations/{invitation_id}", s.revokeWorkspaceInvitation)
+			r.Post("/control/applications/{application_id}/invitations", s.createControlInvitation)
+			r.Get("/control/applications/{application_id}/invitations", s.listInvitations)
+			r.Post("/control/applications/{application_id}/invitations/{invitation_id}/resend", s.resendInvitation)
+			r.Get("/control/applications/{application_id}/invitations/{invitation_id}", s.getInvitation)
+			r.Delete("/control/applications/{application_id}/invitations/{invitation_id}", s.revokeInvitation)
 			r.Post("/control/applications/{application_id}/users", s.adminCreateUser)
 			r.Get("/control/applications/{application_id}/users", s.adminListUsers)
 			r.Get("/control/applications/{application_id}/users/{user_id}", s.adminGetUser)
@@ -237,6 +259,7 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Post("/control/applications/{application_id}/entitlements", s.createEntitlement)
 			r.Get("/control/applications/{application_id}/entitlements", s.listEntitlements)
 			r.Get("/control/applications/{application_id}/entitlements/{entitlement_id}", s.getEntitlement)
+			r.Post("/control/applications/{application_id}/entitlements/{entitlement_id}/adjust", s.adjustEntitlement)
 			r.Post("/control/applications/{application_id}/entitlements/{entitlement_id}/revoke", s.revokeEntitlement)
 			r.Post("/control/applications/{application_id}/entitlements/{entitlement_id}/restore", s.restoreEntitlement)
 			r.Post("/control/applications/{application_id}/local-entitlement-requests/{request_id}/approve", s.approveLocalRequest)
@@ -322,7 +345,6 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Post("/control/applications/{application_id}/notification-templates/{template_id}/preview", s.previewNotificationTemplate)
 			r.Post("/control/applications/{application_id}/notification-templates/{template_id}/publish", s.publishNotificationTemplate)
 			r.Post("/control/applications/{application_id}/notification-templates/{template_id}/archive", s.archiveNotificationTemplate)
-			r.With(s.idempotent).Post("/control/applications/{application_id}/notifications", s.queueNotification)
 			r.Get("/control/applications/{application_id}/notifications", s.listNotifications)
 			r.Get("/control/applications/{application_id}/notifications/statistics", s.notificationStatistics)
 			r.Get("/control/applications/{application_id}/notifications/{notification_id}", s.getNotification)
@@ -341,16 +363,34 @@ func New(app *platform.App, adminAssets string) http.Handler {
 		r.Post("/applications/{application_id}/auth/password/reset/verify", s.passwordResetVerify)
 		r.Get("/applications/{application_id}/auth/providers", s.listAuthProviders)
 		r.Post("/applications/{application_id}/auth/providers/google/start", s.startGoogleAuth)
-		r.Get("/applications/{application_id}/auth/providers/google/callback", s.googleCallback)
 		r.Post("/applications/{application_id}/auth/providers/google/exchange", s.exchangeGoogleAuth)
 		r.Post("/applications/{application_id}/auth/providers/apple/start", s.startAppleAuth)
-		r.Post("/applications/{application_id}/auth/providers/apple/callback", s.appleCallback)
 		r.Post("/applications/{application_id}/auth/providers/apple/exchange", s.exchangeAppleAuth)
 		r.Post("/applications/{application_id}/auth/mfa/verify", s.verifyMFA)
 		r.Post("/applications/{application_id}/auth/mfa/webauthn/options", s.beginWebAuthnAuthentication)
 		r.Post("/applications/{application_id}/auth/mfa/webauthn/verify", s.finishWebAuthnAuthentication)
+		r.Post("/applications/{application_id}/auth/invitations/exchange", s.exchangeInvitation)
+		r.Post("/applications/{application_id}/auth/invitations/token", s.redeemInvitationAuthorizationCode)
 		r.Post("/applications/{application_id}/delegations/{delegation_id}/exchange", s.exchangeDelegation)
 		r.With(s.requireApplicationActor, s.idempotent).Post("/applications/{application_id}/events", s.publishCustomEvent)
+		r.With(s.requireApplicationActor, s.idempotent).Post("/applications/{application_id}/notifications", s.queueMachineNotification)
+		r.With(s.requireApplicationActor).Post("/applications/{application_id}/invitations", s.createApplicationInvitation)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/invitations", s.listInvitations)
+		r.With(s.requireApplicationActor).Post("/applications/{application_id}/invitations/{invitation_id}/resend", s.resendInvitation)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/invitations/{invitation_id}", s.getInvitation)
+		r.With(s.requireApplicationActor).Delete("/applications/{application_id}/invitations/{invitation_id}", s.revokeInvitation)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/users", s.serviceListUsers)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/users/{user_id}", s.serviceGetUser)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/workspaces", s.serviceListWorkspaces)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/service/workspaces/{workspace_id}", s.serviceGetWorkspace)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/service/workspaces/{workspace_id}/access", s.serviceWorkspaceAccess)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/subjects/{subject_type}/{subject_id}/entitlements", s.serviceSubjectEntitlements)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/subjects/{subject_type}/{subject_id}/billing", s.serviceSubjectBilling)
+		r.With(s.requireApplicationActor, s.idempotent).Post("/applications/{application_id}/permission-grants", s.createPermissionGrant)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/permission-grants", s.listPermissionGrants)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/permission-grants/effective", s.effectivePermissionAccess)
+		r.With(s.requireApplicationActor).Get("/applications/{application_id}/permission-grants/{grant_id}", s.getPermissionGrant)
+		r.With(s.requireApplicationActor).Delete("/applications/{application_id}/permission-grants/{grant_id}", s.revokePermissionGrant)
 		r.With(s.requireApplicationActor).Get("/applications/{application_id}/storage/objects", s.listApplicationStorageObjects)
 		r.With(s.requireApplicationActor, s.idempotent).Post("/applications/{application_id}/storage/uploads", s.createApplicationStorageUpload)
 		r.With(s.requireApplicationActor).Post("/applications/{application_id}/storage/uploads/{object_id}/complete", s.completeApplicationStorageUpload)
@@ -424,8 +464,15 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Post("/applications/{application_id}/workspaces/{workspace_id}/addresses/{address_id}/activate", s.activateAddress)
 			r.Delete("/applications/{application_id}/workspaces/{workspace_id}/addresses/{address_id}", s.deleteAddress)
 			r.Post("/applications/{application_id}/workspaces/{workspace_id}/invitations", s.createWorkspaceInvitation)
-			r.Get("/applications/{application_id}/me/workspace-invitations", s.listMyWorkspaceInvitations)
-			r.Post("/applications/{application_id}/me/workspace-invitations/{invitation_id}/accept", s.acceptWorkspaceInvitation)
+			r.Get("/applications/{application_id}/workspaces/{workspace_id}/invitations", s.listInvitations)
+			r.Post("/applications/{application_id}/workspaces/{workspace_id}/invitations/{invitation_id}/resend", s.resendInvitation)
+			r.Delete("/applications/{application_id}/workspaces/{workspace_id}/invitations/{invitation_id}", s.revokeInvitation)
+			r.Get("/applications/{application_id}/workspaces/{workspace_id}/access", s.listWorkspaceAccess)
+			r.With(s.idempotent).Post("/applications/{application_id}/workspaces/{workspace_id}/permission-grants", s.createPermissionGrant)
+			r.Get("/applications/{application_id}/workspaces/{workspace_id}/permission-grants", s.listPermissionGrants)
+			r.Get("/applications/{application_id}/workspaces/{workspace_id}/permission-grants/{grant_id}", s.getPermissionGrant)
+			r.Delete("/applications/{application_id}/workspaces/{workspace_id}/permission-grants/{grant_id}", s.revokePermissionGrant)
+			r.Get("/applications/{application_id}/me/workspace-invitations", s.listMyInvitations)
 			r.Post("/applications/{application_id}/me/permissions/check", s.checkPermissions)
 			r.Get("/applications/{application_id}/me/oauth-consents", s.listMyOAuthConsents)
 			r.Delete("/applications/{application_id}/me/oauth-consents/{client_id}", s.revokeMyOAuthConsent)
@@ -506,55 +553,62 @@ func (s *Server) accessLog(next http.Handler) http.Handler {
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+		if strings.HasPrefix(s.app.PublicURL, "https://") {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		}
+		if strings.HasPrefix(r.URL.Path, "/v1/control/") || strings.HasPrefix(r.URL.Path, "/v1/setup/") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) requireOperator(next http.Handler) http.Handler {
-	return s.operatorMiddleware(false, next)
+func (s *Server) requireControlUser(next http.Handler) http.Handler {
+	return s.controlUserMiddleware(false, next)
 }
 func (s *Server) requireSetup(next http.Handler) http.Handler {
-	return s.operatorMiddleware(true, next)
+	return s.controlUserMiddleware(true, next)
 }
 
-func (s *Server) operatorMiddleware(setup bool, next http.Handler) http.Handler {
+func (s *Server) controlUserMiddleware(setup bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		credential := ""
 		fromCookie := false
 		authorization := strings.TrimSpace(r.Header.Get("Authorization"))
 		if strings.HasPrefix(strings.ToLower(authorization), "bearer ") {
 			credential = strings.TrimSpace(authorization[7:])
-		} else if cookie, cookieErr := r.Cookie("p93_operator_access"); cookieErr == nil {
+		} else if cookie, cookieErr := r.Cookie("p93_control_access"); cookieErr == nil {
 			credential, fromCookie = cookie.Value, true
 		}
 		if credential == "" {
-			kernel.WriteProblem(w, r, http.StatusUnauthorized, "operator_access_required", "An operator access JWT is required.")
+			kernel.WriteProblem(w, r, http.StatusUnauthorized, "control_user_access_required", "A Platform user access JWT is required.")
 			return
 		}
 		claims, err := identity.Verify(credential, func(kid string) (*rsa.PublicKey, error) {
 			return s.app.ResolvePublicKey(r.Context(), kid)
 		}, s.app.Issuer(), s.app.ControlAudience(), s.app.Now())
-		if err != nil || claims.ActorType != "operator" || setup && claims.TokenKind != "setup" || !setup && claims.TokenKind != "operator" {
-			kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_operator_session", "The operator session is invalid or expired.")
+		if err != nil || claims.ActorType != "control_user" || setup && claims.TokenKind != "setup" || !setup && claims.TokenKind != "control" {
+			kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_control_user_session", "The Platform user session is invalid or expired.")
 			return
 		}
 		var live bool
-		err = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM operator_sessions s JOIN operators o ON o.id=s.operator_id
-WHERE s.id=$1 AND s.operator_id=$2 AND s.kind=$3 AND s.revoked_at IS NULL AND s.expires_at>now() AND o.status='active')`,
+		err = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM control_user_sessions s JOIN control_users o ON o.id=s.control_user_id
+WHERE s.id=$1 AND s.control_user_id=$2 AND s.kind=$3 AND s.revoked_at IS NULL AND s.expires_at>now() AND o.status='active')`,
 			claims.SessionID, claims.Subject, claims.TokenKind).Scan(&live)
 		if err != nil || !live {
-			kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_operator_session", "The operator session is invalid or revoked.")
+			kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_control_user_session", "The Platform user session is invalid or revoked.")
 			return
 		}
-		actor := kernel.Actor{Type: "operator", ID: claims.Subject, SessionID: claims.SessionID, Permissions: strings.Fields(claims.Scope)}
-		_, _ = s.app.DB.Exec(r.Context(), `UPDATE operator_sessions SET last_used_at=now(),ip_address=$1,user_agent=$2
+		actor := kernel.Actor{Type: "control_user", ID: claims.Subject, SessionID: claims.SessionID, Permissions: strings.Fields(claims.Scope)}
+		_, _ = s.app.DB.Exec(r.Context(), `UPDATE control_user_sessions SET last_used_at=now(),ip_address=$1,user_agent=$2
 WHERE id=$3 AND last_used_at<now()-interval '5 minutes'`, requestIPAddress(r), truncate(r.UserAgent(), 500), actor.SessionID)
 		if fromCookie && !setup && r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
 			origin := strings.TrimRight(r.Header.Get("Origin"), "/")
-			if origin != "" && origin != s.app.PublicURL {
+			if origin == "" || !allowedControlOrigin(origin, s.app.PublicURL) {
 				kernel.WriteProblem(w, r, http.StatusForbidden, "origin_not_allowed", "The request origin is not allowed.")
 				return
 			}
@@ -571,7 +625,7 @@ WHERE id=$3 AND last_used_at<now()-interval '5 minutes'`, requestIPAddress(r), t
 				}
 				var membershipRole string
 				_ = s.app.DB.QueryRow(r.Context(), `SELECT role FROM organization_memberships
-WHERE organization_id=$1 AND operator_id=$2`, ownerOrganizationID, actor.ID).Scan(&membershipRole)
+WHERE organization_id=$1 AND control_user_id=$2`, ownerOrganizationID, actor.ID).Scan(&membershipRole)
 				readOnly := r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions
 				canRead := hasInstallationRole || membershipRole != ""
 				canWrite := hasInstallationRole && (installationRole == "owner" || installationRole == "admin") || membershipRole == "owner" || membershipRole == "admin"
@@ -580,7 +634,7 @@ WHERE organization_id=$1 AND operator_id=$2`, ownerOrganizationID, actor.ID).Sca
 					return
 				}
 				if !readOnly && !canWrite {
-					kernel.WriteProblem(w, r, http.StatusForbidden, "operator_permission_required", "An organization owner or administrator is required for this operation.")
+					kernel.WriteProblem(w, r, http.StatusForbidden, "control_user_permission_required", "An organization owner or administrator is required for this operation.")
 					return
 				}
 				organizationID = &ownerOrganizationID
@@ -601,10 +655,10 @@ WHERE organization_id=$1 AND operator_id=$2`, ownerOrganizationID, actor.ID).Sca
 					}
 					_, auditErr := s.app.DB.Exec(r.Context(), `INSERT INTO audit_records
 (id,organization_id,application_id,actor_type,actor_id,action,target_type,reason,request_id,changes)
-VALUES ($1,$2,$3,'operator',$4,$5,'http_route',$6,$7,jsonb_build_object('method',$8::text,'path',$9::text))`,
+VALUES ($1,$2,$3,'control_user',$4,$5,'http_route',$6,$7,jsonb_build_object('method',$8::text,'path',$9::text))`,
 						kernel.NewID(), organizationID, application, actor.ID, "http."+strings.ToLower(r.Method), truncate(r.Header.Get("X-Audit-Reason"), 500), kernel.RequestID(r.Context()), r.Method, r.URL.Path)
 					if auditErr != nil {
-						slog.Error("operator audit record failed", "request_id", kernel.RequestID(r.Context()), "error", auditErr)
+						slog.Error("control user audit record failed", "request_id", kernel.RequestID(r.Context()), "error", auditErr)
 					}
 				}
 				return
@@ -612,6 +666,22 @@ VALUES ($1,$2,$3,'operator',$4,$5,'http_route',$6,$7,jsonb_build_object('method'
 		}
 		next.ServeHTTP(w, r.WithContext(kernel.WithActor(r.Context(), actor)))
 	})
+}
+
+func allowedControlOrigin(origin, publicURL string) bool {
+	if origin == strings.TrimRight(publicURL, "/") {
+		return true
+	}
+	originURL, originErr := url.Parse(origin)
+	public, publicErr := url.Parse(publicURL)
+	if originErr != nil || publicErr != nil || originURL.Scheme != "http" || public.Scheme != "http" || originURL.Port() != public.Port() {
+		return false
+	}
+	return loopbackHost(originURL.Hostname()) && loopbackHost(public.Hostname())
+}
+
+func loopbackHost(host string) bool {
+	return strings.EqualFold(host, "localhost") || net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback()
 }
 
 type statusResponseWriter struct {
@@ -689,16 +759,16 @@ WHERE c.application_id=$1 AND c.user_id=$2 AND cl.client_id=$3 AND cl.disabled_a
 		delegatedBy := ""
 		if claims.Actor != nil {
 			var delegatedPermissions []string
-			var operatorID string
-			err = s.app.DB.QueryRow(r.Context(), `SELECT d.permissions,d.operator_id FROM user_sessions us
+			var controlUserID string
+			err = s.app.DB.QueryRow(r.Context(), `SELECT d.permissions,d.control_user_id FROM user_sessions us
 JOIN delegations d ON d.id=us.delegation_id WHERE us.id=$1 AND us.user_id=$2 AND d.application_id=$3`,
-				claims.SessionID, claims.Subject, applicationID).Scan(&delegatedPermissions, &operatorID)
-			if err != nil || claims.Actor.Type != "operator" || claims.Actor.Subject != operatorID {
+				claims.SessionID, claims.Subject, applicationID).Scan(&delegatedPermissions, &controlUserID)
+			if err != nil || claims.Actor.Type != "control_user" || claims.Actor.Subject != controlUserID {
 				kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_delegated_session", "The delegated session is invalid.")
 				return
 			}
 			permissions = allowedDelegatedPermissions(permissions, delegatedPermissions)
-			delegatedBy = operatorID
+			delegatedBy = controlUserID
 		}
 		actor := kernel.Actor{Type: "user", ID: claims.Subject, ApplicationID: claims.ApplicationID, SessionID: claims.SessionID,
 			Permissions: permissions, DelegatedBy: delegatedBy}
@@ -760,6 +830,15 @@ func allowedDelegatedPermissions(live, delegated []string) []string {
 		}
 	}
 	return result
+}
+
+func containsAllowedScope(live []string, requested string) bool {
+	for _, granted := range live {
+		if permissionMatches(granted, requested) {
+			return true
+		}
+	}
+	return false
 }
 
 func reducePermissions(permissions, scopes []string) []string {

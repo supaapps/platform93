@@ -35,8 +35,8 @@ func TestIdempotencySupportsInstallationScope(t *testing.T) {
 	}))
 	key := "installation-" + kernel.NewID().String()
 	for attempt := 0; attempt < 2; attempt++ {
-		request := requestWithRoute(t, "POST", "/v1/installation/test", map[string]any{"value": true}, nil, kernel.Actor{Type: "operator", ID: kernel.NewID().String()})
-		request = request.WithContext(kernel.WithActor(request.Context(), kernel.Actor{Type: "operator", ID: "stable-operator"}))
+		request := requestWithRoute(t, "POST", "/v1/installation/test", map[string]any{"value": true}, nil, kernel.Actor{Type: "control_user", ID: kernel.NewID().String()})
+		request = request.WithContext(kernel.WithActor(request.Context(), kernel.Actor{Type: "control_user", ID: "stable-control_user"}))
 		request.Header.Set("Idempotency-Key", key)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)

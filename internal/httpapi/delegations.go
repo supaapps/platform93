@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	platformauthz "github.com/supaapps/platform93/internal/authorization"
 	"github.com/supaapps/platform93/internal/identity"
 	"github.com/supaapps/platform93/internal/kernel"
 	"github.com/supaapps/platform93/internal/secure"
@@ -15,7 +16,7 @@ import (
 
 func (s *Server) createDelegation(w http.ResponseWriter, r *http.Request) {
 	if !s.delegationEnabled(r) {
-		kernel.WriteProblem(w, r, http.StatusForbidden, "delegation_disabled", "Operator delegation is disabled for this application.")
+		kernel.WriteProblem(w, r, http.StatusForbidden, "delegation_disabled", "Platform user delegation is disabled for this application.")
 		return
 	}
 	var request struct {
@@ -57,8 +58,21 @@ EXISTS(SELECT 1 FROM users WHERE id=$3 AND application_id=$1 AND status='active'
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_delegation_workspace", "The target user is not a member of the selected workspace.")
 		return
 	}
+	var workspaceID *string
+	if request.WorkspaceID != "" {
+		workspaceID = &request.WorkspaceID
+	}
+	canonicalPermissions := make([]string, 0, len(request.Permissions))
+	for _, permission := range request.Permissions {
+		canonical, canonicalErr := platformauthz.CanonicalScope(applicationID.String(), workspaceID, permission)
+		if canonicalErr != nil || strings.Split(permission, ":")[0] == "roles" {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_delegation_permissions", "Delegated permissions must be unique lowercase ASCII colon-delimited keys; a wildcard is allowed only as the final complete segment.")
+			return
+		}
+		canonicalPermissions = append(canonicalPermissions, canonical)
+	}
 	userPermissions := s.permissionsForWorkspace(r, applicationID, request.UserID, request.WorkspaceID)
-	for _, requested := range request.Permissions {
+	for _, requested := range canonicalPermissions {
 		allowed := false
 		for _, granted := range userPermissions {
 			if permissionMatches(granted, requested) {
@@ -78,10 +92,6 @@ EXISTS(SELECT 1 FROM users WHERE id=$3 AND application_id=$1 AND status='active'
 	}
 	id := kernel.NewID()
 	expiresAt := s.app.Now().Add(time.Duration(request.ExpiresIn) * time.Second)
-	var workspaceID *string
-	if request.WorkspaceID != "" {
-		workspaceID = &request.WorkspaceID
-	}
 	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "The delegation could not be created.")
@@ -89,12 +99,12 @@ EXISTS(SELECT 1 FROM users WHERE id=$3 AND application_id=$1 AND status='active'
 	}
 	defer rollback(tx, r.Context())
 	_, err = tx.Exec(r.Context(), `INSERT INTO delegations
-(id,application_id,operator_id,user_id,workspace_id,reason,redirect_uri,permissions,exchange_digest,expires_at)
+(id,application_id,control_user_id,user_id,workspace_id,reason,redirect_uri,permissions,exchange_digest,expires_at)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, id, applicationID, actor(r).ID, request.UserID, workspaceID,
-		request.Reason, request.RedirectURI, request.Permissions, s.app.Vault.Digest(exchangeCode), expiresAt)
+		request.Reason, request.RedirectURI, canonicalPermissions, s.app.Vault.Digest(exchangeCode), expiresAt)
 	if err == nil {
 		_, err = s.app.Emit(r.Context(), tx, &applicationID, "delegation.created", "delegation/"+id.String(), actor(r),
-			map[string]any{"delegation_id": id, "user_id": request.UserID, "workspace_id": workspaceID, "permissions": request.Permissions,
+			map[string]any{"delegation_id": id, "user_id": request.UserID, "workspace_id": workspaceID, "permissions": canonicalPermissions,
 				"reason": request.Reason, "expires_at": expiresAt})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
@@ -107,12 +117,12 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, id, applicationID, actor(r).ID, reques
 	query.Set("exchange_code", exchangeCode)
 	redirect.RawQuery = query.Encode()
 	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "user_id": request.UserID, "workspace_id": workspaceID,
-		"permissions": request.Permissions, "reason": request.Reason, "expires_at": expiresAt, "exchange_code": exchangeCode,
+		"permissions": canonicalPermissions, "reason": request.Reason, "expires_at": expiresAt, "exchange_code": exchangeCode,
 		"redirect_to": redirect.String()})
 }
 
 func (s *Server) listDelegations(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.app.DB.Query(r.Context(), `SELECT d.id,d.operator_id,d.user_id,u.email,d.workspace_id,d.reason,d.redirect_uri,d.permissions,
+	rows, err := s.app.DB.Query(r.Context(), `SELECT d.id,d.control_user_id,d.user_id,u.email,d.workspace_id,d.reason,d.redirect_uri,d.permissions,
 d.expires_at,d.exchanged_at,d.revoked_at,d.created_at FROM delegations d JOIN users u ON u.id=d.user_id
 WHERE d.application_id=$1 ORDER BY d.created_at DESC,d.id DESC`, chi.URLParam(r, "application_id"))
 	if err != nil {
@@ -131,7 +141,7 @@ WHERE d.application_id=$1 ORDER BY d.created_at DESC,d.id DESC`, chi.URLParam(r,
 }
 
 func (s *Server) getDelegation(w http.ResponseWriter, r *http.Request) {
-	row := s.app.DB.QueryRow(r.Context(), `SELECT d.id,d.operator_id,d.user_id,u.email,d.workspace_id,d.reason,d.redirect_uri,d.permissions,
+	row := s.app.DB.QueryRow(r.Context(), `SELECT d.id,d.control_user_id,d.user_id,u.email,d.workspace_id,d.reason,d.redirect_uri,d.permissions,
 d.expires_at,d.exchanged_at,d.revoked_at,d.created_at FROM delegations d JOIN users u ON u.id=d.user_id
 WHERE d.id=$1 AND d.application_id=$2`, chi.URLParam(r, "delegation_id"), chi.URLParam(r, "application_id"))
 	item, ok := scanDelegation(row)
@@ -176,7 +186,7 @@ WHERE id=$1 AND application_id=$2`, chi.URLParam(r, "delegation_id"), applicatio
 
 func (s *Server) exchangeDelegation(w http.ResponseWriter, r *http.Request) {
 	if !s.delegationEnabled(r) {
-		kernel.WriteProblem(w, r, http.StatusForbidden, "delegation_disabled", "Operator delegation is disabled for this application.")
+		kernel.WriteProblem(w, r, http.StatusForbidden, "delegation_disabled", "Platform user delegation is disabled for this application.")
 		return
 	}
 	var request struct {
@@ -196,18 +206,18 @@ func (s *Server) exchangeDelegation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollback(tx, r.Context())
-	var userID, operatorID string
+	var userID, controlUserID string
 	var workspaceID *string
 	var permissions []string
 	var expiresAt time.Time
 	var email, locale string
 	var emailVerified, orgVerified bool
-	err = tx.QueryRow(r.Context(), `SELECT d.user_id,d.operator_id,d.workspace_id,d.permissions,d.expires_at,u.email,u.locale,
+	err = tx.QueryRow(r.Context(), `SELECT d.user_id,d.control_user_id,d.workspace_id,d.permissions,d.expires_at,u.email,u.locale,
 	u.email_verified_at IS NOT NULL,u.is_org_verified FROM delegations d JOIN users u ON u.id=d.user_id
 	WHERE d.id=$1 AND d.application_id=$2 AND d.exchange_digest=$3
 AND d.exchanged_at IS NULL AND d.revoked_at IS NULL AND d.expires_at>now() AND u.status='active' FOR UPDATE OF d`,
 		chi.URLParam(r, "delegation_id"), applicationID, s.app.Vault.Digest(request.ExchangeCode)).
-		Scan(&userID, &operatorID, &workspaceID, &permissions, &expiresAt, &email, &locale, &emailVerified, &orgVerified)
+		Scan(&userID, &controlUserID, &workspaceID, &permissions, &expiresAt, &email, &locale, &emailVerified, &orgVerified)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_delegation_exchange", "The delegation exchange code is invalid, expired, or already used.")
 		return
@@ -251,17 +261,22 @@ AND d.exchanged_at IS NULL AND d.revoked_at IS NULL AND d.expires_at>now() AND u
 	}
 	var access string
 	if err == nil && keyErr == nil {
-		access, err = identity.Sign(privateKey, kid, identity.Claims{Issuer: s.app.Issuer(), Subject: userID, Audience: []string{s.app.ApplicationAudience(applicationID)},
-			ExpiresAt: accessExpires.Unix(), IssuedAt: now.Unix(), NotBefore: now.Add(-5 * time.Second).Unix(), JWTID: kernel.NewID().String(),
-			SessionID: sessionID.String(), ApplicationID: applicationID.String(), TokenKind: "access", ActorType: "user", Scope: strings.Join(permissions, " "), Email: email, Locale: locale, EmailVerified: emailVerified,
-			IsOrgVerified: orgVerified, AMR: []string{"delegation"},
-			Actor: &identity.Actor{Subject: operatorID, Type: "operator"}})
+		customClaims, claimsErr := s.customClaimsForUser(r.Context(), applicationID.String(), userID)
+		if claimsErr != nil {
+			err = claimsErr
+		} else {
+			access, err = identity.Sign(privateKey, kid, identity.Claims{Issuer: s.app.Issuer(), Subject: userID, Audience: []string{s.app.ApplicationAudience(applicationID)},
+				ExpiresAt: accessExpires.Unix(), IssuedAt: now.Unix(), NotBefore: now.Add(-5 * time.Second).Unix(), JWTID: kernel.NewID().String(),
+				SessionID: sessionID.String(), ApplicationID: applicationID.String(), TokenKind: "access", ActorType: "user", Scope: strings.Join(permissions, " "), Email: email, Locale: locale, EmailVerified: emailVerified,
+				Roles: emptyRoleClaims(), IsOrgVerified: orgVerified, CustomClaims: customClaims, AMR: []string{"delegation"},
+				Actor: &identity.Actor{Subject: controlUserID, Type: "control_user"}})
+		}
 	} else if keyErr != nil {
 		err = keyErr
 	}
 	if err == nil {
 		_, err = s.app.Emit(r.Context(), tx, &applicationID, "delegation.exchanged", "delegation/"+chi.URLParam(r, "delegation_id"),
-			map[string]any{"type": "operator", "id": operatorID}, map[string]any{"delegation_id": chi.URLParam(r, "delegation_id"), "user_id": userID})
+			map[string]any{"type": "control_user", "id": controlUserID}, map[string]any{"delegation_id": chi.URLParam(r, "delegation_id"), "user_id": userID})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "delegation_exchange_failed", "The delegated session could not be created.")
@@ -272,12 +287,12 @@ AND d.exchanged_at IS NULL AND d.revoked_at IS NULL AND d.expires_at>now() AND u
 }
 
 func scanDelegation(row scanner) (map[string]any, bool) {
-	var id, operatorID, userID, email, reason, redirectURI string
+	var id, controlUserID, userID, email, reason, redirectURI string
 	var workspaceID *string
 	var permissions []string
 	var expiresAt, createdAt time.Time
 	var exchangedAt, revokedAt *time.Time
-	if row.Scan(&id, &operatorID, &userID, &email, &workspaceID, &reason, &redirectURI, &permissions,
+	if row.Scan(&id, &controlUserID, &userID, &email, &workspaceID, &reason, &redirectURI, &permissions,
 		&expiresAt, &exchangedAt, &revokedAt, &createdAt) != nil {
 		return nil, false
 	}
@@ -289,7 +304,7 @@ func scanDelegation(row scanner) (map[string]any, bool) {
 	} else if exchangedAt != nil {
 		status = "active"
 	}
-	return map[string]any{"id": id, "operator_id": operatorID, "user_id": userID, "user_email": email, "workspace_id": workspaceID,
+	return map[string]any{"id": id, "control_user_id": controlUserID, "user_id": userID, "user_email": email, "workspace_id": workspaceID,
 		"reason": reason, "redirect_uri": redirectURI, "permissions": permissions, "expires_at": expiresAt,
 		"exchanged_at": exchangedAt, "revoked_at": revokedAt, "created_at": createdAt, "status": status}, true
 }

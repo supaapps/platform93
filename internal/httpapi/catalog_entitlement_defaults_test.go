@@ -52,7 +52,7 @@ func TestPriceSnapshotsProductEntitlementDefaults(t *testing.T) {
 
 	request := requestWithRoute(t, "POST", "/", map[string]any{
 		"key": "monthly-" + suffix, "mode": "recurring", "amount_minor": 1900, "currency": "EUR",
-	}, map[string]string{"application_id": applicationID.String(), "product_id": productID.String()}, kernel.Actor{Type: "operator", ID: kernel.NewID().String()})
+	}, map[string]string{"application_id": applicationID.String(), "product_id": productID.String()}, kernel.Actor{Type: "control_user", ID: kernel.NewID().String()})
 	response := httptest.NewRecorder()
 	server.createPrice(response, request)
 	if response.Code != 201 {

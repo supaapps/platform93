@@ -39,21 +39,21 @@ func TestProviderScopeAuthorization(t *testing.T) {
 		t.Fatal(err)
 	}
 	for id, prefix := range map[string]string{organizationAdminID.String(): "org-admin", organizationAuditorID.String(): "org-auditor", installationAuditorID.String(): "install-auditor", outsiderID.String(): "outsider"} {
-		if _, err = db.Exec(context.Background(), `INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, id, prefix+"-"+suffix+"@example.test"); err != nil {
+		if _, err = db.Exec(context.Background(), `INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, id, prefix+"-"+suffix+"@example.test"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO organization_memberships(organization_id,operator_id,role) VALUES($1,$2,'auditor')`, organizationID, organizationAuditorID); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO organization_memberships(organization_id,control_user_id,role) VALUES($1,$2,'auditor')`, organizationID, organizationAuditorID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO organization_memberships(organization_id,operator_id,role) VALUES($1,$2,'admin')`, organizationID, organizationAdminID); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO organization_memberships(organization_id,control_user_id,role) VALUES($1,$2,'admin')`, organizationID, organizationAdminID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO installation_operator_roles(operator_id,role) VALUES($1,'auditor')`, installationAuditorID); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO installation_control_user_roles(control_user_id,role) VALUES($1,'auditor')`, installationAuditorID); err != nil {
 		t.Fatal(err)
 	}
 
-	request := requestWithRoute(t, "GET", "/", nil, nil, kernel.Actor{Type: "operator", ID: organizationAuditorID.String()})
+	request := requestWithRoute(t, "GET", "/", nil, nil, kernel.Actor{Type: "control_user", ID: organizationAuditorID.String()})
 	if !server.authorizeProviderScope(httptest.NewRecorder(), request, organizationProviderScope(organizationID.String()), false) {
 		t.Fatal("organization auditor could not read organization providers")
 	}
@@ -75,7 +75,7 @@ func TestProviderScopeAuthorization(t *testing.T) {
 	if _, err = db.Exec(context.Background(), `UPDATE organization_policies SET enabled_settings=jsonb_set(enabled_settings,'{application_provider_overrides}','false') WHERE organization_id=$1`, organizationID); err != nil {
 		t.Fatal(err)
 	}
-	request = requestWithRoute(t, "GET", "/", nil, nil, kernel.Actor{Type: "operator", ID: organizationAdminID.String()})
+	request = requestWithRoute(t, "GET", "/", nil, nil, kernel.Actor{Type: "control_user", ID: organizationAdminID.String()})
 	if !server.authorizeApplicationStorageControl(httptest.NewRecorder(), request, applicationID.String(), true) {
 		t.Fatal("organization admin could not manage application objects when provider overrides were disabled")
 	}
@@ -84,7 +84,7 @@ func TestProviderScopeAuthorization(t *testing.T) {
 		t.Fatalf("organization admin configured an application provider while overrides were disabled: %d", response.Code)
 	}
 
-	request = requestWithRoute(t, "GET", "/", nil, nil, kernel.Actor{Type: "operator", ID: outsiderID.String()})
+	request = requestWithRoute(t, "GET", "/", nil, nil, kernel.Actor{Type: "control_user", ID: outsiderID.String()})
 	response = httptest.NewRecorder()
 	if server.authorizeProviderScope(response, request, organizationProviderScope(organizationID.String()), false) || response.Code != 404 {
 		t.Fatalf("organization provider scope leaked to outsider: %d", response.Code)
@@ -94,7 +94,7 @@ func TestProviderScopeAuthorization(t *testing.T) {
 		t.Fatalf("application provider scope leaked to outsider: %d", response.Code)
 	}
 
-	request = requestWithRoute(t, "GET", "/", nil, nil, kernel.Actor{Type: "operator", ID: installationAuditorID.String()})
+	request = requestWithRoute(t, "GET", "/", nil, nil, kernel.Actor{Type: "control_user", ID: installationAuditorID.String()})
 	if !server.authorizeProviderScope(httptest.NewRecorder(), request, installationProviderScope(), false) {
 		t.Fatal("installation auditor could not read installation providers")
 	}

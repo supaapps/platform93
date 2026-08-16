@@ -49,14 +49,14 @@ func TestWorkspaceMemberRoleReplacementIsAtomic(t *testing.T) {
 	}
 
 	params := map[string]string{"application_id": applicationID.String(), "workspace_id": workspaceID.String(), "user_id": userID.String()}
-	replace := requestWithRoute(t, "PUT", "/", map[string]any{"role_keys": []string{"one-" + suffix, "two-" + suffix}}, params, kernel.Actor{Type: "operator"})
+	replace := requestWithRoute(t, "PUT", "/", map[string]any{"role_keys": []string{"one-" + suffix, "two-" + suffix}}, params, kernel.Actor{Type: "control_user"})
 	response := httptest.NewRecorder()
 	server.replaceWorkspaceMemberRoles(response, replace)
 	if response.Code != 200 {
 		t.Fatalf("initial role replacement failed: %d %s", response.Code, response.Body.String())
 	}
 
-	replace = requestWithRoute(t, "PUT", "/", map[string]any{"role_keys": []string{"two-" + suffix}}, params, kernel.Actor{Type: "operator"})
+	replace = requestWithRoute(t, "PUT", "/", map[string]any{"role_keys": []string{"two-" + suffix}}, params, kernel.Actor{Type: "control_user"})
 	response = httptest.NewRecorder()
 	server.replaceWorkspaceMemberRoles(response, replace)
 	if response.Code != 200 {
