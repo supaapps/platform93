@@ -71,7 +71,7 @@ jobs:
       - run: find sdk/php/src -name '*.php' -print0 | xargs -0 -n1 php -l
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: python -m pip install build pip-audit
+      - run: python -m pip install --upgrade build pip-audit 'setuptools>=83'
       - run: python -m build sdk/python/auth && python -m build sdk/python/webhooks
       - run: python -m pip install -e sdk/python/auth -e sdk/python/webhooks
       - run: pip-audit
