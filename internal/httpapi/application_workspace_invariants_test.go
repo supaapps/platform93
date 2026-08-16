@@ -104,7 +104,7 @@ func TestWorkspaceOwnershipAndClientScopeInvariants(t *testing.T) {
 
 	assignment := requestWithRoute(t, http.MethodPost, "/", map[string]any{
 		"client_id": clientID, "role_id": roleID,
-	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "operator"})
+	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "control_user"})
 	response := httptest.NewRecorder()
 	server.assignRole(response, assignment)
 	if response.Code != http.StatusCreated {
@@ -139,18 +139,18 @@ func TestFinalInstallationOwnerCannotBeDemoted(t *testing.T) {
 	vault, _ := secure.NewVault(make([]byte, 32))
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
 	ownerID := kernel.NewID()
-	if _, err = db.Exec(context.Background(), `UPDATE installation_operator_roles SET role='admin' WHERE role='owner'`); err != nil {
+	if _, err = db.Exec(context.Background(), `UPDATE installation_control_user_roles SET role='admin' WHERE role='owner'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, ownerID, "installation-owner-"+ownerID.String()+"@example.test"); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, ownerID, "installation-owner-"+ownerID.String()+"@example.test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO installation_operator_roles(operator_id,role) VALUES($1,'owner')`, ownerID); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO installation_control_user_roles(control_user_id,role) VALUES($1,'owner')`, ownerID); err != nil {
 		t.Fatal(err)
 	}
-	request := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"role": "admin"}, map[string]string{"operator_id": ownerID.String()}, kernel.Actor{Type: "operator", ID: ownerID.String()})
+	request := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"role": "admin"}, map[string]string{"control_user_id": ownerID.String()}, kernel.Actor{Type: "control_user", ID: ownerID.String()})
 	response := httptest.NewRecorder()
-	server.updateInstallationOperator(response, request)
+	server.updateInstallationControlUser(response, request)
 	if response.Code != http.StatusConflict {
 		t.Fatalf("final installation owner demotion returned %d: %s", response.Code, response.Body.String())
 	}

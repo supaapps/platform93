@@ -37,7 +37,7 @@ func TestAcceptOrganizationInvitationIncludesNewMembershipInAccessToken(t *testi
 	inviterID, organizationID, invitationID := kernel.NewID(), kernel.NewID(), kernel.NewID()
 	suffix := invitationID.String()
 	credential := "p93_org_invite_" + suffix
-	if _, err = db.Exec(context.Background(), `INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, inviterID, "inviter-"+suffix+"@example.test"); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, inviterID, "inviter-"+suffix+"@example.test"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(context.Background(), `INSERT INTO organizations(id,name,slug) VALUES($1,'Invitation test',$2)`, organizationID, "invitation-"+suffix); err != nil {
@@ -47,8 +47,8 @@ func TestAcceptOrganizationInvitationIncludesNewMembershipInAccessToken(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	queueRequest := requestWithRoute(t, http.MethodPost, "/", nil, nil, kernel.Actor{Type: "operator", ID: inviterID.String()})
-	if err = server.queueOrganizationInvitation(queueRequest, notificationTx, organizationID.String(), invitationID.String(), "invitee-"+suffix+"@example.test", "admin", credential, time.Now().Add(time.Hour)); err != nil {
+	queueRequest := requestWithRoute(t, http.MethodPost, "/", nil, nil, kernel.Actor{Type: "control_user", ID: inviterID.String()})
+	if err = server.queueOrganizationInvitation(queueRequest, notificationTx, organizationID.String(), invitationID.String(), "invitee-"+suffix+"@example.test", "admin", "email", credential, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if err = notificationTx.Commit(context.Background()); err != nil {
@@ -58,7 +58,7 @@ func TestAcceptOrganizationInvitationIncludesNewMembershipInAccessToken(t *testi
 	if err = db.QueryRow(context.Background(), `SELECT organization_id FROM notifications WHERE payload_ciphertext IS NOT NULL AND recipient=$1 ORDER BY created_at DESC LIMIT 1`, "invitee-"+suffix+"@example.test").Scan(&queuedOrganizationID); err != nil || queuedOrganizationID != organizationID.String() {
 		t.Fatalf("organization invitation notification lost its provider scope: organization=%q err=%v", queuedOrganizationID, err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO organization_invitations(id,organization_id,normalized_email,role,credential_digest,invited_by,expires_at)
+	if _, err = db.Exec(context.Background(), `INSERT INTO control_user_invitations(id,organization_id,normalized_email,role,credential_digest,invited_by,expires_at)
 VALUES($1,$2,$3,'admin',$4,$5,$6)`, invitationID, organizationID, "invitee-"+suffix+"@example.test", vault.Digest(credential), inviterID, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ VALUES($1,$2,$3,'admin',$4,$5,$6)`, invitationID, organizationID, "invitee-"+suf
 
 	request := requestWithRoute(t, http.MethodPost, "/v1/control/organization-invitations/accept", map[string]any{
 		"invitation_token": credential,
-		"display_name":     "Invited operator",
+		"display_name":     "Invited control_user",
 	}, nil, kernel.Actor{})
 	response := httptest.NewRecorder()
 	server.acceptOrganizationInvitation(response, request)

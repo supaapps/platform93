@@ -49,9 +49,14 @@ func (s *Server) startAppleAuthFlow(w http.ResponseWriter, r *http.Request, forc
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "authenticated_link_required", "Linking Apple requires a directly authenticated user session.")
 		return
 	}
+	if err := validateRedirectURI(request.RedirectURI, true); err != nil {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "redirect_uri_not_allowed", "The redirect URI is invalid or unsafe.")
+		return
+	}
 	applicationID := chi.URLParam(r, "application_id")
 	var redirectAllowed bool
-	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris))`, applicationID, request.RedirectURI).Scan(&redirectAllowed)
+	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL
+AND $2=ANY(redirect_uris) AND (NOT $3 OR client_type='public'))`, applicationID, request.RedirectURI, isNativeRedirectURI(request.RedirectURI)).Scan(&redirectAllowed)
 	if !redirectAllowed {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "redirect_uri_not_allowed", "The redirect URI must exactly match an enabled client redirect URI.")
 		return
@@ -81,7 +86,7 @@ VALUES($1,$2,'apple',$3,$4,$5,$6,$7,$8,$9)`, challengeID, applicationID, request
 	}
 	query := url.Values{
 		"client_id":     {provider.ClientID},
-		"redirect_uri":  {s.externalAuthCallbackURI(applicationID, "apple")},
+		"redirect_uri":  {s.externalAuthCallbackURI("apple")},
 		"response_type": {"code"},
 		"response_mode": {"form_post"},
 		"scope":         {"name email"},
@@ -120,7 +125,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,flow,requested_by_
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_exchange_failed")
 		return
 	}
-	form := url.Values{"client_id": {provider.ClientID}, "client_secret": {clientSecret}, "code": {r.Form.Get("code")}, "grant_type": {"authorization_code"}, "redirect_uri": {s.externalAuthCallbackURI(chi.URLParam(r, "application_id"), "apple")}}
+	form := url.Values{"client_id": {provider.ClientID}, "client_secret": {clientSecret}, "code": {r.Form.Get("code")}, "grant_type": {"authorization_code"}, "redirect_uri": {s.externalAuthCallbackURI("apple")}}
 	request, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, "https://appleid.apple.com/auth/token", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response, err := http.DefaultClient.Do(request)

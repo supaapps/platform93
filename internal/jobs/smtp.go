@@ -153,7 +153,7 @@ func (r *Runner) notificationContent(payload map[string]any) (string, string, st
 		parts = append(parts, "Use the application invitation flow to accept this membership. If you did not expect this invitation, ignore this message.")
 		return "Workspace invitation", strings.Join(parts, "\r\n\r\n"), ""
 	}
-	operator, _ := payload["operator"].(bool)
+	controlUser, _ := payload["control_user"].(bool)
 	subject := "Your Platform93 sign-in code"
 	parts := []string{"A sign-in was requested for your account."}
 	if code, ok := payload["code"].(string); ok && code != "" {
@@ -161,8 +161,8 @@ func (r *Runner) notificationContent(payload map[string]any) (string, string, st
 	}
 	if token, ok := payload["link_token"].(string); ok && token != "" {
 		if challenge, ok := payload["challenge_id"].(string); ok {
-			base := r.app.PublicURL + "/?operator_challenge=true"
-			if !operator {
+			base := r.app.PublicURL + "/?control_user_challenge=true"
+			if !controlUser {
 				if redirect, ok := payload["redirect_uri"].(string); ok && redirect != "" {
 					base = redirect
 				}

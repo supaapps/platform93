@@ -6,11 +6,11 @@ async function expectNoSeriousAccessibilityViolations(page: import("@playwright/
   expect(result.violations.filter((violation) => violation.impact === "critical" || violation.impact === "serious")).toEqual([]);
 }
 
-test("consumes an operator magic link and removes it from the URL", async ({ page }) => {
+test("consumes a Platform user magic link and removes it from the URL", async ({ page }) => {
   let verification: Record<string, unknown> | undefined;
   await page.route("**/v1/setup/status", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ available: false, operator_email_login_available: true }),
+    body: JSON.stringify({ available: false, control_user_email_login_available: true, control_auth_methods: { email_code: true, magic_link: true, password: true, providers: [] } }),
   }));
   await page.route("**/v1/control/auth/email/verify", async (route) => {
     verification = route.request().postDataJSON() as Record<string, unknown>;
@@ -21,11 +21,11 @@ test("consumes an operator magic link and removes it from the URL", async ({ pag
     body: JSON.stringify({ items: [], next_cursor: null }),
   }));
 
-  await page.goto("/?challenge_id=01900000-0000-7000-8000-000000000001&link_token=p93_ops_link_test&operator_challenge=true");
+  await page.goto("/?challenge_id=01900000-0000-7000-8000-000000000001&link_token=p93_control_link_test&control_user_challenge=true");
 
   await expect.poll(() => verification).toEqual({
     challenge_id: "01900000-0000-7000-8000-000000000001",
-    link_token: "p93_ops_link_test",
+    link_token: "p93_control_link_test",
   });
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText("Create the first boundary")).toBeVisible();
@@ -38,7 +38,7 @@ test("creates and renames organization and application boundaries", async ({ pag
   let organization = { id: organizationID, name: "Test Organization", slug: "test-organization", role: "owner", version: 1 };
   let application = { id: applicationID, organization_id: organizationID, name: "Test Application", slug: "test-application", issuer: "http://localhost:8093/oidc", version: 1 };
   let createdOrganization: Record<string, unknown> | undefined;
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: false }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: false }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [organization], next_cursor: null, installation_role: "owner" }) }));
   await page.route("**/v1/control/organizations", async (route) => {
     createdOrganization = route.request().postDataJSON() as Record<string, unknown>;
@@ -86,7 +86,7 @@ test("creates and renames organization and application boundaries", async ({ pag
 test("renders accessible compact actions with stable spacing", async ({ page }) => {
   const active = { id: "01900000-0000-7000-8000-000000000110", name: "Active Organization", slug: "active-organization", role: "owner", version: 1 };
   const retired = { id: "01900000-0000-7000-8000-000000000111", name: "Retired Organization", slug: "retired-organization", role: "owner", version: 1, retired_at: "2026-08-09T12:00:00Z" };
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: false }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: false }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [active, retired], next_cursor: null, installation_role: "owner" }) }));
   await page.route("**/v1/control/organizations/*/applications?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
 
@@ -119,10 +119,10 @@ test("toggles installation provider inheritance after creation", async ({ page }
   const stripe = { id: stripeID, provider: "stripe", public_id: "p93_stripe_test", status: "active", scope: "installation", inheritable: true };
   const storage = { id: storageID, name: "Installation storage", endpoint: "https://s3.example.test", public_bucket: "public-assets", status: "active", verified_at: "2026-08-09T12:00:00Z", scope: "installation", inheritable: true };
   const updates: { path: string; body: unknown }[] = [];
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: true }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: true }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null, installation_role: "owner" }) }));
   await page.route("**/v1/control/auth/sessions", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
-  await page.route("**/v1/control/installation/operators", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
+  await page.route("**/v1/control/installation/users", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
   await page.route("**/v1/control/installation/management-api", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ enabled: false, can_manage: true, active_clients: 0, token_endpoint: "http://localhost:8093/oidc/token", api_base: "http://localhost:8093/v1/management" }) }));
   await page.route("**/v1/control/installation/management-clients", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
   await page.route("**/v1/control/installation/notification-templates", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
@@ -153,9 +153,15 @@ test("toggles installation provider inheritance after creation", async ({ page }
 
   await page.goto("/");
   await page.getByRole("button", { name: "Providers", exact: true }).click();
+  await page.getByText("Configure Google", { exact: true }).click();
+  await expect(page.locator(".provider-callback-box code").filter({ hasText: "/v1/auth/providers/google/callback" })).toHaveCount(1);
+  await expect(page.locator(".provider-callback-box").filter({ hasText: "Google OAuth callback" })).toContainText("Add this exact installation-wide URL once");
+  await page.getByText("Configure Apple", { exact: true }).click();
+  await expect(page.locator(".provider-callback-box code").filter({ hasText: "/v1/auth/providers/apple/callback" })).toHaveCount(1);
+  await expect(page.locator(".provider-settings")).not.toContainText("{application_id}");
   const cards = page.locator(".provider-cards article");
-  await cards.filter({ hasText: "google" }).getByRole("checkbox").click();
-  await expect(cards.filter({ hasText: "google" }).getByRole("checkbox")).not.toBeChecked();
+  await cards.filter({ hasText: "google" }).getByRole("checkbox", { name: "Global default for organizations and applications" }).click();
+  await expect(cards.filter({ hasText: "google" }).getByRole("checkbox", { name: "Global default for organizations and applications" })).not.toBeChecked();
   await expect(page.getByRole("status")).toContainText("Google login is now limited to the installation scope.");
   await cards.filter({ hasText: "Installation SMTP" }).getByRole("checkbox").click();
   await expect(cards.filter({ hasText: "Installation SMTP" }).getByRole("checkbox")).not.toBeChecked();
@@ -176,7 +182,7 @@ test("toggles installation provider inheritance after creation", async ({ page }
 
 test("activates provisioning and applies installation-owned organization governance", async ({ page }) => {
   const organizationID = "01900000-0000-7000-8000-000000000130";
-  const organization = { id: organizationID, name: "Governed Organization", slug: "governed-organization", role: "installation:owner", version: 1 };
+  const organization = { id: organizationID, name: "Governed Organization", slug: "governed-organization", role: "owner", version: 1 };
   let managementEnabled = false;
   let createdClient: Record<string, unknown> | undefined;
   let policyUpdate: Record<string, unknown> | undefined;
@@ -193,11 +199,11 @@ test("activates provisioning and applies installation-owned organization governa
     usage: { applications: 1, users: 24 },
     version: 1,
   };
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: true }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: true }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [organization], next_cursor: null, installation_role: "owner" }) }));
   await page.route(`**/v1/control/organizations/${organizationID}/applications?*`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
   await page.route("**/v1/control/auth/sessions", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
-  await page.route("**/v1/control/installation/operators", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
+  await page.route("**/v1/control/installation/users", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
   await page.route("**/v1/control/installation/notification-templates", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
   await page.route("**/v1/control/installation/management-api", async (route) => {
     if (route.request().method() === "PATCH") managementEnabled = Boolean((route.request().postDataJSON() as { enabled: boolean }).enabled);
@@ -254,7 +260,7 @@ test("brand returns to the highest accessible context", async ({ page }) => {
   const organization = { id: organizationID, name: "Scoped Organization", slug: "scoped-organization", role: "owner", version: 1 };
   const application = { id: applicationID, organization_id: organizationID, name: "Scoped Application", slug: "scoped-application", issuer: "http://localhost:8093/oidc", version: 1 };
   let installationRole: "owner" | null = null;
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: false }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: false, control_auth_methods: { email_code: false, magic_link: false, password: true, providers: [] } }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [organization], next_cursor: null, installation_role: installationRole }) }));
   await page.route(`**/v1/control/organizations/${organizationID}/applications?*`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [application], next_cursor: null }) }));
   await page.route(`**/v1/control/applications/${applicationID}`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(application) }));
@@ -276,12 +282,12 @@ test("brand returns to the highest accessible context", async ({ page }) => {
   await expect(context).toHaveValue("platform");
 });
 
-test("manages the operator account and logs out from the footer", async ({ page }) => {
-  const operatorID = "01900000-0000-7000-8000-000000000108";
+test("manages the Platform user account and logs out from the footer", async ({ page }) => {
+  const controlUserID = "01900000-0000-7000-8000-000000000108";
   let profileUpdate: Record<string, unknown> | undefined;
   let passwordUpdate: Record<string, unknown> | undefined;
   let loggedOut = false;
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: false }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: false, control_auth_methods: { email_code: false, magic_link: false, password: true, providers: [] } }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null, installation_role: "owner" }) }));
   await page.route("**/v1/control/auth/me", async (route) => {
     if (route.request().method() === "PATCH") {
@@ -289,7 +295,7 @@ test("manages the operator account and logs out from the footer", async ({ page 
       await route.fulfill({ status: 204 });
       return;
     }
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: operatorID, email: "owner@example.test", display_name: "Installation Owner", status: "active", installation_role: "owner", organizations: [], sign_in_methods: { email_code: true, magic_link: true, password: false, external_identities: [] } }) });
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: controlUserID, email: "owner@example.test", display_name: "Installation Owner", status: "active", installation_role: "owner", organizations: [], sign_in_methods: { email_code: true, magic_link: true, password: false, external_identities: [] } }) });
   });
   await page.route("**/v1/control/auth/password", async (route) => {
     passwordUpdate = route.request().postDataJSON() as Record<string, unknown>;
@@ -302,7 +308,7 @@ test("manages the operator account and logs out from the footer", async ({ page 
 
   await page.goto("/");
   await page.getByRole("button", { name: "Account" }).click();
-  await expect(page.getByRole("dialog", { name: "Operator account" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Platform user account" })).toBeVisible();
   await expect(page.getByText("owner@example.test")).toBeVisible();
   await page.getByLabel("Display name").fill("Renamed Owner");
   await page.getByRole("button", { name: "Save profile" }).click();
@@ -340,7 +346,7 @@ test("validates public configuration and applies internal application policy", a
   let internalUpdate: Record<string, unknown> | undefined;
   let publicIfMatch = "";
   let internalIfMatch = "";
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: false }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: false }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [{ id: organizationID, name: "Policy Organization", slug: "policy-organization", role: "owner" }], next_cursor: null }) }));
   await page.route(`**/v1/control/organizations/${organizationID}/applications?*`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [application], next_cursor: null }) }));
   await page.route(`**/v1/control/applications/${applicationID}`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(application) }));
@@ -376,7 +382,7 @@ test("validates public configuration and applies internal application policy", a
 
   await page.getByLabel("Registration").selectOption("invite_only");
   await page.getByLabel("Personal API keys").check();
-  await page.getByLabel("Operator delegation").check();
+  await page.getByLabel("Platform user delegation").check();
   await page.getByRole("button", { name: "Save access policy" }).click();
   await expect.poll(() => internalUpdate).toEqual({
     registration_mode: "invite_only",
@@ -384,6 +390,8 @@ test("validates public configuration and applies internal application policy", a
     passwordless_enabled: true,
     personal_api_keys_enabled: true,
     delegation_enabled: true,
+    user_invitations_enabled: false,
+    custom_token_claim_keys: [],
   });
   expect(internalIfMatch).toBe('"v2"');
   await expect(page.getByRole("status")).toContainText("Application access policy saved and enforced.");
@@ -401,7 +409,7 @@ test("shows persistent labels in the product price detail form", async ({ page }
   let priceCreate: Record<string, unknown> | undefined;
   await page.route("**/v1/setup/status", (route) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ available: false, operator_email_login_available: false }),
+    body: JSON.stringify({ available: false, control_user_email_login_available: false }),
   }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({
     contentType: "application/json",
@@ -505,7 +513,7 @@ test("registers custom events and selects webhook subscriptions from known types
   };
   let registeredEvent: Record<string, unknown> | undefined;
   let createdWebhook: Record<string, unknown> | undefined;
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: false }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: false }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [{ id: organizationID, name: "Test Organization", slug: "test-organization", role: "owner" }], next_cursor: null }) }));
   await page.route(`**/v1/control/organizations/${organizationID}/applications?*`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [{ id: applicationID, organization_id: organizationID, name: "Test Application", slug: "test-application", issuer: "http://localhost:8093/oidc" }], next_cursor: null }) }));
   await page.route(`**/v1/control/applications/${applicationID}`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: applicationID, organization_id: organizationID, name: "Test Application", slug: "test-application", issuer: "http://localhost:8093/oidc", public_config: {}, internal_config: {}, version: 1 }) }));
@@ -564,7 +572,7 @@ test("composes notification templates with built-in and custom codes", async ({ 
   const organizationID = "01900000-0000-7000-8000-000000000030";
   const applicationID = "01900000-0000-7000-8000-000000000031";
   let createdTemplate: Record<string, unknown> | undefined;
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: false }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: false }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [{ id: organizationID, name: "Test Organization", slug: "test-organization", role: "owner" }], next_cursor: null }) }));
   await page.route(`**/v1/control/organizations/${organizationID}/applications?*`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [{ id: applicationID, organization_id: organizationID, name: "Test Application", slug: "test-application", issuer: "http://localhost:8093/oidc" }], next_cursor: null }) }));
   await page.route(`**/v1/control/applications/${applicationID}`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: applicationID, organization_id: organizationID, name: "Test Application", slug: "test-application", issuer: "http://localhost:8093/oidc", public_config: {}, internal_config: {}, version: 1 }) }));
@@ -603,6 +611,12 @@ test("composes notification templates with built-in and custom codes", async ({ 
   await page.getByRole("button", { name: "Add code", exact: true }).click();
   await expect(page.getByText("{{order_number}}", { exact: true })).toBeVisible();
   await expect(page.frameLocator('iframe[title="Email preview"]').locator("body")).toContainText("Thanks for joining Test Application.");
+  await page.getByRole("button", { name: "HTML", exact: true }).click();
+  await page.getByLabel("HTML source").fill('<p>Safe</p><script>alert(1)</script><img src="data:text/html,bad"><a href="vbscript:alert(1)" onclick="alert(1)">Unsafe link</a>');
+  const preview = page.frameLocator('iframe[title="Email preview"]');
+  await expect(preview.locator("body")).toContainText("Safe");
+  await expect(preview.locator("script, img")).toHaveCount(0);
+  await expect(preview.getByText("Unsafe link")).not.toHaveAttribute("href");
   await page.getByRole("button", { name: "Create draft", exact: true }).click();
   await expect.poll(() => createdTemplate).toMatchObject({
     key: "welcome_email",
@@ -626,7 +640,7 @@ test("manages user locale and creates a template localization draft", async ({ p
   let userUpdate: Record<string, unknown> | undefined;
   let localizationDraft: Record<string, unknown> | undefined;
 
-  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, operator_email_login_available: false }) }));
+  await page.route("**/v1/setup/status", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ available: false, control_user_email_login_available: false }) }));
   await page.route("**/v1/control/organizations?*", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [organization], next_cursor: null }) }));
   await page.route(`**/v1/control/organizations/${organizationID}/applications?*`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [application], next_cursor: null }) }));
   await page.route(`**/v1/control/applications/${applicationID}`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify(application) }));
@@ -688,23 +702,24 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Make the platform yours." })).toBeVisible();
   await page.getByLabel("Bootstrap credential").fill(credential);
-  await page.getByLabel("Operator email").fill("operator@platform93.test");
-  await page.getByLabel("Display name").fill("Platform Operator");
-  await page.getByRole("button", { name: "Establish operator" }).click();
+  await page.getByLabel("Platform user email").fill("control_user@platform93.test");
+  await page.getByLabel("Display name").fill("Platform User");
+  await page.getByRole("button", { name: "Establish Platform user" }).click();
 
-  await expect(page.getByText("SMTP can be skipped")).toBeVisible();
+  await expect(page.getByLabel("Enable emails now")).not.toBeChecked();
+  await expect(page.getByText("Email delivery will remain disabled.", { exact: false })).toBeVisible();
+  await page.getByLabel("Initial owner password").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Complete installation" }).click();
   await expect(page.getByText("Create the first boundary")).toBeVisible();
 
-  await page.getByRole("button", { name: "Operators", exact: true }).click();
+  await page.getByRole("button", { name: "Platform users", exact: true }).click();
   const installationAccess = page.locator(".control-scope").first();
-  await expect(installationAccess.getByRole("heading", { name: "Installation operators" })).toBeVisible();
+  await expect(installationAccess.getByRole("heading", { name: "Platform users" })).toBeVisible();
   await installationAccess.getByLabel("Email", { exact: true }).fill("installation-admin@platform93.test");
-  await installationAccess.getByLabel("Display name").fill("Installation Admin");
-  await installationAccess.getByRole("combobox").selectOption("admin");
-  await installationAccess.getByRole("button", { name: "Add installation operator" }).click();
-  await expect(page.getByRole("status")).toContainText("Installation operator created.");
-  await expect(installationAccess.getByText("Installation Admin", { exact: true })).toBeVisible();
+  await installationAccess.locator('select[name="role"]').selectOption("admin");
+  await installationAccess.getByRole("button", { name: "Invite Platform user" }).click();
+  await expect(page.getByRole("status")).toContainText("Platform user invitation created.");
+  await expect(installationAccess.getByText("installation-admin@platform93.test", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Overview", exact: true }).click();
 
   await page.getByLabel("Organization name").fill("Platform93 Test");
@@ -717,16 +732,16 @@ test("bootstraps a clean installation and creates its first application", async 
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByText("Active users")).toBeVisible();
   await expect(page.getByText("Events / 24h")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Operators", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Platform users", exact: true })).toHaveCount(0);
   await expectNoSeriousAccessibilityViolations(page);
 
   await page.getByLabel("Access context").selectOption({ label: "Platform93 Test" });
   await expect(page.getByRole("button", { name: "Catalog", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Operators", exact: true }).click();
+  await page.getByRole("button", { name: "Platform users", exact: true }).click();
   const organizationAccess = page.locator(".control-scope").first();
   await organizationAccess.getByLabel("Email", { exact: true }).fill("organization-admin@platform93.test");
-  await organizationAccess.getByRole("combobox").selectOption("admin");
-  await organizationAccess.getByRole("button", { name: "Invite organization operator" }).click();
+  await organizationAccess.locator('select[name="role"]').selectOption("admin");
+  await organizationAccess.getByRole("button", { name: "Invite Platform user" }).click();
   await expect(page.getByRole("status")).toContainText("Invitation queued.");
   const invitationResult = await page.getByRole("status").textContent();
   const invitationCredential = invitationResult?.match(/p93_org_invite_[A-Za-z0-9_-]{43}/)?.[0];
@@ -762,7 +777,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Overview", exact: true }).click();
 
-  await context.clearCookies({ name: "p93_operator_access" });
+  await context.clearCookies({ name: "p93_control_access" });
   const sessionRefresh = page.waitForResponse((response) =>
     response.url().endsWith("/v1/control/auth/token/refresh") && response.status() === 200,
   );
@@ -794,12 +809,12 @@ test("bootstraps a clean installation and creates its first application", async 
 
   await context.clearCookies();
   await page.reload();
-  await expect(page.getByText("Operator email login is unavailable because no installation SMTP provider is configured.", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Invitation credential")).toHaveCount(0);
-  await page.getByRole("button", { name: "Accept an organization invitation", exact: true }).click();
+  await page.getByRole("button", { name: "Use an invitation", exact: true }).click();
   await page.getByLabel("Invitation credential").fill(invitationCredential!);
+  await page.getByLabel("Required onboarding method").selectOption("email");
   await page.getByLabel("Display name").fill("Organization Admin");
-  await page.getByRole("button", { name: "Accept invitation" }).click();
+  await page.getByRole("button", { name: "Accept with email" }).click();
   await expect(page.locator(".context-header").getByText("Platform93 Test", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 });

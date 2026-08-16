@@ -28,7 +28,7 @@ func TestControlPlaneRetirementRevokesCredentialsAndRestoresBoundaries(t *testin
 	defer db.Close()
 	vault, _ := secure.NewVault(make([]byte, 32))
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
-	operatorID, organizationID := kernel.NewID(), kernel.NewID()
+	controlUserID, organizationID := kernel.NewID(), kernel.NewID()
 	applicationID, userID, sessionID, keyID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
 	connectionID, publicID := kernel.NewID(), kernel.NewID().String()
 	suffix := applicationID.String()
@@ -38,9 +38,9 @@ func TestControlPlaneRetirementRevokesCredentialsAndRestoresBoundaries(t *testin
 		query string
 		args  []any
 	}{
-		{`INSERT INTO operators(id,email,normalized_email,display_name) VALUES($1,$2,$2,'Lifecycle owner')`, []any{operatorID, "lifecycle-" + suffix + "@platform93.test"}},
+		{`INSERT INTO control_users(id,email,normalized_email,display_name) VALUES($1,$2,$2,'Lifecycle owner')`, []any{controlUserID, "lifecycle-" + suffix + "@platform93.test"}},
 		{`INSERT INTO organizations(id,name,slug) VALUES($1,'Retirement test',$2)`, []any{organizationID, "retirement-" + suffix}},
-		{`INSERT INTO organization_memberships(organization_id,operator_id,role) VALUES($1,$2,'admin')`, []any{organizationID, operatorID}},
+		{`INSERT INTO organization_memberships(organization_id,control_user_id,role) VALUES($1,$2,'admin')`, []any{organizationID, controlUserID}},
 		{`INSERT INTO applications(id,organization_id,name,slug) VALUES($1,$2,'Retirement test',$3)`, []any{applicationID, organizationID, "retirement-" + suffix}},
 		{`INSERT INTO users(id,application_id,email,normalized_email) VALUES($1,$2,$3,$3)`, []any{userID, applicationID, "user-" + suffix + "@platform93.test"}},
 		{`INSERT INTO user_sessions(id,application_id,user_id,refresh_digest,expires_at) VALUES($1,$2,$3,$4,now()+interval '1 day')`, []any{sessionID, applicationID, userID, []byte("session-" + suffix)}},
@@ -53,17 +53,17 @@ func TestControlPlaneRetirementRevokesCredentialsAndRestoresBoundaries(t *testin
 		}
 	}
 
-	organizationRequest := lifecycleRequest(t, http.MethodDelete, map[string]string{"organization_id": organizationID.String()}, operatorID.String(), 1)
+	organizationRequest := lifecycleRequest(t, http.MethodDelete, map[string]string{"organization_id": organizationID.String()}, controlUserID.String(), 1)
 	response := httptest.NewRecorder()
 	server.retireOrganization(response, organizationRequest)
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("organization retirement accepted admin: %d %s", response.Code, response.Body.String())
 	}
-	if _, err = db.Exec(context.Background(), `UPDATE organization_memberships SET role='owner' WHERE organization_id=$1 AND operator_id=$2`, organizationID, operatorID); err != nil {
+	if _, err = db.Exec(context.Background(), `UPDATE organization_memberships SET role='owner' WHERE organization_id=$1 AND control_user_id=$2`, organizationID, controlUserID); err != nil {
 		t.Fatal(err)
 	}
 
-	applicationRequest := lifecycleRequest(t, http.MethodDelete, map[string]string{"organization_id": organizationID.String(), "application_resource_id": applicationID.String()}, operatorID.String(), 1)
+	applicationRequest := lifecycleRequest(t, http.MethodDelete, map[string]string{"organization_id": organizationID.String(), "application_resource_id": applicationID.String()}, controlUserID.String(), 1)
 	response = httptest.NewRecorder()
 	server.retireApplication(response, applicationRequest)
 	if response.Code != http.StatusNoContent {
@@ -86,7 +86,7 @@ WHERE e.id=$1 AND s.id=$2 AND k.id=$3`, applicationID, sessionID, keyID).Scan(&a
 		t.Fatalf("retired application accepted provider webhook: %d %s", response.Code, response.Body.String())
 	}
 
-	restoreApplicationRequest := lifecycleRequest(t, http.MethodPost, map[string]string{"organization_id": organizationID.String(), "application_resource_id": applicationID.String()}, operatorID.String(), 2)
+	restoreApplicationRequest := lifecycleRequest(t, http.MethodPost, map[string]string{"organization_id": organizationID.String(), "application_resource_id": applicationID.String()}, controlUserID.String(), 2)
 	response = httptest.NewRecorder()
 	server.restoreApplication(response, restoreApplicationRequest)
 	if response.Code != http.StatusNoContent {
@@ -102,13 +102,13 @@ WHERE e.id=$1 AND s.id=$2 AND k.id=$3`, applicationID, sessionID, keyID).Scan(&a
 	}
 
 	// The application is active again before testing organization-wide retirement.
-	organizationRequest = lifecycleRequest(t, http.MethodDelete, map[string]string{"organization_id": organizationID.String()}, operatorID.String(), 1)
+	organizationRequest = lifecycleRequest(t, http.MethodDelete, map[string]string{"organization_id": organizationID.String()}, controlUserID.String(), 1)
 	response = httptest.NewRecorder()
 	server.retireOrganization(response, organizationRequest)
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("organization retirement failed: %d %s", response.Code, response.Body.String())
 	}
-	organizationRestore := lifecycleRequest(t, http.MethodPost, map[string]string{"organization_id": organizationID.String()}, operatorID.String(), 2)
+	organizationRestore := lifecycleRequest(t, http.MethodPost, map[string]string{"organization_id": organizationID.String()}, controlUserID.String(), 2)
 	response = httptest.NewRecorder()
 	server.restoreOrganization(response, organizationRestore)
 	if response.Code != http.StatusNoContent {
@@ -125,9 +125,9 @@ WHERE o.id=$1 AND e.id=$2`, organizationID, applicationID).Scan(&organizationAct
 	}
 }
 
-func lifecycleRequest(t *testing.T, method string, params map[string]string, operatorID string, version int64) *http.Request {
+func lifecycleRequest(t *testing.T, method string, params map[string]string, controlUserID string, version int64) *http.Request {
 	t.Helper()
-	request := requestWithRoute(t, method, "/", nil, params, kernel.Actor{Type: "operator", ID: operatorID})
+	request := requestWithRoute(t, method, "/", nil, params, kernel.Actor{Type: "control_user", ID: controlUserID})
 	request.Header.Set("If-Match", kernel.ETag(version))
 	return request
 }

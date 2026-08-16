@@ -336,7 +336,7 @@ func eventTypeDefinitionResponse(id, applicationID, name, description, schemaVer
 		"specversion": "1.0", "id": "01900000-0000-7000-8000-000000000099",
 		"source": "platform93://applications/" + applicationID, "type": name, "contract_source": source,
 		"time": "2026-01-01T00:00:00Z", "application_id": applicationID, "schema_version": schemaVersion,
-		"subject": exampleSubject, "actor": map[string]any{"type": "operator", "id": "01900000-0000-7000-8000-000000000098"},
+		"subject": exampleSubject, "actor": map[string]any{"type": "control_user", "id": "01900000-0000-7000-8000-000000000098"},
 		"correlation_id": nil, "causation_id": nil, "data": exampleData,
 	}
 	return map[string]any{"id": id, "name": name, "description": description, "schema_version": schemaVersion,

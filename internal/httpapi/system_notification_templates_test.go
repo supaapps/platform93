@@ -59,7 +59,7 @@ VALUES($1,NULL,$2,'en','transactional',1,'English','English {{message_locale}}',
 	}
 	queueRequest := requestWithRoute(t, http.MethodPost, "/", map[string]any{
 		"template_key": localizedKey, "user_id": localizedUserID.String(),
-	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "operator"})
+	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "control_user"})
 	queueResponse := httptest.NewRecorder()
 	server.queueNotification(queueResponse, queueRequest)
 	if queueResponse.Code != http.StatusAccepted || !strings.Contains(queueResponse.Body.String(), `"resolved_locale":"de"`) || !strings.Contains(queueResponse.Body.String(), `"fallback_used":true`) {
@@ -70,7 +70,7 @@ VALUES($1,NULL,$2,'en','transactional',1,'English','English {{message_locale}}',
 		t.Fatalf("notification stored the wrong resolved locale: %q %v", storedLocale, err)
 	}
 
-	listRequest := requestWithRoute(t, http.MethodGet, "/", nil, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "operator"})
+	listRequest := requestWithRoute(t, http.MethodGet, "/", nil, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "control_user"})
 	listResponse := httptest.NewRecorder()
 	server.listNotificationTemplates(listResponse, listRequest)
 	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), `"key":"platform93.application_sign_in"`) || !strings.Contains(listResponse.Body.String(), `"inherited":true`) {
@@ -84,7 +84,7 @@ WHERE application_id IS NULL AND key=$1 AND status='published'`, applicationSign
 	}
 	updateRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{
 		"subject_template": "Custom sign in to {{application_name}}",
-	}, map[string]string{"application_id": applicationID.String(), "template_id": installationTemplateID}, kernel.Actor{Type: "operator"})
+	}, map[string]string{"application_id": applicationID.String(), "template_id": installationTemplateID}, kernel.Actor{Type: "control_user"})
 	updateResponse := httptest.NewRecorder()
 	server.updateNotificationTemplate(updateResponse, updateRequest)
 	if updateResponse.Code != http.StatusCreated {
@@ -96,7 +96,7 @@ WHERE application_id IS NULL AND key=$1 AND status='published'`, applicationSign
 	if json.Unmarshal(updateResponse.Body.Bytes(), &created) != nil || created.ID == "" {
 		t.Fatal("template override response did not contain an id")
 	}
-	publishRequest := requestWithRoute(t, http.MethodPost, "/", map[string]any{}, map[string]string{"application_id": applicationID.String(), "template_id": created.ID}, kernel.Actor{Type: "operator"})
+	publishRequest := requestWithRoute(t, http.MethodPost, "/", map[string]any{}, map[string]string{"application_id": applicationID.String(), "template_id": created.ID}, kernel.Actor{Type: "control_user"})
 	publishResponse := httptest.NewRecorder()
 	server.publishNotificationTemplate(publishResponse, publishRequest)
 	if publishResponse.Code != http.StatusNoContent {
@@ -116,7 +116,7 @@ VALUES($1,$2,'web','Web','public',ARRAY['https://app.example/auth/callback'],ARR
 	}
 	configRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"flows": map[string]any{
 		"oauth_client_id": "web", "sign_in_redirect_uri": "https://app.example/auth/callback", "invitation_redirect_uri": "https://app.example/invitations/accept",
-	}}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "operator"})
+	}}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "control_user"})
 	configResponse := httptest.NewRecorder()
 	server.updateAuthConfig(configResponse, configRequest)
 	if configResponse.Code != http.StatusNoContent {

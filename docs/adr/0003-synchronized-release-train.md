@@ -14,5 +14,5 @@ keyless publishing where supported, and images include SBOM and provenance metad
 
 Components do not drift across independent versions. A failed verification prevents
 all publication, but a registry outage can still produce a partial external release;
-reruns must be idempotent and operators must verify every registry before announcing
+reruns must be idempotent and maintainers must verify every registry before announcing
 the release.

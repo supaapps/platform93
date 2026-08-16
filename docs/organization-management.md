@@ -1,6 +1,6 @@
 # Organization management and governance
 
-Platform93 can expose an optional machine-only API for installation provisioning systems. It is disabled by default and is independent of operator sessions and application OAuth clients.
+Platform93 can expose an optional machine-only API for installation provisioning systems. It is disabled by default and is independent of Platform user sessions and application OAuth clients.
 
 ## Security boundary
 
@@ -22,11 +22,11 @@ curl -fsS -H "Authorization: Bearer $ACCESS_TOKEN" \
   https://platform93.example/v1/management/organizations
 ```
 
-The initial management scope is `/management/organizations/*`. It permits organization lifecycle, application lifecycle, and organization-policy operations. It does not grant installation provider, signing-key, operator, audit-export, or recovery access.
+The initial management scope is `/management/organizations/*`. It permits organization lifecycle, application lifecycle, and organization-policy operations. It does not grant installation provider, signing-key, Platform user, audit-export, or recovery access.
 
 ## Organization policy
 
-Every organization receives an installation-owned policy. Organization operators can read the policy and current usage, but only installation owners/administrators and management clients can update it.
+Every organization receives an installation-owned policy. Organization Platform users can read the policy and current usage, but only installation owners/administrators and management clients can update it.
 
 Limits are nullable. `null` means unlimited and `0` prevents creation:
 
@@ -35,7 +35,7 @@ Limits are nullable. `null` means unlimited and `0` prevents creation:
 
 Creation checks lock the policy row in the same transaction as the new application or user. Concurrent requests therefore cannot exceed a configured limit.
 
-The policy can disable public registration, password authentication, passwordless authentication, personal API keys, operator delegation, organization provider overrides, application provider overrides, custom events, and outgoing webhooks. Existing installations default to all capabilities enabled.
+The policy can disable public registration, password authentication, passwordless authentication, personal API keys, Platform user delegation, organization provider overrides, application provider overrides, custom events, and outgoing webhooks. Existing installations default to all capabilities enabled.
 
 Disabling a capability is immediate. Platform93 also applies these cleanup rules:
 
@@ -50,4 +50,4 @@ Policy updates use optimistic concurrency. Read the `ETag` from `GET .../policy`
 
 The machine boundary supports organization lifecycle, application lifecycle, and policy operations under `/v1/management/organizations` as described in the OpenAPI document.
 
-Organizations created through this API intentionally have no synthetic operator membership. Provisioning can separately invite or assign real control-plane operators through the operator workflow.
+Organizations created through this API intentionally have no synthetic Platform user membership. Provisioning can separately invite or assign real Platform users through the control-plane invitation workflow.

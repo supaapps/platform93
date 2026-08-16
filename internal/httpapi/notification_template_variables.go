@@ -24,6 +24,9 @@ func notificationTemplateVariableCatalog() []notificationTemplateVariableDefinit
 		{Key: "application_id", Label: "Application ID", Description: "Immutable ID of the application sending the message.", Type: "string", Availability: "always", Sample: "01993f4e-7ae1-7000-8000-000000000001"},
 		{Key: "application_name", Label: "Application name", Description: "Display name of the application sending the message.", Type: "string", Availability: "always", Sample: "Acme Cloud"},
 		{Key: "application_slug", Label: "Application slug", Description: "Current human-readable application slug.", Type: "string", Availability: "always", Sample: "acme-cloud"},
+		{Key: "support_name", Label: "Support name", Description: "Application support name from public configuration, falling back to the application name.", Type: "string", Availability: "always", Sample: "Acme Support"},
+		{Key: "support_email", Label: "Support email", Description: "Application support email from public configuration, or an empty string when unset.", Type: "string", Availability: "always", Sample: "support@example.com"},
+		{Key: "support_url", Label: "Support URL", Description: "Application support URL from public configuration, or an empty string when unset.", Type: "string", Availability: "always", Sample: "https://example.com/support"},
 		{Key: "recipient_email", Label: "Recipient email", Description: "Normalized delivery address for this message.", Type: "string", Availability: "always", Sample: "ada@example.com"},
 		{Key: "current_year", Label: "Current year", Description: "UTC year at the moment the notification is queued.", Type: "integer", Availability: "always", Sample: 2026},
 		{Key: "message_locale", Label: "Message locale", Description: "BCP 47 locale of the template localization selected for this delivery.", Type: "string", Availability: "always", Sample: "de-CH"},
@@ -104,13 +107,18 @@ func (s *Server) listInstallationNotificationTemplateVariables(w http.ResponseWr
 
 func (s *Server) resolveNotificationTemplateVariables(ctx context.Context, applicationID, userID, recipient string, supplied map[string]any, at time.Time) (string, map[string]any, string, error) {
 	var applicationName, applicationSlug string
-	if err := s.app.DB.QueryRow(ctx, `SELECT name,slug FROM applications WHERE id=$1 AND deleted_at IS NULL`, applicationID).Scan(&applicationName, &applicationSlug); err != nil {
+	var publicConfigRaw []byte
+	if err := s.app.DB.QueryRow(ctx, `SELECT name,slug,public_config FROM applications WHERE id=$1 AND deleted_at IS NULL`, applicationID).Scan(&applicationName, &applicationSlug, &publicConfigRaw); err != nil {
 		return "", nil, "", err
 	}
+	publicConfig := decodeMap(publicConfigRaw)
 	resolved := map[string]any{
 		"application_id":   applicationID,
 		"application_name": applicationName,
 		"application_slug": applicationSlug,
+		"support_name":     stringWithFallback(toString(publicConfig["support_name"]), applicationName),
+		"support_email":    strings.TrimSpace(toString(publicConfig["support_email"])),
+		"support_url":      strings.TrimSpace(toString(publicConfig["support_url"])),
 		"current_year":     at.UTC().Year(),
 	}
 	userLocale := ""
@@ -140,6 +148,13 @@ FROM users WHERE id=$1 AND application_id=$2 AND status='active'`, userID, appli
 	recipient = kernel.NormalizeEmail(recipient)
 	resolved["recipient_email"] = recipient
 	return recipient, mergeNotificationTemplateVariables(supplied, resolved), userLocale, nil
+}
+
+func stringWithFallback(value, fallback string) string {
+	if value = strings.TrimSpace(value); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func sampleNotificationTemplateVariables(variables map[string]any) map[string]any {

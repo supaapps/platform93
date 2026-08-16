@@ -1,3 +1,38 @@
 from .verifier import Claims, Verifier
+from .machine import (
+    BillingSummary,
+    CustomEventInput,
+    EntitlementPage,
+    Invitation,
+    InvitationInput,
+    InvitationPage,
+    MachineClient,
+    NotificationInput,
+    PublishedEvent,
+    QueuedNotification,
+    User,
+    UserPage,
+    Workspace,
+    WorkspaceAccessPage,
+    WorkspacePage,
+)
 
-__all__ = ["Claims", "Verifier"]
+__all__ = [
+    "BillingSummary",
+    "Claims",
+    "CustomEventInput",
+    "EntitlementPage",
+    "Invitation",
+    "InvitationInput",
+    "InvitationPage",
+    "MachineClient",
+    "NotificationInput",
+    "PublishedEvent",
+    "QueuedNotification",
+    "User",
+    "UserPage",
+    "Verifier",
+    "Workspace",
+    "WorkspaceAccessPage",
+    "WorkspacePage",
+]

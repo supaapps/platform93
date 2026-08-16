@@ -51,11 +51,14 @@ def token_for(mutation: str) -> str:
         "application_id": fixture["application_id"],
         "token_kind": "access",
         "actor_type": "user",
-        "scope": "/applications/app/profile/read",
+        "scope": f"/applications/{fixture['application_id']}/profile/read",
+        "roles": {"application": ["member"], "workspaces": {}},
     }
     signing_key = primary
     if mutation == "machine": claims.update(token_kind="machine", actor_type="client")
-    elif mutation == "delegated": claims["act"] = {"sub": "operator-1", "type": "operator"}
+    elif mutation == "delegated":
+        claims["act"] = {"sub": "control_user-1", "type": "control_user"}
+        claims["roles"] = {"application": [], "workspaces": {}}
     elif mutation == "wrong_issuer": claims["iss"] = "https://wrong.example"
     elif mutation == "wrong_audience": claims["aud"] = ["wrong-api"]
     elif mutation == "wrong_application": claims["application_id"] = "01900000-0000-7000-8000-000000000000"
@@ -66,11 +69,21 @@ def token_for(mutation: str) -> str:
     elif mutation == "missing_application": claims.pop("application_id")
     elif mutation == "missing_token_kind": claims.pop("token_kind")
     elif mutation == "missing_actor_type": claims.pop("actor_type")
-    elif mutation == "operator_actor": claims["actor_type"] = "operator"
+    elif mutation == "missing_roles": claims.pop("roles")
+    elif mutation == "space_injected_scope": claims["scope"] += f"  /applications/{fixture['application_id']}/billing/write"
+    elif mutation == "tab_injected_scope": claims["scope"] += f"\t/applications/{fixture['application_id']}/billing/write"
+    elif mutation == "unicode_injected_scope": claims["scope"] += f"\u200b/applications/{fixture['application_id']}/billing/write"
+    elif mutation == "encoded_space_scope": claims["scope"] = f"/applications/{fixture['application_id']}/billing%20write"
+    elif mutation == "cross_application_scope": claims["scope"] = "/applications/01900000-0000-7000-8000-000000000000/billing/read"
+    elif mutation == "embedded_wildcard_scope": claims["scope"] = f"/applications/{fixture['application_id']}/billing/*/write"
+    elif mutation == "duplicate_scope": claims["scope"] += f" {claims['scope']}"
+    elif mutation == "invalid_roles": claims["roles"] = {"application": ["billing admin"], "workspaces": {}}
+    elif mutation == "delegated_roles": claims["act"] = {"sub": "control_user-1", "type": "control_user"}
+    elif mutation == "control_user_actor": claims["actor_type"] = "control_user"
     elif mutation == "missing_kid": headers.pop("kid")
     elif mutation == "unknown_kid": headers["kid"] = "unknown"
     elif mutation == "wrong_signature": signing_key = wrong
-    elif mutation == "delegated_wrong_actor_type": claims["act"] = {"sub": "operator-1", "type": "user"}
+    elif mutation == "delegated_wrong_actor_type": claims["act"] = {"sub": "control_user-1", "type": "user"}
     token = jwt.encode(claims, signing_key, algorithm="RS256", headers=headers)
     if mutation == "wrong_algorithm":
         parts = token.split(".")

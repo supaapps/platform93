@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@supaapps/platform93-sdk": "workspace:*",
+    "dompurify": "3.4.13",
     "next": "15.5.23",
     "papaparse": "^5.5.3",
     "react": "19.2.0",

@@ -218,7 +218,21 @@ func (s *Server) queueNotification(w http.ResponseWriter, r *http.Request) {
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
 	}
+	if actor(r).Type == "client" && strings.HasPrefix(request.TemplateKey, "platform93.") {
+		kernel.WriteProblem(w, r, http.StatusForbidden, "system_notification_template_reserved", "Platform93 system templates can only be sent by their owning security or billing flow.")
+		return
+	}
 	applicationID := chi.URLParam(r, "application_id")
+	if actor(r).Type == "client" {
+		permission := applicationPermission(r, "notifications/send")
+		if request.UserID == "" {
+			permission = applicationPermission(r, "notifications/send_external")
+		}
+		if !actorHasPermission(actor(r), permission) {
+			kernel.WriteProblem(w, r, http.StatusForbidden, "notification_permission_required", "The machine client does not have permission to send this notification.")
+			return
+		}
+	}
 	var err error
 	var userLocale string
 	request.Recipient, request.Variables, userLocale, err = s.resolveNotificationTemplateVariables(r.Context(), applicationID, request.UserID, request.Recipient, request.Variables, time.Now())
@@ -316,6 +330,18 @@ VALUES($1,$2,$3,$4,$5,$6)`, kernel.NewID(), id, attachment.Filename, safeContent
 		"id": id, "status": status, "requested_locale": resolution.RequestedLocale,
 		"resolved_locale": template.Locale, "fallback_used": resolution.FallbackUsed,
 	})
+}
+
+func (s *Server) queueMachineNotification(w http.ResponseWriter, r *http.Request) {
+	if actor(r).Type != "client" {
+		kernel.WriteProblem(w, r, http.StatusForbidden, "machine_client_required", "A machine client token is required to send notifications.")
+		return
+	}
+	if r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Mode") != "" {
+		kernel.WriteProblem(w, r, http.StatusForbidden, "browser_request_forbidden", "Machine notification delivery is available only to backend callers.")
+		return
+	}
+	s.queueNotification(w, r)
 }
 
 func (s *Server) listMyNotificationPreferences(w http.ResponseWriter, r *http.Request) {

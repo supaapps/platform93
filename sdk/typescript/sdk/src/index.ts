@@ -16,6 +16,7 @@ export type Problem = {
   code: string;
   request_id?: string;
   errors?: Record<string, unknown>;
+  affected_users?: number;
 };
 
 export class Platform93Error extends Error {
@@ -89,6 +90,14 @@ export class ApplicationClient {
   refresh(refreshToken: string) { return this.client.request<TokenResponse>("POST", this.path("/auth/token/refresh"), { refresh_token: refreshToken }); }
   startEmail(input: EmailStart) { return this.client.request<{ challenge_id: string; expires_in: number }>("POST", this.path("/auth/email/start"), input); }
   verifyEmail(input: EmailVerify) { return this.client.request<AuthenticationResult>("POST", this.path("/auth/email/verify"), input); }
+  startExternalAuth(provider: ExternalAuthProvider, input: ExternalAuthStart) { return this.client.request<ExternalAuthAuthorization>("POST", this.path(`/auth/providers/${provider}/start`), input); }
+  exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string) { return this.client.request<AuthenticationResult>("POST", this.path(`/auth/providers/${provider}/exchange`), { exchange }); }
+  startGoogleAuth(input: ExternalAuthStart) { return this.startExternalAuth("google", input); }
+  exchangeGoogleAuth(exchange: string) { return this.exchangeExternalAuth("google", exchange); }
+  startAppleAuth(input: ExternalAuthStart) { return this.startExternalAuth("apple", input); }
+  exchangeAppleAuth(exchange: string) { return this.exchangeExternalAuth("apple", exchange); }
+  exchangeInvitation(input: InvitationExchange) { return this.client.request<InvitationAuthorizationCode>("POST", this.path("/auth/invitations/exchange"), input); }
+  redeemInvitation(input: { authorization_code: string; code_verifier: string }) { return this.client.request<AuthenticationResult>("POST", this.path("/auth/invitations/token"), input); }
   verifyMFA(input: MFAVerify) { return this.client.request<TokenResponse>("POST", this.path("/auth/mfa/verify"), input); }
   authMethods(email?: string) { return this.client.request<AuthMethods>("POST", this.path("/auth/methods"), email ? { email } : {}); }
   me() { return this.client.request<User>("GET", this.path("/me")); }
@@ -104,6 +113,11 @@ export class ApplicationClient {
   archiveWorkspace(workspaceId: string) { return this.client.request<void>("DELETE", this.path(`/workspaces/${encodeURIComponent(workspaceId)}`)); }
   transferWorkspaceOwnership(workspaceId: string, input: { new_owner_user_id: string; previous_owner_disposition?: "member" | "remove" }) { return this.client.request<WorkspaceOwnershipTransferResult>("POST", this.path(`/workspaces/${encodeURIComponent(workspaceId)}/owner-transfer`), input); }
   leaveWorkspace(workspaceId: string) { return this.client.request<void>("DELETE", this.path(`/workspaces/${encodeURIComponent(workspaceId)}/membership`)); }
+  listWorkspaceAccess(workspaceId: string) { return this.client.request<Page<WorkspaceAccessEntry>>("GET", this.path(`/workspaces/${encodeURIComponent(workspaceId)}/access`)); }
+  createWorkspaceInvitation(workspaceId: string, input: Omit<CreateInvitation, "workspace_id" | "application_role_keys">) { return this.client.request<Invitation>("POST", this.path(`/workspaces/${encodeURIComponent(workspaceId)}/invitations`), input); }
+  listWorkspaceInvitations(workspaceId: string) { return this.client.request<Page<Invitation>>("GET", this.path(`/workspaces/${encodeURIComponent(workspaceId)}/invitations`)); }
+  resendWorkspaceInvitation(workspaceId: string, invitationId: string) { return this.client.request<Invitation>("POST", this.path(`/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}/resend`)); }
+  revokeWorkspaceInvitation(workspaceId: string, invitationId: string) { return this.client.request<void>("DELETE", this.path(`/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}`)); }
   getBillingProfile(workspaceId?: string) { return this.client.request<BillingProfile>("GET", this.path(workspaceId ? `/workspaces/${encodeURIComponent(workspaceId)}/billing-profile` : "/me/billing-profile")); }
   updateBillingProfile(input: Partial<BillingProfile> & { version: number }, workspaceId?: string) { return this.client.request<void>("PATCH", this.path(workspaceId ? `/workspaces/${encodeURIComponent(workspaceId)}/billing-profile` : "/me/billing-profile"), input); }
   listAddresses(workspaceId?: string) { return this.client.request<Page<BillingAddress>>("GET", this.path(workspaceId ? `/workspaces/${encodeURIComponent(workspaceId)}/addresses` : "/me/addresses")); }
@@ -166,13 +180,23 @@ export type PasswordSignIn = { email: string; password: string };
 export type PasswordSignUp = PasswordSignIn & { first_name?: string; last_name?: string };
 export type EmailStart = { email: string; intent: "sign_in" | "sign_up" | "automatic"; delivery: "code" | "link" | "both"; redirect_uri?: string };
 export type EmailVerify = { challenge_id: string; code?: string; link_token?: string };
-export type LocalCheckoutInput = { price_id: string; subject_type?: "user" | "workspace"; subject_id?: string; address_id?: string; local_reference?: string };
-export type CheckoutInput = { price_id: string; provider_id: string; subject_type?: "user" | "workspace"; subject_id?: string; payment_methods?: Array<"card" | "twint">; success_uri: string; cancel_uri: string };
-export type CheckoutSession = { id: string; status: string; checkout_uri: string; provider_session_id: string };
-export type LocalEntitlementRequest = { id: string; status: string; product_snapshot: Record<string, unknown>; price_snapshot: Record<string, unknown>; feature_snapshot: Record<string, unknown>; address_snapshot: Record<string, unknown> | null; history?: Array<Record<string, unknown>> };
+export type ExternalAuthProvider = "google" | "apple";
+export type ExternalAuthFlow = "sign_in" | "sign_up" | "automatic";
+export type ExternalAuthStart = { redirect_uri: string; flow?: ExternalAuthFlow; login_hint?: string };
+export type ExternalAuthAuthorization = { provider: ExternalAuthProvider; authorize_url: string; expires_in: number };
+export type LocalCheckoutInput = { price_id: string; subject_type?: "user" | "workspace"; subject_id?: string; address_id?: string; external_reference?: string };
+export type CheckoutInput = { price_id: string; provider_id?: string; subject_type?: "user" | "workspace"; subject_id?: string; payment_methods?: Array<"card" | "twint">; success_uri: string; cancel_uri: string; external_reference?: string };
+export type CheckoutSession = { id: string; status: string; checkout_uri: string; provider_session_id: string; external_reference?: string | null };
+export type LocalEntitlementRequest = { id: string; status: string; external_reference?: string | null; product_snapshot: Record<string, unknown>; price_snapshot: Record<string, unknown>; feature_snapshot: Record<string, unknown>; address_snapshot: Record<string, unknown> | null; history?: Array<Record<string, unknown>> };
 export type EffectiveEntitlements = { effective: Record<string, boolean | number | unknown>; provenance: Record<string, Array<Record<string, unknown>>>; sources: Array<Record<string, unknown>> };
 export type BillingProfile = { id: string; subject_type: "user" | "workspace"; subject_id: string; name: string; email: string | null; tax_id: string | null; version: number };
 export type WorkspaceOwnershipTransferResult = { workspace_id: string; owner_user_id: string; previous_owner_user_id: string; previous_owner_disposition: "member" | "remove" };
 export type BillingAddress = { id: string; name: string; line1: string; line2: string; city: string; region: string; postal_code: string; country_code: string; tax_id?: string | null; active: boolean; version: number };
 export type PublishCustomEvent<T extends Record<string, unknown> = Record<string, unknown>> = { type: string; subject: string; data: T; correlation_id?: string; causation_id?: string };
 export type PublishedEvent<T extends Record<string, unknown> = Record<string, unknown>> = PublishCustomEvent<T> & { specversion: "1.0"; id: string; source: string; schema_version: string };
+export type CreateInvitation = { email: string; workspace_id?: string; application_role_keys?: string[]; workspace_role_keys?: string[]; expires_in?: number };
+export type Invitation = { id: string; email: string; workspace_id?: string | null; application_role_keys: string[]; workspace_role_keys: string[]; status?: "pending" | "accepted" | "revoked" | "expired"; expires_at: string; last_sent_at: string; resend_available_at: string };
+export type InvitationCredential = { email: string; code: string; invitation_id?: never; link_token?: never } | { invitation_id: string; link_token: string; email?: never; code?: never };
+export type InvitationExchange = InvitationCredential & { code_challenge: string };
+export type InvitationAuthorizationCode = { authorization_code: string; expires_in: number };
+export type WorkspaceAccessEntry = { entry_type: "user"; status: "owner" | "active"; user_id: string; email: string; first_name: string; last_name: string; role_keys: string[] } | { entry_type: "invitation"; status: "pending" | "expired"; invitation_id: string; email: string; role_keys: string[]; expires_at: string; last_sent_at: string; resend_available_at: string };

@@ -50,14 +50,14 @@ func TestRoleWorkspaceAndWebhookLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	roleUpdate := requestWithRoute(t, "PATCH", "/", map[string]any{"name": "Updated", "permissions": []string{"users:read", "users:write"}}, map[string]string{"application_id": applicationID.String(), "role_id": roleID.String()}, kernel.Actor{Type: "operator"})
+	roleUpdate := requestWithRoute(t, "PATCH", "/", map[string]any{"name": "Updated", "permissions": []string{"users:read", "users:write"}}, map[string]string{"application_id": applicationID.String(), "role_id": roleID.String()}, kernel.Actor{Type: "control_user"})
 	response := httptest.NewRecorder()
 	server.updateRole(response, roleUpdate)
 	if response.Code != 204 {
 		t.Fatalf("role update failed: %d %s", response.Code, response.Body.String())
 	}
 
-	webhookTest := requestWithRoute(t, "POST", "/", map[string]any{}, map[string]string{"application_id": applicationID.String(), "webhook_id": webhookID.String()}, kernel.Actor{Type: "operator", ID: kernel.NewID().String()})
+	webhookTest := requestWithRoute(t, "POST", "/", map[string]any{}, map[string]string{"application_id": applicationID.String(), "webhook_id": webhookID.String()}, kernel.Actor{Type: "control_user", ID: kernel.NewID().String()})
 	response = httptest.NewRecorder()
 	server.testWebhook(response, webhookTest)
 	if response.Code != 202 {
@@ -74,7 +74,7 @@ func TestRoleWorkspaceAndWebhookLifecycle(t *testing.T) {
 		t.Fatalf("targeted webhook test created events=%d deliveries=%d", eventCount, deliveryCount)
 	}
 
-	workspaceDelete := requestWithRoute(t, "DELETE", "/", nil, map[string]string{"application_id": applicationID.String(), "workspace_id": workspaceID.String()}, kernel.Actor{Type: "operator"})
+	workspaceDelete := requestWithRoute(t, "DELETE", "/", nil, map[string]string{"application_id": applicationID.String(), "workspace_id": workspaceID.String()}, kernel.Actor{Type: "control_user"})
 	response = httptest.NewRecorder()
 	server.deleteWorkspace(response, workspaceDelete)
 	if response.Code != 204 {

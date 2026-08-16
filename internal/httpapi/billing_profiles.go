@@ -50,8 +50,8 @@ func (s *Server) canManageWorkspaceBilling(r *http.Request) bool {
 }
 
 func (s *Server) canManageWorkspaceBillingFor(r *http.Request, workspaceID string) bool {
-	if actor(r).Type == "operator" || s.isWorkspaceOwnerOrOperator(r) {
-		if actor(r).Type == "operator" {
+	if actor(r).Type == "control_user" || s.isWorkspaceOwnerOrControlUser(r) {
+		if actor(r).Type == "control_user" {
 			return true
 		}
 		var owner bool

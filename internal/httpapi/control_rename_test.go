@@ -28,15 +28,15 @@ func TestOrganizationAndApplicationRename(t *testing.T) {
 	defer db.Close()
 	vault, _ := secure.NewVault(make([]byte, 32))
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
-	operatorID, organizationID, applicationID := kernel.NewID(), kernel.NewID(), kernel.NewID()
+	controlUserID, organizationID, applicationID := kernel.NewID(), kernel.NewID(), kernel.NewID()
 	suffix := applicationID.String()
 	statements := []struct {
 		query string
 		args  []any
 	}{
-		{`INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, []any{operatorID, "rename-" + suffix + "@example.test"}},
+		{`INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, []any{controlUserID, "rename-" + suffix + "@example.test"}},
 		{`INSERT INTO organizations(id,name,slug) VALUES($1,'Before organization',$2)`, []any{organizationID, "rename-" + suffix}},
-		{`INSERT INTO organization_memberships(organization_id,operator_id,role) VALUES($1,$2,'admin')`, []any{organizationID, operatorID}},
+		{`INSERT INTO organization_memberships(organization_id,control_user_id,role) VALUES($1,$2,'admin')`, []any{organizationID, controlUserID}},
 		{`INSERT INTO applications(id,organization_id,name,slug) VALUES($1,$2,'Before application',$3)`, []any{applicationID, organizationID, "rename-" + suffix}},
 	}
 	for _, statement := range statements {
@@ -45,7 +45,7 @@ func TestOrganizationAndApplicationRename(t *testing.T) {
 		}
 	}
 
-	organizationRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"name": "After organization"}, map[string]string{"organization_id": organizationID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	organizationRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"name": "After organization"}, map[string]string{"organization_id": organizationID.String()}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	organizationRequest.Header.Set("If-Match", kernel.ETag(1))
 	response := httptest.NewRecorder()
 	server.updateOrganization(response, organizationRequest)
@@ -53,7 +53,7 @@ func TestOrganizationAndApplicationRename(t *testing.T) {
 		t.Fatalf("organization rename failed: %d %s", response.Code, response.Body.String())
 	}
 
-	applicationRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"name": "After application"}, map[string]string{"organization_id": organizationID.String(), "application_resource_id": applicationID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	applicationRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"name": "After application"}, map[string]string{"organization_id": organizationID.String(), "application_resource_id": applicationID.String()}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	applicationRequest.Header.Set("If-Match", kernel.ETag(1))
 	response = httptest.NewRecorder()
 	server.updateApplication(response, applicationRequest)
@@ -73,7 +73,7 @@ func TestOrganizationAndApplicationRename(t *testing.T) {
 		t.Fatalf("unexpected renamed boundaries: organization=%q/v%d application=%q/v%d", organizationName, organizationVersion, applicationName, applicationVersion)
 	}
 
-	staleRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"name": "Stale"}, map[string]string{"organization_id": organizationID.String(), "application_resource_id": applicationID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	staleRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"name": "Stale"}, map[string]string{"organization_id": organizationID.String(), "application_resource_id": applicationID.String()}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	staleRequest.Header.Set("If-Match", kernel.ETag(1))
 	response = httptest.NewRecorder()
 	server.updateApplication(response, staleRequest)

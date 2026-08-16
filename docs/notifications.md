@@ -5,9 +5,9 @@ records. A draft can be previewed and then published; editing an existing versio
 Templates have a subject, a required plain-text fallback, an optional HTML body,
 and a typed schema for application-supplied variables.
 
-Platform93 seeds published installation templates for operator sign-in,
-application sign-in, email verification/change, password reset, organization
-invitations, and workspace invitations. Applications list these basic templates
+Platform93 seeds published installation templates for Platform user sign-in,
+application sign-in, email verification/change, password reset, organization,
+application, and workspace invitations. Applications list these basic templates
 as inherited defaults. Editing an inherited template creates an application
 draft; it does not mutate the installation version. Once that draft is published,
 it becomes the effective template for that application. Rendered subject, text,
@@ -53,6 +53,7 @@ inserts it at the active cursor, and renders sample values without sending mail.
 These codes are resolved by Platform93 for every queued notification:
 
 - `application_id`, `application_name`, and `application_slug`
+- `support_name`, `support_email`, and `support_url` from public application configuration
 - `recipient_email`
 - `current_year`
 - `message_locale`
@@ -84,7 +85,7 @@ The response includes labels, descriptions, availability rules, declared types,
 and safe preview samples for admin tooling.
 
 System templates also declare flow-specific codes such as `code`, `magic_link`,
-`invitation_link`, `invitation_token`, `workspace_name`, and `expires_at`. These
+`invitation_code`, `invitation_link`, `workspace_name`, roles, and `expires_at`. These
 are populated only by Platform93; an application cannot supply or spoof them in
 a built-in security flow.
 
@@ -99,9 +100,28 @@ development.
 Email magic links return to the configured sign-in URI with a one-time challenge.
 After consuming the challenge, `@supaapps/platform93-auth` can call
 `createAuthorizationRequest()` to generate a verifier, S256 code challenge, and
-authorization URL. The invitation URI receives the one-time workspace invitation
-credential; the application authenticates the user before calling the invitation
-acceptance endpoint.
+authorization URL. The invitation URI receives an application ID, invitation ID,
+and one-time link credential. Applications exchange it through the browser auth
+package; email plus the eight-character invitation code is the equivalent manual
+path.
+
+## Machine Delivery
+
+Application backends send template notifications with an application machine
+client. Create a machine client, assign `notification_sender` or a custom role,
+and keep its client secret in the backend secret manager. The server SDK exchanges
+client credentials, caches the short-lived JWT, and calls:
+
+```text
+POST /v1/applications/{application_id}/notifications
+```
+
+`notifications:send` permits delivery to an application `user_id`.
+`notifications:send_external` is separate and permits arbitrary recipients.
+Application-user tokens, personal API keys, delegated sessions, Platform user tokens,
+and browser requests are rejected by this endpoint.
+Keys under `platform93.*` are reserved for internal security, invitation, account,
+and billing flows and cannot be selected by a machine client.
 
 ## Delivery Safety
 

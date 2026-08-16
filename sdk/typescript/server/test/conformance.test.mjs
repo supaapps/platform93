@@ -26,7 +26,7 @@ for (const testCase of fixture.cases) {
 }
 
 test("permission matching supports global and namespace wildcards", () => {
-  assert.equal(hasPermission({ application_id: fixture.application_id, token_kind: "access", actor_type: "user", scope: "*" }, "/applications/app/billing/refund"), true);
+  assert.equal(hasPermission({ application_id: fixture.application_id, token_kind: "access", actor_type: "user", scope: "*" }, "/applications/app/billing/refund"), false);
   assert.equal(hasPermission({ application_id: fixture.application_id, token_kind: "access", actor_type: "user", scope: "/applications/app/billing/*" }, "/applications/app/billing/refund"), true);
 });
 
@@ -34,11 +34,12 @@ async function fixtureToken(mutation) {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT", kid: "primary" };
   const claims = { iss: issuer, sub: "user-1", aud: [fixture.audience], exp: now + 300, iat: now, nbf: now - 1,
-    application_id: fixture.application_id, token_kind: "access", actor_type: "user", scope: "/applications/app/profile/read" };
+    application_id: fixture.application_id, token_kind: "access", actor_type: "user", scope: `/applications/${fixture.application_id}/profile/read`,
+    roles: { application: ["member"], workspaces: {} } };
   let signingKey = primary.privateKey;
   switch (mutation) {
     case "machine": claims.token_kind = "machine"; claims.actor_type = "client"; break;
-    case "delegated": claims.act = { sub: "operator-1", type: "operator" }; break;
+    case "delegated": claims.act = { sub: "control_user-1", type: "control_user" }; claims.roles = { application: [], workspaces: {} }; break;
     case "wrong_issuer": claims.iss = "https://wrong.example"; break;
     case "wrong_audience": claims.aud = ["wrong-api"]; break;
     case "wrong_application": claims.application_id = "01900000-0000-7000-8000-000000000000"; break;
@@ -49,11 +50,21 @@ async function fixtureToken(mutation) {
     case "missing_application": delete claims.application_id; break;
     case "missing_token_kind": delete claims.token_kind; break;
     case "missing_actor_type": delete claims.actor_type; break;
-    case "operator_actor": claims.actor_type = "operator"; break;
+    case "missing_roles": delete claims.roles; break;
+    case "space_injected_scope": claims.scope += `  /applications/${fixture.application_id}/billing/write`; break;
+    case "tab_injected_scope": claims.scope += `\t/applications/${fixture.application_id}/billing/write`; break;
+    case "unicode_injected_scope": claims.scope += `\u200b/applications/${fixture.application_id}/billing/write`; break;
+    case "encoded_space_scope": claims.scope = `/applications/${fixture.application_id}/billing%20write`; break;
+    case "cross_application_scope": claims.scope = "/applications/01900000-0000-7000-8000-000000000000/billing/read"; break;
+    case "embedded_wildcard_scope": claims.scope = `/applications/${fixture.application_id}/billing/*/write`; break;
+    case "duplicate_scope": claims.scope += ` ${claims.scope}`; break;
+    case "invalid_roles": claims.roles = { application: ["billing admin"], workspaces: {} }; break;
+    case "delegated_roles": claims.act = { sub: "control_user-1", type: "control_user" }; break;
+    case "control_user_actor": claims.actor_type = "control_user"; break;
     case "missing_kid": delete header.kid; break;
     case "unknown_kid": header.kid = "unknown"; break;
     case "wrong_signature": signingKey = wrong.privateKey; break;
-    case "delegated_wrong_actor_type": claims.act = { sub: "operator-1", type: "user" }; break;
+    case "delegated_wrong_actor_type": claims.act = { sub: "control_user-1", type: "user" }; break;
   }
   const token = await new SignJWT(claims).setProtectedHeader(header).sign(signingKey);
   if (mutation !== "wrong_algorithm") return token;

@@ -10,13 +10,14 @@ import (
 )
 
 const (
-	operatorSignInTemplate      = "platform93.operator_sign_in"
-	applicationSignInTemplate   = "platform93.application_sign_in"
-	verifyEmailTemplate         = "platform93.verify_email"
-	changeEmailTemplate         = "platform93.change_email"
-	passwordResetTemplate       = "platform93.password_reset"
-	organizationInviteTemplate  = "platform93.organization_invitation"
-	workspaceInvitationTemplate = "platform93.workspace_invitation"
+	controlUserSignInTemplate     = "platform93.control_user_sign_in"
+	controlUserInvitationTemplate = "platform93.control_user_invitation"
+	applicationSignInTemplate     = "platform93.application_sign_in"
+	verifyEmailTemplate           = "platform93.verify_email"
+	changeEmailTemplate           = "platform93.change_email"
+	passwordResetTemplate         = "platform93.password_reset"
+	organizationInviteTemplate    = "platform93.organization_invitation"
+	workspaceInvitationTemplate   = "platform93.workspace_invitation"
 )
 
 func accountChallengeTemplate(intent string) string {
@@ -60,10 +61,15 @@ func (s *Server) renderSystemNotification(ctx context.Context, applicationID *st
 	var err error
 	if applicationID != nil {
 		var applicationName, applicationSlug string
-		if err = s.app.DB.QueryRow(ctx, `SELECT name,slug FROM applications WHERE id=$1 AND deleted_at IS NULL`, *applicationID).Scan(&applicationName, &applicationSlug); err == nil {
+		var publicConfigRaw []byte
+		if err = s.app.DB.QueryRow(ctx, `SELECT name,slug,public_config FROM applications WHERE id=$1 AND deleted_at IS NULL`, *applicationID).Scan(&applicationName, &applicationSlug, &publicConfigRaw); err == nil {
+			publicConfig := decodeMap(publicConfigRaw)
 			variables["application_id"] = *applicationID
 			variables["application_name"] = applicationName
 			variables["application_slug"] = applicationSlug
+			variables["support_name"] = stringWithFallback(toString(publicConfig["support_name"]), applicationName)
+			variables["support_email"] = strings.TrimSpace(toString(publicConfig["support_email"]))
+			variables["support_url"] = strings.TrimSpace(toString(publicConfig["support_url"]))
 			var recipientLocale string
 			if s.app.DB.QueryRow(ctx, `SELECT locale FROM users WHERE application_id=$1 AND normalized_email=$2 AND status='active'`,
 				*applicationID, recipient).Scan(&recipientLocale) == nil {

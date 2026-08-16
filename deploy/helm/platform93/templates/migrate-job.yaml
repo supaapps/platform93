@@ -1,13 +1,17 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: platform93-migrate-{{ .Release.Revision }}
+  name: {{ include "platform93.fullname" . }}-migrate-{{ .Release.Revision }}
   labels: {{- include "platform93.labels" . | nindent 4 }}
-  annotations: { "helm.sh/hook": pre-install,pre-upgrade, "helm.sh/hook-delete-policy": before-hook-creation }
+  annotations: { "helm.sh/hook": pre-install,pre-upgrade, "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded }
 spec:
   backoffLimit: 4
+  ttlSecondsAfterFinished: 60
   template:
-    metadata: { labels: { app.kubernetes.io/name: platform93, app.kubernetes.io/component: migrate } }
+    metadata:
+      labels:
+        {{- include "platform93.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
     spec:
       restartPolicy: OnFailure
       automountServiceAccountToken: false

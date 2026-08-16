@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: platform93-config
+  name: {{ include "platform93.fullname" . }}-config
   labels:
     {{- include "platform93.labels" . | nindent 4 }}
 data:

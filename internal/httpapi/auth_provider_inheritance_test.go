@@ -31,15 +31,15 @@ func TestInstallationAuthProviderInheritanceCanBeChangedWithoutCredentials(t *te
 		t.Fatal(err)
 	}
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
-	operatorID, organizationID, applicationID, providerID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
+	controlUserID, organizationID, applicationID, providerID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
 	suffix := providerID.String()
 	if _, err = db.Exec(context.Background(), `DELETE FROM auth_provider_configs WHERE application_id IS NULL AND organization_id IS NULL AND client_id IN ('platform93-inheritance-test-client','client')`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, operatorID, "provider-owner-"+suffix+"@example.test"); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, controlUserID, "provider-owner-"+suffix+"@example.test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO installation_operator_roles(operator_id,role) VALUES($1,'owner')`, operatorID); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO installation_control_user_roles(control_user_id,role) VALUES($1,'owner')`, controlUserID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = db.Exec(context.Background(), `INSERT INTO organizations(id,name,slug) VALUES($1,'Provider inheritance',$2)`, organizationID, "provider-inheritance-"+suffix); err != nil {
@@ -60,7 +60,7 @@ func TestInstallationAuthProviderInheritanceCanBeChangedWithoutCredentials(t *te
 	}()
 
 	update := func(inheritable any) *httptest.ResponseRecorder {
-		request := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": inheritable}, map[string]string{"provider": "google"}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+		request := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": inheritable}, map[string]string{"provider": "google"}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 		response := httptest.NewRecorder()
 		server.updateInstallationAuthProvider(response, request)
 		return response

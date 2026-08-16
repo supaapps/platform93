@@ -21,9 +21,37 @@ class Platform93Event(TypedDict):
     data: dict[str, Any]
 
 
+class PermissionGrantLifecycleData(TypedDict):
+    grant_id: str
+    subject_type: Literal["user", "client"]
+    subject_id: str
+    workspace_id: str | None
+    permission: str
+    canonical_scope: str
+
+
+class ControlUserIdentityData(TypedDict):
+    control_user_id: str
+    provider: Literal["google", "apple"]
+
+
+class ControlInvitationData(TypedDict, total=False):
+    invitation_id: str
+    organization_id: str | None
+    control_user_id: str
+    role: Literal["owner", "admin", "member", "auditor"]
+    onboarding_method: Literal["email", "google", "apple"]
+    status: Literal["pending", "accepted", "revoked"]
+
+
 PLATFORM_EVENT_VERSIONS = dict.fromkeys((
     "organization.created", "organization.retired", "organization.restored",
     "application.created", "application.retired", "application.restored",
+    "authorization.permission_grant.created", "authorization.permission_grant.revoked",
+    "control_user.identity_linked", "control_user.identity_unlinked",
+    "control_user.invitation_created", "control_user.invitation_resent",
+    "control_user.invitation_revoked", "control_user.invitation_accepted",
+    "control_auth.policy_updated", "control_auth.provider_login_enabled", "control_auth.provider_login_disabled",
     "delegation.created", "delegation.exchanged", "delegation.revoked",
     "entitlement.granted", "local_entitlement_request.created", "local_entitlement_request.approved",
     "oauth.consent_revoked", "platform93.webhook.test", "user.created",
@@ -33,6 +61,13 @@ PLATFORM_EVENT_VERSIONS = dict.fromkeys((
     "user.organization_unverified", "user.email_changed", "user.password_reset",
     "user.pending_deletion", "user.anonymized", "user.deleted", "user.suspended", "user.restored",
     "workspace.invitation_created", "workspace.invitation_accepted", "workspace.owner_transferred",
+    "application_invitation.created", "application_invitation.resent", "application_invitation.revoked",
+    "application_invitation.accepted", "application_invitation.expired", "user.updated",
+    "workspace.created", "workspace.updated", "workspace.archived", "workspace.member_added",
+    "workspace.member_updated", "workspace.member_removed", "entitlement.adjusted", "entitlement.revoked",
+    "entitlement.restored", "entitlement.expired", "entitlement.effective_changed",
+    "billing.subscription.updated", "billing.invoice.updated", "billing.payment.updated",
+    "billing.refund.updated", "billing.dispute.updated",
 ), "1.0")
 
 
@@ -85,3 +120,17 @@ def assert_supported_platform_event(event: Platform93Event) -> None:
     supported = PLATFORM_EVENT_VERSIONS[event["type"]]
     if event["schema_version"].split(".", 1)[0] != supported.split(".", 1)[0]:
         raise ValueError("Unsupported Platform93 event schema version")
+
+
+def dispatch_event(event: Platform93Event, handlers: dict[str, Any], custom: Any = None) -> bool:
+    if is_custom_event(event):
+        if custom is None:
+            return False
+        custom(event)
+        return True
+    assert_supported_platform_event(event)
+    handler = handlers.get(event["type"])
+    if handler is None:
+        return False
+    handler(event)
+    return True

@@ -2,6 +2,8 @@ image:
   repository: ghcr.io/supaapps/platform93
   tag: ""
   pullPolicy: IfNotPresent
+nameOverride: ""
+fullnameOverride: ""
 publicUrl: https://platform93.example.com
 database:
   existingSecret: platform93-database

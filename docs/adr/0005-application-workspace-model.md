@@ -12,12 +12,12 @@ workspace. Workspaces are optional application resources; a user can own or join
 multiple workspaces, and ownership is stored separately from membership.
 
 The installation has one `/oidc` issuer and signing-key lifecycle. Control tokens
-use audience `platform93:control` and actor type `operator`. Application tokens use
+use audience `platform93:control` and actor type `control_user`. Application tokens use
 audience `platform93:application:{application_id}` and actor type `user` or `client`.
 Every verifier must validate issuer, exact audience, actor type, and application ID.
 
-Operators are installation-wide identities stored independently from application
-users. An operator can hold one installation role and multiple organization roles.
+Platform users are installation-wide identities stored independently from application
+users. A Platform user can hold one installation role and multiple organization roles.
 Installation roles grant deployment-wide control; organization roles grant control
 over every application in that organization. Application user creation never grants
 control-plane authority, even when both records use the same email address.

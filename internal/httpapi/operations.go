@@ -109,7 +109,7 @@ func (s *Server) listAudit(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listOrganizationAudit(w http.ResponseWriter, r *http.Request) {
 	organizationID := chi.URLParam(r, "organization_id")
-	if !s.operatorBelongsToOrganization(r, organizationID) {
+	if !s.controlUserBelongsToOrganization(r, organizationID) {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "organization_not_found", "The organization was not found.")
 		return
 	}

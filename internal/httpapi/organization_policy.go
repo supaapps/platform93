@@ -80,7 +80,7 @@ func (s *Server) requireOrganizationSetting(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) getOrganizationPolicy(w http.ResponseWriter, r *http.Request) {
 	organizationID := chi.URLParam(r, "organization_id")
-	if actor(r).Type != "management_client" && !s.operatorBelongsToOrganization(r, organizationID) {
+	if actor(r).Type != "management_client" && !s.controlUserBelongsToOrganization(r, organizationID) {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "organization_not_found", "The organization was not found.")
 		return
 	}

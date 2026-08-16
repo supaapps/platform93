@@ -62,14 +62,16 @@ func fixtureToken(t *testing.T, mutation, issuer string, fixture jwtFixture, key
 	now := time.Now().Unix()
 	header := map[string]any{"alg": "RS256", "typ": "JWT", "kid": "primary"}
 	claims := map[string]any{"iss": issuer, "sub": "user-1", "aud": []string{fixture.Audience}, "exp": now + 300, "iat": now, "nbf": now - 1,
-		"application_id": fixture.ApplicationID, "token_kind": "access", "actor_type": "user", "scope": "/applications/app/profile/read"}
+		"application_id": fixture.ApplicationID, "token_kind": "access", "actor_type": "user", "scope": "/applications/" + fixture.ApplicationID + "/profile/read",
+		"roles": map[string]any{"application": []string{"member"}, "workspaces": map[string]any{}}}
 	signingKey := key
 	switch mutation {
 	case "machine":
 		claims["token_kind"] = "machine"
 		claims["actor_type"] = "client"
 	case "delegated":
-		claims["act"] = map[string]any{"sub": "operator-1", "type": "operator"}
+		claims["act"] = map[string]any{"sub": "control_user-1", "type": "control_user"}
+		claims["roles"] = map[string]any{"application": []string{}, "workspaces": map[string]any{}}
 	case "wrong_issuer":
 		claims["iss"] = "https://wrong.example"
 	case "wrong_audience":
@@ -90,8 +92,28 @@ func fixtureToken(t *testing.T, mutation, issuer string, fixture jwtFixture, key
 		delete(claims, "token_kind")
 	case "missing_actor_type":
 		delete(claims, "actor_type")
-	case "operator_actor":
-		claims["actor_type"] = "operator"
+	case "missing_roles":
+		delete(claims, "roles")
+	case "space_injected_scope":
+		claims["scope"] = claims["scope"].(string) + "  /applications/" + fixture.ApplicationID + "/billing/write"
+	case "tab_injected_scope":
+		claims["scope"] = claims["scope"].(string) + "\t/applications/" + fixture.ApplicationID + "/billing/write"
+	case "unicode_injected_scope":
+		claims["scope"] = claims["scope"].(string) + "\u200b/applications/" + fixture.ApplicationID + "/billing/write"
+	case "encoded_space_scope":
+		claims["scope"] = "/applications/" + fixture.ApplicationID + "/billing%20write"
+	case "cross_application_scope":
+		claims["scope"] = "/applications/01900000-0000-7000-8000-000000000000/billing/read"
+	case "embedded_wildcard_scope":
+		claims["scope"] = "/applications/" + fixture.ApplicationID + "/billing/*/write"
+	case "duplicate_scope":
+		claims["scope"] = claims["scope"].(string) + " " + claims["scope"].(string)
+	case "invalid_roles":
+		claims["roles"] = map[string]any{"application": []string{"billing admin"}, "workspaces": map[string]any{}}
+	case "delegated_roles":
+		claims["act"] = map[string]any{"sub": "control_user-1", "type": "control_user"}
+	case "control_user_actor":
+		claims["actor_type"] = "control_user"
 	case "wrong_algorithm":
 		header["alg"] = "HS256"
 	case "missing_kid":
@@ -101,7 +123,7 @@ func fixtureToken(t *testing.T, mutation, issuer string, fixture jwtFixture, key
 	case "wrong_signature":
 		signingKey = wrongKey
 	case "delegated_wrong_actor_type":
-		claims["act"] = map[string]any{"sub": "operator-1", "type": "user"}
+		claims["act"] = map[string]any{"sub": "control_user-1", "type": "user"}
 	}
 	return signFixtureToken(t, header, claims, signingKey)
 }

@@ -1,14 +1,15 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	platformauthz "github.com/supaapps/platform93/internal/authorization"
 	"github.com/supaapps/platform93/internal/kernel"
-	"github.com/supaapps/platform93/internal/secure"
 )
 
 func (s *Server) createRole(w http.ResponseWriter, r *http.Request) {
@@ -21,9 +22,8 @@ func (s *Server) createRole(w http.ResponseWriter, r *http.Request) {
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
 	}
-	request.Key = strings.TrimSpace(request.Key)
 	request.Name = strings.TrimSpace(request.Name)
-	if request.Key == "" || request.Name == "" || (request.Scope != "application" && request.Scope != "workspace") || len(request.Permissions) == 0 {
+	if request.Name == "" || (request.Scope != "application" && request.Scope != "workspace") || validateRolePermissions(request.Permissions) != nil || platformauthz.ValidateRoleKey(request.Key) != nil {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_role", "Key, name, scope, and at least one permission are required.")
 		return
 	}
@@ -92,18 +92,10 @@ func (s *Server) updateRole(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if request.Permissions != nil {
-		values := uniqueStrings(*request.Permissions)
-		for _, permission := range values {
-			if strings.TrimSpace(permission) == "" || len(permission) > 160 {
-				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_role", "Permissions must be non-empty and at most 160 characters.")
-				return
-			}
-		}
-		if len(values) == 0 || len(values) > 200 {
-			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_role", "At least one and at most 200 permissions are required.")
+		if err := validateRolePermissions(*request.Permissions); err != nil {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_role_permissions", "Permissions must be unique lowercase ASCII colon-delimited keys; wildcards are allowed only as the final complete segment.")
 			return
 		}
-		request.Permissions = &values
 	}
 	var version int64
 	var builtIn bool
@@ -190,7 +182,11 @@ SELECT $1,$2,$3,$4,$5,$6 WHERE EXISTS(SELECT 1 FROM users WHERE id=$3 AND applic
 		_, err = tx.Exec(r.Context(), `INSERT INTO billing_profiles(id,application_id,subject_type,subject_id)
 VALUES($1,$2,'workspace',$3)`, kernel.NewID(), chi.URLParam(r, "application_id"), id)
 	}
-	if err != nil || tx.Commit(r.Context()) != nil {
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "workspace.created", "workspace/"+id.String(), actor(r), map[string]any{"workspace_id": id, "owner_user_id": request.OwnerUserID, "key": request.Key, "name": request.Name, "status": "active"})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusConflict, "workspace_conflict", "A workspace with this key already exists.")
 		return
 	}
@@ -321,240 +317,6 @@ func (s *Server) deleteRoleAssignment(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) createWorkspaceInvitation(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		WorkspaceID string   `json:"workspace_id"`
-		Email       string   `json:"email"`
-		RoleKeys    []string `json:"role_keys"`
-		ExpiresIn   int64    `json:"expires_in,omitempty"`
-	}
-	if !kernel.DecodeJSON(w, r, &request) {
-		return
-	}
-	if request.WorkspaceID == "" {
-		request.WorkspaceID = chi.URLParam(r, "workspace_id")
-	}
-	normalized := kernel.NormalizeEmail(request.Email)
-	request.RoleKeys = uniqueStrings(request.RoleKeys)
-	if !strings.Contains(normalized, "@") || len(request.RoleKeys) == 0 || len(request.RoleKeys) > 20 {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_workspace_invitation", "A valid email, workspace, and at least one role key are required.")
-		return
-	}
-	if request.ExpiresIn == 0 {
-		request.ExpiresIn = int64((7 * 24 * time.Hour).Seconds())
-	}
-	if request.ExpiresIn < 300 || request.ExpiresIn > int64((30*24*time.Hour).Seconds()) {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_invitation_expiry", "Invitation expiry must be between five minutes and thirty days.")
-		return
-	}
-	var validWorkspace bool
-	var roleCount int
-	applicationID := chi.URLParam(r, "application_id")
-	if actor(r).Type == "user" && !s.canAccessWorkspace(r, true) {
-		kernel.WriteProblem(w, r, http.StatusForbidden, "workspace_management_required", "Workspace management permission is required.")
-		return
-	}
-	err := s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workspaces WHERE id=$1 AND application_id=$2 AND deleted_at IS NULL),
-(SELECT count(*) FROM roles WHERE application_id=$2 AND scope='workspace' AND key=ANY($3))`,
-		request.WorkspaceID, applicationID, request.RoleKeys).Scan(&validWorkspace, &roleCount)
-	if err != nil || !validWorkspace || roleCount != len(request.RoleKeys) {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_workspace_roles", "The workspace and role keys must exist in this application and all roles must be workspace scoped.")
-		return
-	}
-	credential, err := secure.RandomToken("p93_invite_", 32)
-	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "invitation_creation_failed", "The invitation credential could not be created.")
-		return
-	}
-	invitationID := kernel.NewID()
-	notificationID := kernel.NewID()
-	expiresAt := s.app.Now().Add(time.Duration(request.ExpiresIn) * time.Second)
-	var workspaceName string
-	if err = s.app.DB.QueryRow(r.Context(), `SELECT name FROM workspaces WHERE id=$1 AND application_id=$2 AND deleted_at IS NULL`, request.WorkspaceID, applicationID).Scan(&workspaceName); err != nil {
-		kernel.WriteProblem(w, r, http.StatusNotFound, "workspace_not_found", "The workspace was not found.")
-		return
-	}
-	flows, _ := s.loadApplicationFlowConfig(r.Context(), applicationID)
-	invitationLink := ""
-	if flows.InvitationRedirectURI != "" {
-		invitationLink = appendCredentialQuery(flows.InvitationRedirectURI, map[string]string{
-			"application_id": applicationID, "invitation_id": invitationID.String(), "invitation_token": credential, "platform93_flow": "workspace_invitation",
-		})
-	}
-	templateID, templateLocale, payload, renderErr := s.renderSystemNotification(r.Context(), &applicationID, workspaceInvitationTemplate, normalized, map[string]any{
-		"workspace_id": request.WorkspaceID, "workspace_name": workspaceName, "role_keys": strings.Join(request.RoleKeys, ", "),
-		"invitation_link": invitationLink, "invitation_token": credential, "expires_at": templateTimestamp(expiresAt),
-	})
-	if renderErr != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "invitation_template_unavailable", "The workspace invitation email template is unavailable or invalid.")
-		return
-	}
-	tx, err := s.app.DB.Begin(r.Context())
-	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "The invitation could not be created.")
-		return
-	}
-	defer rollback(tx, r.Context())
-	_, err = tx.Exec(r.Context(), `INSERT INTO workspace_invitations
-(id,application_id,workspace_id,normalized_email,credential_digest,roles,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		invitationID, applicationID, request.WorkspaceID, normalized, s.app.Vault.Digest(credential), request.RoleKeys, expiresAt)
-	if err == nil {
-		var ciphertext string
-		ciphertext, err = s.app.Vault.Encrypt(payload, "notification:"+notificationID.String())
-		if err == nil {
-			_, err = tx.Exec(r.Context(), `INSERT INTO notifications
-(id,application_id,template_id,recipient,locale,payload_ciphertext,status) VALUES ($1,$2,$3,$4,$5,$6,'queued')`, notificationID, applicationID, templateID, normalized, templateLocale, ciphertext)
-		}
-	}
-	parsedApplicationID, parseErr := uuid.Parse(applicationID)
-	if err == nil && parseErr == nil {
-		_, err = s.app.Emit(r.Context(), tx, &parsedApplicationID, "workspace.invitation_created", "workspace_invitation/"+invitationID.String(), actor(r),
-			map[string]any{"invitation_id": invitationID, "workspace_id": request.WorkspaceID, "role_keys": request.RoleKeys})
-	}
-	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
-		kernel.WriteProblem(w, r, http.StatusConflict, "workspace_invitation_conflict", "A pending invitation already exists or could not be created.")
-		return
-	}
-	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": invitationID, "workspace_id": request.WorkspaceID, "email": normalized,
-		"role_keys": request.RoleKeys, "expires_at": expiresAt, "invitation_token": credential})
-}
-
-func (s *Server) listWorkspaceInvitations(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.app.DB.Query(r.Context(), `SELECT i.id,i.workspace_id,t.key,t.name,i.normalized_email,i.roles,i.expires_at,
-i.accepted_at,i.revoked_at,i.created_at FROM workspace_invitations i JOIN workspaces t ON t.id=i.workspace_id
-WHERE i.application_id=$1 ORDER BY i.created_at DESC,i.id DESC`, chi.URLParam(r, "application_id"))
-	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Workspace invitations could not be loaded.")
-		return
-	}
-	defer rows.Close()
-	items := []map[string]any{}
-	for rows.Next() {
-		var id, workspaceID, workspaceKey, workspaceName, email string
-		var roles []string
-		var expiresAt, createdAt time.Time
-		var acceptedAt, revokedAt *time.Time
-		if rows.Scan(&id, &workspaceID, &workspaceKey, &workspaceName, &email, &roles, &expiresAt, &acceptedAt, &revokedAt, &createdAt) == nil {
-			items = append(items, workspaceInvitationResponse(id, workspaceID, workspaceKey, workspaceName, email, roles, expiresAt, acceptedAt, revokedAt, createdAt))
-		}
-	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
-}
-
-func (s *Server) revokeWorkspaceInvitation(w http.ResponseWriter, r *http.Request) {
-	result, err := s.app.DB.Exec(r.Context(), `UPDATE workspace_invitations SET revoked_at=now()
-WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL`, chi.URLParam(r, "invitation_id"), chi.URLParam(r, "application_id"))
-	if err != nil || result.RowsAffected() != 1 {
-		kernel.WriteProblem(w, r, http.StatusNotFound, "workspace_invitation_not_found", "The pending workspace invitation was not found.")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (s *Server) listMyWorkspaceInvitations(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.app.DB.Query(r.Context(), `SELECT i.id,i.workspace_id,t.key,t.name,i.normalized_email,i.roles,i.expires_at,
-i.accepted_at,i.revoked_at,i.created_at FROM workspace_invitations i JOIN workspaces t ON t.id=i.workspace_id JOIN users u
-ON u.application_id=i.application_id AND u.normalized_email=i.normalized_email
-WHERE i.application_id=$1 AND u.id=$2 AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at>now()
-ORDER BY i.created_at DESC,i.id DESC`, chi.URLParam(r, "application_id"), actor(r).ID)
-	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Workspace invitations could not be loaded.")
-		return
-	}
-	defer rows.Close()
-	items := []map[string]any{}
-	for rows.Next() {
-		var id, workspaceID, workspaceKey, workspaceName, email string
-		var roles []string
-		var expiresAt, createdAt time.Time
-		var acceptedAt, revokedAt *time.Time
-		if rows.Scan(&id, &workspaceID, &workspaceKey, &workspaceName, &email, &roles, &expiresAt, &acceptedAt, &revokedAt, &createdAt) == nil {
-			items = append(items, workspaceInvitationResponse(id, workspaceID, workspaceKey, workspaceName, email, roles, expiresAt, acceptedAt, revokedAt, createdAt))
-		}
-	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
-}
-
-func (s *Server) acceptWorkspaceInvitation(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		InvitationToken string `json:"invitation_token"`
-	}
-	if !kernel.DecodeJSON(w, r, &request) || request.InvitationToken == "" {
-		return
-	}
-	tx, err := s.app.DB.Begin(r.Context())
-	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "The invitation could not be accepted.")
-		return
-	}
-	defer rollback(tx, r.Context())
-	var workspaceID, invitedEmail string
-	var roleKeys []string
-	var credentialDigest []byte
-	err = tx.QueryRow(r.Context(), `SELECT workspace_id,normalized_email,roles,credential_digest FROM workspace_invitations
-WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now() FOR UPDATE`,
-		chi.URLParam(r, "invitation_id"), chi.URLParam(r, "application_id")).Scan(&workspaceID, &invitedEmail, &roleKeys, &credentialDigest)
-	var userEmail string
-	if err == nil {
-		err = tx.QueryRow(r.Context(), `SELECT normalized_email FROM users WHERE id=$1 AND application_id=$2 AND status='active'`,
-			actor(r).ID, chi.URLParam(r, "application_id")).Scan(&userEmail)
-	}
-	if err != nil || userEmail != invitedEmail || !equalBytes(credentialDigest, s.app.Vault.Digest(request.InvitationToken)) {
-		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_workspace_invitation", "The workspace invitation is invalid, expired, or belongs to another account.")
-		return
-	}
-	rows, err := tx.Query(r.Context(), `SELECT id FROM roles WHERE application_id=$1 AND scope='workspace' AND key=ANY($2)`,
-		chi.URLParam(r, "application_id"), roleKeys)
-	roleIDs := []string{}
-	if err == nil {
-		for rows.Next() {
-			var roleID string
-			if rows.Scan(&roleID) == nil {
-				roleIDs = append(roleIDs, roleID)
-			}
-		}
-		rows.Close()
-	}
-	if err != nil || len(roleIDs) != len(roleKeys) {
-		kernel.WriteProblem(w, r, http.StatusConflict, "workspace_invitation_roles_changed", "One or more invited roles are no longer available.")
-		return
-	}
-	_, err = tx.Exec(r.Context(), `INSERT INTO workspace_memberships(application_id,workspace_id,user_id)
-VALUES($1,$2,$3) ON CONFLICT(workspace_id,user_id) DO NOTHING`, chi.URLParam(r, "application_id"), workspaceID, actor(r).ID)
-	for _, roleID := range roleIDs {
-		if err == nil {
-			_, err = tx.Exec(r.Context(), `INSERT INTO role_assignments(id,application_id,user_id,role_id,workspace_id)
-VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`, kernel.NewID(), chi.URLParam(r, "application_id"), actor(r).ID, roleID, workspaceID)
-		}
-	}
-	if err == nil {
-		_, err = tx.Exec(r.Context(), `UPDATE workspace_invitations SET accepted_at=now() WHERE id=$1`, chi.URLParam(r, "invitation_id"))
-	}
-	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
-	if err == nil && parseErr == nil {
-		_, err = s.app.Emit(r.Context(), tx, &applicationID, "workspace.invitation_accepted", "workspace_invitation/"+chi.URLParam(r, "invitation_id"), actor(r),
-			map[string]any{"invitation_id": chi.URLParam(r, "invitation_id"), "workspace_id": workspaceID, "user_id": actor(r).ID})
-	}
-	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "workspace_invitation_acceptance_failed", "The invitation acceptance could not be committed.")
-		return
-	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"workspace_id": workspaceID, "role_keys": roleKeys, "accepted": true})
-}
-
-func workspaceInvitationResponse(id, workspaceID, workspaceKey, workspaceName, email string, roles []string, expiresAt time.Time, acceptedAt, revokedAt *time.Time, createdAt time.Time) map[string]any {
-	status := "pending"
-	if acceptedAt != nil {
-		status = "accepted"
-	} else if revokedAt != nil {
-		status = "revoked"
-	} else if expiresAt.Before(time.Now()) {
-		status = "expired"
-	}
-	return map[string]any{"id": id, "workspace_id": workspaceID, "workspace_key": workspaceKey, "workspace_name": workspaceName, "email": email,
-		"role_keys": roles, "expires_at": expiresAt, "accepted_at": acceptedAt, "revoked_at": revokedAt, "created_at": createdAt, "status": status}
-}
-
 func uniqueStrings(values []string) []string {
 	seen := map[string]bool{}
 	result := make([]string, 0, len(values))
@@ -566,6 +328,23 @@ func uniqueStrings(values []string) []string {
 		}
 	}
 	return result
+}
+
+func validateRolePermissions(values []string) error {
+	if len(values) == 0 || len(values) > 200 {
+		return fmt.Errorf("permission count is invalid")
+	}
+	seen := make(map[string]struct{}, len(values))
+	for _, permission := range values {
+		if err := platformauthz.ValidateRelativePermission(permission); err != nil {
+			return err
+		}
+		if _, exists := seen[permission]; exists {
+			return fmt.Errorf("permission is duplicated")
+		}
+		seen[permission] = struct{}{}
+	}
+	return nil
 }
 
 func (s *Server) listMyWorkspaces(w http.ResponseWriter, r *http.Request) {
@@ -580,41 +359,41 @@ func (s *Server) checkPermissions(w http.ResponseWriter, r *http.Request) {
 	if !kernel.DecodeJSON(w, r, &request) || len(request.Permissions) == 0 || len(request.Permissions) > 100 {
 		return
 	}
-	rows, err := s.app.DB.Query(r.Context(), `SELECT ro.key,unnest(ro.permissions) FROM role_assignments ra
-JOIN roles ro ON ro.id=ra.role_id WHERE ra.application_id=$1 AND ra.user_id=$2
-AND (ra.workspace_id IS NULL OR ra.workspace_id=$3)`, chi.URLParam(r, "application_id"), actor(r).ID, request.WorkspaceID)
+	applicationID, err := uuid.Parse(chi.URLParam(r, "application_id"))
 	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Permissions could not be evaluated.")
+		kernel.WriteProblem(w, r, http.StatusBadRequest, "invalid_application_id", "The application identifier is invalid.")
 		return
 	}
-	defer rows.Close()
-	sources := map[string][]string{}
-	for rows.Next() {
-		var role, permission string
-		if rows.Scan(&role, &permission) == nil {
-			sources[permission] = append(sources[permission], role)
+	access, err := s.userEffectiveAccess(r, applicationID, actor(r).ID)
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "authorization_data_invalid", "Permissions could not be evaluated because the account authorization data is invalid.")
+		return
+	}
+	canonical := make([]string, len(request.Permissions))
+	for index, permission := range request.Permissions {
+		if err = platformauthz.ValidateRelativePermission(permission); err != nil {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_permission", "Permission checks require lowercase ASCII colon-delimited permission keys.")
+			return
+		}
+		canonical[index], err = platformauthz.CanonicalScope(applicationID.String(), request.WorkspaceID, permission)
+		if err != nil {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_permission", "The permission could not be evaluated in the selected workspace.")
+			return
 		}
 	}
 	results := make([]map[string]any, 0, len(request.Permissions))
-	for _, wanted := range request.Permissions {
+	for index, wanted := range canonical {
 		matched := []string{}
-		for granted, roles := range sources {
+		for _, granted := range access.Scopes {
 			if permissionMatches(granted, wanted) {
-				matched = append(matched, roles...)
+				matched = append(matched, granted)
 			}
 		}
-		results = append(results, map[string]any{"permission": wanted, "allowed": len(matched) > 0, "roles": matched})
+		results = append(results, map[string]any{"permission": request.Permissions[index], "canonical_scope": wanted, "allowed": len(matched) > 0, "matched_scopes": matched})
 	}
 	kernel.WriteJSON(w, http.StatusOK, map[string]any{"workspace_id": request.WorkspaceID, "results": results})
 }
 
 func permissionMatches(granted, wanted string) bool {
-	if granted == wanted || granted == "*" {
-		return true
-	}
-	if !strings.HasSuffix(granted, "/*") {
-		return false
-	}
-	base := strings.TrimSuffix(granted, "/*")
-	return wanted == base || strings.HasPrefix(wanted, base+"/")
+	return platformauthz.Match(granted, wanted)
 }

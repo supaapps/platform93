@@ -13,15 +13,16 @@ import (
 )
 
 type grantRequest struct {
-	SubjectType   string         `json:"subject_type"`
-	SubjectID     string         `json:"subject_id"`
-	ProductID     *string        `json:"product_id"`
-	PriceID       *string        `json:"price_id"`
-	FeatureValues map[string]any `json:"feature_values"`
-	Configuration map[string]any `json:"configuration"`
-	StartsAt      *time.Time     `json:"starts_at"`
-	ExpiresAt     *time.Time     `json:"expires_at"`
-	Reason        string         `json:"reason"`
+	SubjectType       string         `json:"subject_type"`
+	SubjectID         string         `json:"subject_id"`
+	ProductID         *string        `json:"product_id"`
+	PriceID           *string        `json:"price_id"`
+	FeatureValues     map[string]any `json:"feature_values"`
+	Configuration     map[string]any `json:"configuration"`
+	StartsAt          *time.Time     `json:"starts_at"`
+	ExpiresAt         *time.Time     `json:"expires_at"`
+	Reason            string         `json:"reason"`
+	ExternalReference *string        `json:"external_reference"`
 }
 
 func (s *Server) createEntitlement(w http.ResponseWriter, r *http.Request) {
@@ -76,17 +77,24 @@ WHERE p.id=$1 AND p.application_id=$2 AND ($3::uuid IS NULL OR EXISTS(SELECT 1 F
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_catalog_reference", "A price cannot be selected without its product.")
 		return
 	}
+	if request.ExternalReference != nil && (strings.TrimSpace(*request.ExternalReference) == "" || len(*request.ExternalReference) > 255) {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_external_reference", "External reference must contain between 1 and 255 characters.")
+		return
+	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO entitlement_grants
-(id,application_id,subject_type,subject_id,product_id,price_id,source_type,feature_values,configuration,starts_at,expires_at,created_by)
-VALUES ($1,$2,$3,$4,$5,$6,'manual',$7,$8,$9,$10,$11)`, id, applicationID, request.SubjectType, request.SubjectID, request.ProductID, request.PriceID, features, configuration, starts, request.ExpiresAt, actor(r).ID)
+(id,application_id,subject_type,subject_id,product_id,price_id,source_type,feature_values,configuration,starts_at,expires_at,created_by,external_reference)
+VALUES ($1,$2,$3,$4,$5,$6,'manual',$7,$8,$9,$10,$11,$12)`, id, applicationID, request.SubjectType, request.SubjectID, request.ProductID, request.PriceID, features, configuration, starts, request.ExpiresAt, actor(r).ID, request.ExternalReference)
 	if err == nil {
-		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.granted", "entitlement/"+id.String(), actor(r), map[string]any{"grant_id": id, "subject_type": request.SubjectType, "subject_id": request.SubjectID, "reason": request.Reason})
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.granted", "entitlement/"+id.String(), actor(r), map[string]any{"grant_id": id, "subject_type": request.SubjectType, "subject_id": request.SubjectID, "reason": request.Reason, "external_reference": request.ExternalReference, "status": "active"})
+	}
+	if err == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.effective_changed", request.SubjectType+"/"+request.SubjectID, actor(r), map[string]any{"subject_type": request.SubjectType, "subject_id": request.SubjectID, "grant_id": id, "external_reference": request.ExternalReference})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, 409, "entitlement_creation_failed", "The entitlement could not be granted.")
 		return
 	}
-	kernel.WriteJSON(w, 201, map[string]any{"id": id, "subject_type": request.SubjectType, "subject_id": request.SubjectID, "source_type": "manual", "feature_values": request.FeatureValues, "configuration": request.Configuration, "starts_at": starts, "expires_at": request.ExpiresAt})
+	kernel.WriteJSON(w, 201, map[string]any{"id": id, "subject_type": request.SubjectType, "subject_id": request.SubjectID, "source_type": "manual", "feature_values": request.FeatureValues, "configuration": request.Configuration, "starts_at": starts, "expires_at": request.ExpiresAt, "external_reference": request.ExternalReference})
 }
 
 func (s *Server) listEntitlements(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +102,7 @@ func (s *Server) listEntitlements(w http.ResponseWriter, r *http.Request) {
 	subjectID := r.URL.Query().Get("subject_id")
 	rows, err := s.app.DB.Query(r.Context(), `SELECT g.id,g.subject_type,g.subject_id,g.product_id,g.price_id,g.source_type,g.source_id,g.feature_values,g.configuration,g.starts_at,
 COALESCE(a.expires_at,g.expires_at),CASE WHEN a.id IS NULL THEN g.revoked_at WHEN a.action='revoked' THEN a.created_at ELSE NULL END,
-CASE WHEN a.id IS NULL THEN g.revocation_reason ELSE a.reason END,g.created_at
+CASE WHEN a.id IS NULL THEN g.revocation_reason ELSE a.reason END,g.external_reference,g.created_at
 FROM entitlement_grants g LEFT JOIN LATERAL (SELECT id,action,expires_at,reason,created_at FROM entitlement_grant_actions
 WHERE grant_id=g.id ORDER BY created_at DESC,id DESC LIMIT 1) a ON true
 WHERE g.application_id=$1 AND ($2='' OR g.subject_type=$2) AND ($3='' OR g.subject_id=$3::uuid)
@@ -110,7 +118,7 @@ ORDER BY g.created_at DESC,g.id LIMIT 101`, chi.URLParam(r, "application_id"), s
 func (s *Server) getEntitlement(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.app.DB.Query(r.Context(), `SELECT g.id,g.subject_type,g.subject_id,g.product_id,g.price_id,g.source_type,g.source_id,g.feature_values,g.configuration,g.starts_at,
 COALESCE(a.expires_at,g.expires_at),CASE WHEN a.id IS NULL THEN g.revoked_at WHEN a.action='revoked' THEN a.created_at ELSE NULL END,
-CASE WHEN a.id IS NULL THEN g.revocation_reason ELSE a.reason END,g.created_at
+CASE WHEN a.id IS NULL THEN g.revocation_reason ELSE a.reason END,g.external_reference,g.created_at
 FROM entitlement_grants g LEFT JOIN LATERAL (SELECT id,action,expires_at,reason,created_at FROM entitlement_grant_actions
 WHERE grant_id=g.id ORDER BY created_at DESC,id DESC LIMIT 1) a ON true
 WHERE g.id=$1 AND g.application_id=$2`, chi.URLParam(r, "entitlement_id"), chi.URLParam(r, "application_id"))
@@ -163,8 +171,10 @@ func (s *Server) revokeEntitlement(w http.ResponseWriter, r *http.Request) {
 	defer rollback(tx, r.Context())
 	var legacyRevoked *time.Time
 	var latestAction *string
-	err = tx.QueryRow(r.Context(), `SELECT g.revoked_at,(SELECT action FROM entitlement_grant_actions WHERE grant_id=g.id ORDER BY created_at DESC,id DESC LIMIT 1)
-FROM entitlement_grants g WHERE g.id=$1 AND g.application_id=$2 FOR UPDATE`, chi.URLParam(r, "entitlement_id"), chi.URLParam(r, "application_id")).Scan(&legacyRevoked, &latestAction)
+	var subjectType, subjectID string
+	var externalReference *string
+	err = tx.QueryRow(r.Context(), `SELECT g.revoked_at,(SELECT action FROM entitlement_grant_actions WHERE grant_id=g.id ORDER BY created_at DESC,id DESC LIMIT 1),g.subject_type,g.subject_id,g.external_reference
+FROM entitlement_grants g WHERE g.id=$1 AND g.application_id=$2 FOR UPDATE`, chi.URLParam(r, "entitlement_id"), chi.URLParam(r, "application_id")).Scan(&legacyRevoked, &latestAction, &subjectType, &subjectID, &externalReference)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "entitlement_not_found", "The entitlement was not found.")
 		return
@@ -174,8 +184,15 @@ FROM entitlement_grants g WHERE g.id=$1 AND g.application_id=$2 FOR UPDATE`, chi
 		return
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO entitlement_grant_actions(id,grant_id,action,reason,actor_type,actor_id)
-VALUES($1,$2,'revoked',$3,'operator',$4)`, kernel.NewID(), chi.URLParam(r, "entitlement_id"), request.Reason, actor(r).ID)
-	if err != nil || tx.Commit(r.Context()) != nil {
+VALUES($1,$2,'revoked',$3,'control_user',$4)`, kernel.NewID(), chi.URLParam(r, "entitlement_id"), request.Reason, actor(r).ID)
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.revoked", "entitlement/"+chi.URLParam(r, "entitlement_id"), actor(r), map[string]any{"grant_id": chi.URLParam(r, "entitlement_id"), "reason": request.Reason, "external_reference": externalReference, "status": "revoked"})
+	}
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.effective_changed", subjectType+"/"+subjectID, actor(r), map[string]any{"subject_type": subjectType, "subject_id": subjectID, "grant_id": chi.URLParam(r, "entitlement_id"), "external_reference": externalReference})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "entitlement_revocation_failed", "The entitlement revocation could not be committed.")
 		return
 	}
@@ -197,8 +214,10 @@ func (s *Server) restoreEntitlement(w http.ResponseWriter, r *http.Request) {
 	defer rollback(tx, r.Context())
 	var grantExpiry, legacyRevoked *time.Time
 	var latestAction *string
-	err = tx.QueryRow(r.Context(), `SELECT g.expires_at,g.revoked_at,(SELECT action FROM entitlement_grant_actions WHERE grant_id=g.id ORDER BY created_at DESC,id DESC LIMIT 1)
-FROM entitlement_grants g WHERE g.id=$1 AND g.application_id=$2 FOR UPDATE`, chi.URLParam(r, "entitlement_id"), chi.URLParam(r, "application_id")).Scan(&grantExpiry, &legacyRevoked, &latestAction)
+	var subjectType, subjectID string
+	var externalReference *string
+	err = tx.QueryRow(r.Context(), `SELECT g.expires_at,g.revoked_at,(SELECT action FROM entitlement_grant_actions WHERE grant_id=g.id ORDER BY created_at DESC,id DESC LIMIT 1),g.subject_type,g.subject_id,g.external_reference
+FROM entitlement_grants g WHERE g.id=$1 AND g.application_id=$2 FOR UPDATE`, chi.URLParam(r, "entitlement_id"), chi.URLParam(r, "application_id")).Scan(&grantExpiry, &legacyRevoked, &latestAction, &subjectType, &subjectID, &externalReference)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "entitlement_not_found", "The entitlement was not found.")
 		return
@@ -210,9 +229,62 @@ FROM entitlement_grants g WHERE g.id=$1 AND g.application_id=$2 FOR UPDATE`, chi
 	_ = tx.QueryRow(r.Context(), `SELECT expires_at FROM entitlement_grant_actions
 WHERE grant_id=$1 AND action IN ('adjusted','restored') AND expires_at IS NOT NULL ORDER BY created_at DESC,id DESC LIMIT 1`, chi.URLParam(r, "entitlement_id")).Scan(&grantExpiry)
 	_, err = tx.Exec(r.Context(), `INSERT INTO entitlement_grant_actions(id,grant_id,action,expires_at,reason,actor_type,actor_id)
-VALUES($1,$2,'restored',$3,NULLIF($4,''),'operator',$5)`, kernel.NewID(), chi.URLParam(r, "entitlement_id"), grantExpiry, strings.TrimSpace(request.Reason), actor(r).ID)
-	if err != nil || tx.Commit(r.Context()) != nil {
+VALUES($1,$2,'restored',$3,NULLIF($4,''),'control_user',$5)`, kernel.NewID(), chi.URLParam(r, "entitlement_id"), grantExpiry, strings.TrimSpace(request.Reason), actor(r).ID)
+	if err == nil {
+		_, err = tx.Exec(r.Context(), `UPDATE entitlement_grants SET expiration_recorded_at=NULL WHERE id=$1`, chi.URLParam(r, "entitlement_id"))
+	}
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.restored", "entitlement/"+chi.URLParam(r, "entitlement_id"), actor(r), map[string]any{"grant_id": chi.URLParam(r, "entitlement_id"), "reason": strings.TrimSpace(request.Reason), "expires_at": grantExpiry, "external_reference": externalReference, "status": "active"})
+	}
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.effective_changed", subjectType+"/"+subjectID, actor(r), map[string]any{"subject_type": subjectType, "subject_id": subjectID, "grant_id": chi.URLParam(r, "entitlement_id"), "external_reference": externalReference})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "entitlement_restoration_failed", "The entitlement restoration could not be committed.")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) adjustEntitlement(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		ExpiresAt *time.Time `json:"expires_at"`
+		Reason    string     `json:"reason"`
+	}
+	if !kernel.DecodeJSON(w, r, &request) {
+		return
+	}
+	request.Reason = strings.TrimSpace(request.Reason)
+	if request.Reason == "" || len(request.Reason) > 500 {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "adjustment_reason_required", "An adjustment reason of at most 500 characters is required.")
+		return
+	}
+	tx, err := s.app.DB.Begin(r.Context())
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "The entitlement could not be adjusted.")
+		return
+	}
+	defer rollback(tx, r.Context())
+	var subjectType, subjectID string
+	var externalReference *string
+	err = tx.QueryRow(r.Context(), `INSERT INTO entitlement_grant_actions(id,grant_id,action,expires_at,reason,actor_type,actor_id)
+SELECT $1,id,'adjusted',$2,$3,'control_user',$4 FROM entitlement_grants WHERE id=$5 AND application_id=$6
+RETURNING (SELECT subject_type FROM entitlement_grants WHERE id=$5),(SELECT subject_id FROM entitlement_grants WHERE id=$5),(SELECT external_reference FROM entitlement_grants WHERE id=$5)`, kernel.NewID(), request.ExpiresAt, request.Reason, actor(r).ID, chi.URLParam(r, "entitlement_id"), chi.URLParam(r, "application_id")).Scan(&subjectType, &subjectID, &externalReference)
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusNotFound, "entitlement_not_found", "The entitlement was not found.")
+		return
+	}
+	_, err = tx.Exec(r.Context(), `UPDATE entitlement_grants SET expiration_recorded_at=NULL WHERE id=$1`, chi.URLParam(r, "entitlement_id"))
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.adjusted", "entitlement/"+chi.URLParam(r, "entitlement_id"), actor(r), map[string]any{"grant_id": chi.URLParam(r, "entitlement_id"), "reason": request.Reason, "expires_at": request.ExpiresAt, "external_reference": externalReference, "status": "active"})
+	}
+	if err == nil && parseErr == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.effective_changed", subjectType+"/"+subjectID, actor(r), map[string]any{"subject_type": subjectType, "subject_id": subjectID, "grant_id": chi.URLParam(r, "entitlement_id"), "external_reference": externalReference})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "entitlement_adjustment_failed", "The entitlement adjustment could not be committed.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -224,7 +296,7 @@ func (s *Server) listMyEntitlements(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.app.DB.Query(r.Context(), `SELECT g.id,g.subject_type,g.subject_id,g.product_id,g.price_id,g.source_type,g.source_id,g.feature_values,g.configuration,g.starts_at,
-COALESCE(a.expires_at,g.expires_at),NULL::timestamptz,NULL::text,g.created_at
+COALESCE(a.expires_at,g.expires_at),NULL::timestamptz,NULL::text,g.external_reference,g.created_at
 FROM entitlement_grants g LEFT JOIN LATERAL (SELECT id,action,expires_at FROM entitlement_grant_actions
 WHERE grant_id=g.id ORDER BY created_at DESC,id DESC LIMIT 1) a ON true
 WHERE g.application_id=$1 AND ((g.subject_type='user' AND g.subject_id=$2) OR
@@ -259,11 +331,11 @@ func scanGrants(rows grantRows) []map[string]any {
 	for rows.Next() {
 		var id, subjectType, subjectID, sourceType string
 		var starts, created time.Time
-		var productID, priceID, sourceID, reason *string
+		var productID, priceID, sourceID, reason, externalReference *string
 		var expires, revoked *time.Time
 		var features, configuration []byte
-		if rows.Scan(&id, &subjectType, &subjectID, &productID, &priceID, &sourceType, &sourceID, &features, &configuration, &starts, &expires, &revoked, &reason, &created) == nil {
-			items = append(items, map[string]any{"id": id, "subject_type": subjectType, "subject_id": subjectID, "product_id": productID, "price_id": priceID, "source_type": sourceType, "source_id": sourceID, "feature_values": decodeMap(features), "configuration": decodeMap(configuration), "starts_at": starts, "expires_at": expires, "revoked_at": revoked, "revocation_reason": reason, "created_at": created})
+		if rows.Scan(&id, &subjectType, &subjectID, &productID, &priceID, &sourceType, &sourceID, &features, &configuration, &starts, &expires, &revoked, &reason, &externalReference, &created) == nil {
+			items = append(items, map[string]any{"id": id, "subject_type": subjectType, "subject_id": subjectID, "product_id": productID, "price_id": priceID, "source_type": sourceType, "source_id": sourceID, "feature_values": decodeMap(features), "configuration": decodeMap(configuration), "starts_at": starts, "expires_at": expires, "revoked_at": revoked, "revocation_reason": reason, "external_reference": externalReference, "created_at": created})
 		}
 	}
 	return items
@@ -323,11 +395,11 @@ func entitlementProvenance(grants []map[string]any, effective map[string]any) ma
 
 func (s *Server) createLocalCheckout(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		PriceID        string  `json:"price_id"`
-		SubjectType    string  `json:"subject_type"`
-		SubjectID      string  `json:"subject_id"`
-		AddressID      *string `json:"address_id"`
-		LocalReference *string `json:"local_reference"`
+		PriceID           string  `json:"price_id"`
+		SubjectType       string  `json:"subject_type"`
+		SubjectID         string  `json:"subject_id"`
+		AddressID         *string `json:"address_id"`
+		ExternalReference *string `json:"external_reference"`
 	}
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
@@ -346,6 +418,10 @@ func (s *Server) createLocalCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	if request.SubjectType != "user" && request.SubjectType != "workspace" {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_subject", "Subject type must be user or workspace.")
+		return
+	}
+	if request.ExternalReference != nil && (strings.TrimSpace(*request.ExternalReference) == "" || len(*request.ExternalReference) > 255) {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_external_reference", "External reference must contain between 1 and 255 characters.")
 		return
 	}
 	applicationID, _ := applicationID(r)
@@ -387,20 +463,20 @@ FROM price_features pf JOIN features f ON f.id=pf.feature_id WHERE pf.price_id=$
 	}
 	id := kernel.NewID()
 	_, err = tx.Exec(r.Context(), `INSERT INTO local_entitlement_requests
-(id,application_id,requester_user_id,subject_type,subject_id,product_id,price_id,product_snapshot,price_snapshot,feature_snapshot,address_snapshot,local_reference)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, applicationID, actor(r).ID, request.SubjectType, request.SubjectID, productID, request.PriceID, productSnapshot, priceSnapshot, featureSnapshot, nullableBytes(addressSnapshot), request.LocalReference)
+(id,application_id,requester_user_id,subject_type,subject_id,product_id,price_id,product_snapshot,price_snapshot,feature_snapshot,address_snapshot,external_reference)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, applicationID, actor(r).ID, request.SubjectType, request.SubjectID, productID, request.PriceID, productSnapshot, priceSnapshot, featureSnapshot, nullableBytes(addressSnapshot), request.ExternalReference)
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO local_entitlement_request_actions(id,request_id,action,actor_type,actor_id)
 VALUES($1,$2,'created','user',$3)`, kernel.NewID(), id, actor(r).ID)
 	}
 	if err == nil {
-		_, err = s.app.Emit(r.Context(), tx, &applicationID, "local_entitlement_request.created", "local_entitlement_request/"+id.String(), actor(r), map[string]any{"request_id": id, "subject_type": request.SubjectType, "subject_id": request.SubjectID, "price_id": request.PriceID})
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "local_entitlement_request.created", "local_entitlement_request/"+id.String(), actor(r), map[string]any{"request_id": id, "subject_type": request.SubjectType, "subject_id": request.SubjectID, "price_id": request.PriceID, "external_reference": request.ExternalReference})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, 409, "local_request_creation_failed", "The local entitlement request could not be created.")
 		return
 	}
-	kernel.WriteJSON(w, 201, map[string]any{"id": id, "status": "pending", "subject_type": request.SubjectType, "subject_id": request.SubjectID, "product_snapshot": decodeMap(productSnapshot), "price_snapshot": decodeMap(priceSnapshot), "feature_snapshot": decodeMap(featureSnapshot), "address_snapshot": nullableDecoded(addressSnapshot), "local_reference": request.LocalReference})
+	kernel.WriteJSON(w, 201, map[string]any{"id": id, "status": "pending", "subject_type": request.SubjectType, "subject_id": request.SubjectID, "product_snapshot": decodeMap(productSnapshot), "price_snapshot": decodeMap(priceSnapshot), "feature_snapshot": decodeMap(featureSnapshot), "address_snapshot": nullableDecoded(addressSnapshot), "external_reference": request.ExternalReference})
 }
 
 func (s *Server) listMyLocalRequests(w http.ResponseWriter, r *http.Request) {
@@ -420,7 +496,7 @@ func (s *Server) adminGetLocalRequest(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getLocalRequest(w http.ResponseWriter, r *http.Request, own bool) {
 	query := `SELECT id,requester_user_id,subject_type,subject_id,product_id,price_id,product_snapshot,price_snapshot,feature_snapshot,address_snapshot,
-local_reference,status,decision_reason,reviewed_by,reviewed_at,entitlement_grant_id,created_at,updated_at
+external_reference,status,decision_reason,reviewed_by,reviewed_at,entitlement_grant_id,created_at,updated_at
 FROM local_entitlement_requests WHERE id=$1 AND application_id=$2`
 	args := []any{chi.URLParam(r, "request_id"), chi.URLParam(r, "application_id")}
 	if own {
@@ -456,7 +532,7 @@ FROM local_entitlement_request_actions WHERE request_id=$1 ORDER BY created_at,i
 	kernel.WriteJSON(w, http.StatusOK, items[0])
 }
 func (s *Server) listLocalRequests(w http.ResponseWriter, r *http.Request, own bool) {
-	query := `SELECT id,requester_user_id,subject_type,subject_id,product_id,price_id,product_snapshot,price_snapshot,feature_snapshot,address_snapshot,local_reference,status,decision_reason,reviewed_by,reviewed_at,entitlement_grant_id,created_at,updated_at FROM local_entitlement_requests WHERE application_id=$1`
+	query := `SELECT id,requester_user_id,subject_type,subject_id,product_id,price_id,product_snapshot,price_snapshot,feature_snapshot,address_snapshot,external_reference,status,decision_reason,reviewed_by,reviewed_at,entitlement_grant_id,created_at,updated_at FROM local_entitlement_requests WHERE application_id=$1`
 	args := []any{chi.URLParam(r, "application_id")}
 	if own {
 		query += ` AND requester_user_id=$2`
@@ -487,10 +563,10 @@ func scanLocalRequests(rows localRows) []map[string]any {
 		var id, requester, subjectType, subjectID, productID, priceID, status string
 		var created, updated time.Time
 		var product, price, features, address []byte
-		var localRef, reason, reviewer, grant *string
+		var externalRef, reason, reviewer, grant *string
 		var reviewed *time.Time
-		if rows.Scan(&id, &requester, &subjectType, &subjectID, &productID, &priceID, &product, &price, &features, &address, &localRef, &status, &reason, &reviewer, &reviewed, &grant, &created, &updated) == nil {
-			items = append(items, map[string]any{"id": id, "requester_user_id": requester, "subject_type": subjectType, "subject_id": subjectID, "product_id": productID, "price_id": priceID, "product_snapshot": decodeMap(product), "price_snapshot": decodeMap(price), "feature_snapshot": decodeMap(features), "address_snapshot": nullableDecoded(address), "local_reference": localRef, "status": status, "decision_reason": reason, "reviewed_by": reviewer, "reviewed_at": reviewed, "entitlement_grant_id": grant, "created_at": created, "updated_at": updated})
+		if rows.Scan(&id, &requester, &subjectType, &subjectID, &productID, &priceID, &product, &price, &features, &address, &externalRef, &status, &reason, &reviewer, &reviewed, &grant, &created, &updated) == nil {
+			items = append(items, map[string]any{"id": id, "requester_user_id": requester, "subject_type": subjectType, "subject_id": subjectID, "product_id": productID, "price_id": priceID, "product_snapshot": decodeMap(product), "price_snapshot": decodeMap(price), "feature_snapshot": decodeMap(features), "address_snapshot": nullableDecoded(address), "external_reference": externalRef, "status": status, "decision_reason": reason, "reviewed_by": reviewer, "reviewed_at": reviewed, "entitlement_grant_id": grant, "created_at": created, "updated_at": updated})
 		}
 	}
 	return items
@@ -510,8 +586,9 @@ func (s *Server) approveLocalRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rollback(tx, r.Context())
 	var subjectType, subjectID, productID, priceID, status string
+	var externalReference *string
 	var priceSnapshot, featureSnapshot []byte
-	err = tx.QueryRow(r.Context(), `SELECT subject_type,subject_id,product_id,price_id,status,price_snapshot,feature_snapshot FROM local_entitlement_requests WHERE id=$1 AND application_id=$2 FOR UPDATE`, chi.URLParam(r, "request_id"), applicationID).Scan(&subjectType, &subjectID, &productID, &priceID, &status, &priceSnapshot, &featureSnapshot)
+	err = tx.QueryRow(r.Context(), `SELECT subject_type,subject_id,product_id,price_id,status,price_snapshot,feature_snapshot,external_reference FROM local_entitlement_requests WHERE id=$1 AND application_id=$2 FOR UPDATE`, chi.URLParam(r, "request_id"), applicationID).Scan(&subjectType, &subjectID, &productID, &priceID, &status, &priceSnapshot, &featureSnapshot, &externalReference)
 	if err != nil || status != "pending" {
 		kernel.WriteProblem(w, r, 409, "local_request_not_pending", "The local request is not pending.")
 		return
@@ -529,16 +606,22 @@ func (s *Server) approveLocalRequest(w http.ResponseWriter, r *http.Request) {
 		expires = s.app.Now().Add(time.Duration(*snapshot.ValiditySeconds) * time.Second)
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO entitlement_grants
-(id,application_id,subject_type,subject_id,product_id,price_id,source_type,source_id,feature_values,configuration,starts_at,expires_at,created_by) VALUES ($1,$2,$3,$4,$5,$6,'local_request',$7,$8,$9,now(),$10,$11)`, grantID, applicationID, subjectType, subjectID, productID, priceID, chi.URLParam(r, "request_id"), features, configuration, expires, actor(r).ID)
+(id,application_id,subject_type,subject_id,product_id,price_id,source_type,source_id,feature_values,configuration,starts_at,expires_at,created_by,external_reference) VALUES ($1,$2,$3,$4,$5,$6,'local_request',$7,$8,$9,now(),$10,$11,$12)`, grantID, applicationID, subjectType, subjectID, productID, priceID, chi.URLParam(r, "request_id"), features, configuration, expires, actor(r).ID, externalReference)
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `UPDATE local_entitlement_requests SET status='approved',decision_reason=$1,reviewed_by=$2,reviewed_at=now(),entitlement_grant_id=$3,updated_at=now() WHERE id=$4`, request.Reason, actor(r).ID, grantID, chi.URLParam(r, "request_id"))
 	}
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO local_entitlement_request_actions(id,request_id,action,actor_type,actor_id,reason)
-VALUES($1,$2,'approved','operator',$3,NULLIF($4,''))`, kernel.NewID(), chi.URLParam(r, "request_id"), actor(r).ID, request.Reason)
+VALUES($1,$2,'approved','control_user',$3,NULLIF($4,''))`, kernel.NewID(), chi.URLParam(r, "request_id"), actor(r).ID, request.Reason)
 	}
 	if err == nil {
-		_, err = s.app.Emit(r.Context(), tx, &applicationID, "local_entitlement_request.approved", "local_entitlement_request/"+chi.URLParam(r, "request_id"), actor(r), map[string]any{"request_id": chi.URLParam(r, "request_id"), "grant_id": grantID})
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "local_entitlement_request.approved", "local_entitlement_request/"+chi.URLParam(r, "request_id"), actor(r), map[string]any{"request_id": chi.URLParam(r, "request_id"), "grant_id": grantID, "external_reference": externalReference})
+	}
+	if err == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.granted", "entitlement/"+grantID.String(), actor(r), map[string]any{"grant_id": grantID, "subject_type": subjectType, "subject_id": subjectID, "reason": "local_request_approved", "external_reference": externalReference, "status": "active"})
+	}
+	if err == nil {
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.effective_changed", subjectType+"/"+subjectID, actor(r), map[string]any{"subject_type": subjectType, "subject_id": subjectID, "grant_id": grantID, "external_reference": externalReference})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, 500, "local_request_approval_failed", "The local request could not be approved.")
@@ -566,7 +649,7 @@ func (s *Server) rejectLocalRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO local_entitlement_request_actions(id,request_id,action,actor_type,actor_id,reason)
-VALUES($1,$2,'rejected','operator',$3,NULLIF($4,''))`, kernel.NewID(), chi.URLParam(r, "request_id"), actor(r).ID, request.Reason)
+VALUES($1,$2,'rejected','control_user',$3,NULLIF($4,''))`, kernel.NewID(), chi.URLParam(r, "request_id"), actor(r).ID, request.Reason)
 	if err != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "local_request_rejection_failed", "The local request rejection could not be committed.")
 		return
@@ -618,7 +701,7 @@ WHERE id=$1 AND application_id=$2 AND status IN ('rejected','canceled')`, chi.UR
 		return
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO local_entitlement_request_actions(id,request_id,action,actor_type,actor_id,reason)
-VALUES($1,$2,'reopened','operator',$3,$4)`, kernel.NewID(), chi.URLParam(r, "request_id"), actor(r).ID, request.Reason)
+VALUES($1,$2,'reopened','control_user',$3,$4)`, kernel.NewID(), chi.URLParam(r, "request_id"), actor(r).ID, request.Reason)
 	if err != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "local_request_reopen_failed", "The local request could not be reopened.")
 		return

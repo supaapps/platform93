@@ -89,8 +89,8 @@ FROM event_type_definitions WHERE application_id IS NULL AND source='platform93'
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if count != 34 {
-		t.Fatalf("expected 34 built-in event contracts, got %d", count)
+	if count != 67 {
+		t.Fatalf("expected 67 built-in event contracts, got %d", count)
 	}
 }
 
@@ -154,6 +154,7 @@ func TestRegisteredCustomEventCreatesTransactionalOutboxRecord(t *testing.T) {
 		ExpiresAt: now.Add(5 * time.Minute).Unix(), IssuedAt: now.Unix(), NotBefore: now.Add(-time.Second).Unix(),
 		JWTID: kernel.NewID().String(), ApplicationID: applicationID.String(), ClientID: clientID,
 		TokenKind: "machine", ActorType: "client", Scope: "/applications/" + applicationID.String() + "/events/publish",
+		Roles: identity.RoleClaims{Application: []string{}, Workspaces: map[string][]string{}},
 	})
 	if err != nil {
 		t.Fatal(err)

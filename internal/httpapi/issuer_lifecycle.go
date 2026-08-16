@@ -11,6 +11,25 @@ import (
 	"github.com/supaapps/platform93/internal/secure"
 )
 
+func (s *Server) getClient(w http.ResponseWriter, r *http.Request) {
+	var id, clientID, name, clientType string
+	var redirectURIs, allowedGrants, allowedScopes []string
+	var createdAt, updatedAt time.Time
+	err := s.app.DB.QueryRow(r.Context(), `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at,updated_at
+FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`,
+		chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id")).Scan(
+		&id, &clientID, &name, &clientType, &redirectURIs, &allowedGrants, &allowedScopes, &createdAt, &updatedAt)
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusNotFound, "client_not_found", "The client was not found.")
+		return
+	}
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{
+		"id": id, "client_id": clientID, "name": name, "client_type": clientType,
+		"redirect_uris": redirectURIs, "allowed_grants": allowedGrants, "allowed_scopes": allowedScopes,
+		"created_at": createdAt, "updated_at": updatedAt,
+	})
+}
+
 func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Name          *string  `json:"name"`
@@ -20,6 +39,18 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 	}
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
+	}
+	if request.RedirectURIs != nil {
+		var clientType string
+		if err := s.app.DB.QueryRow(r.Context(), `SELECT client_type FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`,
+			chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id")).Scan(&clientType); err != nil {
+			kernel.WriteProblem(w, r, http.StatusNotFound, "client_not_found", "The client was not found.")
+			return
+		}
+		if err := validateClientRedirectURIs(clientType, request.RedirectURIs); err != nil {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_redirect_uri", err.Error())
+			return
+		}
 	}
 	result, err := s.app.DB.Exec(r.Context(), `UPDATE clients SET name=COALESCE($1,name),
 redirect_uris=CASE WHEN $2::text[] IS NULL THEN redirect_uris ELSE $2 END,

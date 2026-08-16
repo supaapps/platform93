@@ -1,12 +1,12 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: platform93-api
+  name: {{ include "platform93.fullname" . }}-api
   labels:
     {{- include "platform93.labels" . | nindent 4 }}
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: platform93
+      {{- include "platform93.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api

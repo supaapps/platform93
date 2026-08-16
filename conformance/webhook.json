@@ -1,6 +1,6 @@
 {
-  "raw_body": "{\"specversion\":\"1.0\",\"id\":\"01900000-0000-7000-8000-000000000001\",\"source\":\"platform93://applications/01900000-0000-7000-8000-000000000003\",\"type\":\"user.created\",\"contract_source\":\"platform93\",\"time\":\"2027-01-15T08:00:00Z\",\"application_id\":\"01900000-0000-7000-8000-000000000003\",\"schema_version\":\"1.0\",\"subject\":\"user/01900000-0000-7000-8000-000000000002\",\"actor\":{\"type\":\"operator\",\"id\":\"01900000-0000-7000-8000-000000000004\"},\"correlation_id\":null,\"causation_id\":null,\"data\":{\"user_id\":\"01900000-0000-7000-8000-000000000002\",\"email_verified\":false,\"is_org_verified\":false}}",
+  "raw_body": "{\"specversion\":\"1.0\",\"id\":\"01900000-0000-7000-8000-000000000001\",\"source\":\"platform93://applications/01900000-0000-7000-8000-000000000003\",\"type\":\"user.created\",\"contract_source\":\"platform93\",\"time\":\"2027-01-15T08:00:00Z\",\"application_id\":\"01900000-0000-7000-8000-000000000003\",\"schema_version\":\"1.0\",\"subject\":\"user/01900000-0000-7000-8000-000000000002\",\"actor\":{\"type\":\"control_user\",\"id\":\"01900000-0000-7000-8000-000000000004\"},\"correlation_id\":null,\"causation_id\":null,\"data\":{\"user_id\":\"01900000-0000-7000-8000-000000000002\",\"email_verified\":false,\"is_org_verified\":false}}",
   "secret": "p93_whsec_conformance",
   "timestamp": 1800000000,
-  "signature": "t=1800000000,v1=3c6a1a33573a6a9cd72840de3ef3ec153f7f4a728e6c321b973beeaa48287231"
+  "signature": "t=1800000000,v1=971db0085450a1bb7d60645af1541328eb88f23dd865ed2e5b33d82eb35d0415"
 }

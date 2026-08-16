@@ -1,6 +1,7 @@
 "use client";
 import { startTransition, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Platform93Client, Platform93Error } from "@supaapps/platform93-sdk";
+import DOMPurify from "dompurify";
 import Papa from "papaparse";
 
 type Organization = { id: string; name: string; slug: string; role: string; version?: number; retired_at?: string | null };
@@ -27,14 +28,16 @@ type OrganizationPolicy = {
   version: number;
 };
 type ManagementAPIStatus = { enabled: boolean; can_manage: boolean; active_clients: number; token_endpoint: string; api_base: string };
-type OperatorAccount = {
+type ControlAuthMethods = { email_code: boolean; magic_link: boolean; password: boolean; providers: string[] };
+type ControlExternalIdentity = { id: string; provider: "google" | "apple"; available: boolean; metadata?: { email?: string }; created_at: string; last_used_at?: string | null };
+type ControlUserAccount = {
   id: string;
   email: string;
   display_name: string;
   status: string;
   installation_role: string | null;
   organizations: { id: string; name: string; role: string }[];
-  sign_in_methods: { email_code: boolean; magic_link: boolean; password: boolean; external_identities: unknown[] };
+  sign_in_methods: { email_code: boolean; magic_link: boolean; password: boolean; external_identities: ControlExternalIdentity[] };
 };
 type FreeFormFormat = "text" | "csv" | "json";
 type CatalogFeature = { id: string; key: string; name: string; value_type: "boolean" | "quantity" | "free_form"; free_form_format?: FreeFormFormat };
@@ -43,6 +46,7 @@ type TemplateVariableDefinition = { key: string; label: string; description: str
 type CustomTemplateVariable = { key: string; label: string; type: TemplateVariableDefinition["type"]; sample: string; required: boolean };
 type StorageObject = { id: string; owner_type: string; owner_id?: string | null; visibility: "public" | "private"; filename: string; content_type: string; size_bytes: number; status: string; public_url?: string | null; metadata: Record<string, unknown>; created_at: string };
 type StorageUploadAuthorization = { object: StorageObject; upload_url: string; upload_expires_at: string; required_headers: Record<string, string> };
+type PermissionGrant = { id: string; subject_type: "user" | "client"; subject_id: string; workspace_id?: string | null; permission: string; canonical_scope: string; status: "active" | "revoked"; version: number };
 type AdminIconName =
   | "open" | "archive" | "restore" | "details" | "refresh" | "replay"
   | "trash" | "remove" | "revoke" | "disable" | "suspend" | "approve"
@@ -59,10 +63,10 @@ type FieldSpec = {
 };
 type CreateSpec = { label: string; fields: FieldSpec[] };
 type Resource = { label: string; path: string; create?: CreateSpec };
-const operatorSessionExpiredEvent = "platform93:operator-session-expired";
+const controlUserSessionExpiredEvent = "platform93:control_user-session-expired";
 const networkActivityEvent = "platform93:network-activity";
 const errorMessagePrefix = "platform93-error:";
-let operatorRefresh: Promise<boolean> | null = null;
+let controlUserRefresh: Promise<boolean> | null = null;
 let activeNetworkRequests = 0;
 
 function updateNetworkActivity(delta: number) {
@@ -75,17 +79,21 @@ function requestPath(input: RequestInfo | URL): string {
   return new URL(value, typeof location === "undefined" ? "http://localhost" : location.origin).pathname;
 }
 
-function canRefreshOperatorRequest(path: string): boolean {
+function canRefreshControlUserRequest(path: string): boolean {
   return path.startsWith("/v1/control/") && ![
     "/v1/control/auth/email/start",
     "/v1/control/auth/email/verify",
     "/v1/control/auth/token/refresh",
     "/v1/control/auth/logout",
-    "/v1/control/organization-invitations/accept",
+    "/v1/control/invitations/accept",
+    "/v1/control/auth/providers/google/start",
+    "/v1/control/auth/providers/apple/start",
+    "/v1/control/invitations/providers/google/start",
+    "/v1/control/invitations/providers/apple/start",
   ].includes(path);
 }
 
-async function refreshOperatorSession(): Promise<boolean> {
+async function refreshControlUserSession(): Promise<boolean> {
   const response = await globalThis.fetch("/v1/control/auth/token/refresh", {
     method: "POST",
     credentials: "same-origin",
@@ -98,13 +106,13 @@ const adminFetch: typeof globalThis.fetch = async (input, init) => {
   updateNetworkActivity(1);
   try {
     const response = await globalThis.fetch(input, init);
-    if (response.status !== 401 || !canRefreshOperatorRequest(requestPath(input))) return response;
+    if (response.status !== 401 || !canRefreshControlUserRequest(requestPath(input))) return response;
 
-    operatorRefresh ??= refreshOperatorSession().finally(() => {
-      operatorRefresh = null;
+    controlUserRefresh ??= refreshControlUserSession().finally(() => {
+      controlUserRefresh = null;
     });
-    if (!(await operatorRefresh)) {
-      globalThis.dispatchEvent?.(new Event(operatorSessionExpiredEvent));
+    if (!(await controlUserRefresh)) {
+      globalThis.dispatchEvent?.(new Event(controlUserSessionExpiredEvent));
       return response;
     }
     return globalThis.fetch(input, init);
@@ -121,15 +129,16 @@ const api = new Platform93Client({
 type NavigationModule = { label: string; group: string };
 const platformModules: NavigationModule[] = [
   { label: "Overview", group: "Platform" },
-  { label: "Operators", group: "Access" },
+  { label: "Platform users", group: "Access" },
   { label: "Sessions", group: "Access" },
+  { label: "Identity", group: "Configuration" },
   { label: "Providers", group: "Configuration" },
   { label: "Email", group: "Configuration" },
   { label: "Management API", group: "Configuration" },
 ];
 const organizationModules: NavigationModule[] = [
   { label: "Overview", group: "Organization" },
-  { label: "Operators", group: "Access" },
+  { label: "Platform users", group: "Access" },
   { label: "Sessions", group: "Access" },
   { label: "Policy", group: "Governance" },
   { label: "Providers", group: "Configuration" },
@@ -156,13 +165,14 @@ const resources: Record<string, Resource[]> = {
     { label: "Users", path: "users", create: { label: "Create user", fields: [{ name: "email", label: "Email", type: "email", required: true }, { name: "first_name", label: "First name" }, { name: "last_name", label: "Last name" }, { name: "locale", label: "Preferred locale", placeholder: "de-CH" }] } },
     { label: "Roles", path: "roles", create: { label: "Create role", fields: [{ name: "key", label: "Key", required: true }, { name: "name", label: "Name", required: true }, { name: "scope", label: "Scope", placeholder: "application", required: true }, { name: "permissions", label: "Permissions, comma separated", required: true }] } },
     { label: "Role assignments", path: "role-assignments", create: { label: "Assign role", fields: [{ name: "user_id", label: "User ID (choose user or client)" }, { name: "client_id", label: "Client database ID (choose user or client)" }, { name: "role_id", label: "Role ID", required: true }, { name: "workspace_id", label: "Workspace ID (workspace roles only)" }] } },
+    { label: "Direct scopes", path: "permission-grants" },
     { label: "OAuth consents", path: "oauth-consents" },
     { label: "Domains", path: "domains", create: { label: "Add domain", fields: [{ name: "hostname", label: "Hostname", required: true }] } },
-    { label: "Clients", path: "clients", create: { label: "Create client", fields: [{ name: "client_id", label: "Client ID", required: true }, { name: "name", label: "Name", required: true }, { name: "client_type", label: "Type", placeholder: "public", required: true }, { name: "redirect_uris", label: "Redirect URIs, comma separated", required: true }, { name: "allowed_grants", label: "Grants, comma separated", placeholder: "authorization_code,refresh_token" }, { name: "allowed_scopes", label: "Scopes, comma separated", placeholder: "openid,profile,email" }] } },
+    { label: "OAuth clients", path: "clients", create: { label: "Create OAuth client", fields: [{ name: "client_id", label: "Client ID", required: true }, { name: "name", label: "Name", required: true }, { name: "client_type", label: "Type", placeholder: "public", required: true }, { name: "redirect_uris", label: "Allowed redirect URIs, comma separated (not used by machine clients)" }, { name: "allowed_grants", label: "Grants, comma separated", placeholder: "authorization_code,refresh_token" }, { name: "allowed_scopes", label: "Scopes, comma separated", placeholder: "openid,profile,email" }] } },
   ],
   Workspaces: [
     { label: "Workspaces", path: "workspaces", create: { label: "Create workspace", fields: [{ name: "owner_user_id", label: "Owner user ID", required: true }, { name: "key", label: "Key", required: true }, { name: "name", label: "Name", required: true }] } },
-    { label: "Invitations", path: "workspace-invitations", create: { label: "Invite member", fields: [{ name: "workspace_id", label: "Workspace ID", required: true }, { name: "email", label: "Email", type: "email", required: true }, { name: "role_keys", label: "Workspace role keys, comma separated", required: true }, { name: "expires_in", label: "Expires in seconds", type: "number", placeholder: "604800" }] } },
+    { label: "Invitations", path: "invitations", create: { label: "Create invitation", fields: [{ name: "email", label: "Email", type: "email", required: true }, { name: "workspace_id", label: "Workspace ID (optional)" }, { name: "application_role_keys", label: "Application role keys, comma separated" }, { name: "workspace_role_keys", label: "Workspace role keys, comma separated" }, { name: "expires_in", label: "Expires in seconds", type: "number", placeholder: "604800" }] } },
     { label: "Delegations", path: "delegations" },
   ],
   Catalog: [
@@ -175,7 +185,7 @@ const resources: Record<string, Resource[]> = {
     { label: "Disputes", path: "billing/disputes" }, { label: "Provider events", path: "billing/provider-events" },
     { label: "Reconciliation", path: "billing/reconciliation-runs" },
   ],
-  Entitlements: [{ label: "Grants", path: "entitlements", create: { label: "Grant entitlement", fields: [{ name: "subject_type", label: "Subject type", placeholder: "user", required: true }, { name: "subject_id", label: "Subject ID", required: true }, { name: "product_id", label: "Product ID", required: true }, { name: "price_id", label: "Price ID" }, { name: "expires_at", label: "Expires at, RFC3339" }] } }],
+  Entitlements: [{ label: "Grants", path: "entitlements", create: { label: "Grant entitlement", fields: [{ name: "subject_type", label: "Subject type", placeholder: "user", required: true }, { name: "subject_id", label: "Subject ID", required: true }, { name: "product_id", label: "Product ID", required: true }, { name: "price_id", label: "Price ID" }, { name: "expires_at", label: "Expires at, RFC3339" }, { name: "external_reference", label: "External reference" }] } }],
   Requests: [{ label: "Local requests", path: "local-entitlement-requests" }],
   Notifications: [
     { label: "Messages", path: "notifications" },
@@ -206,7 +216,7 @@ function NetworkActivity() {
 
 function PlatformAdmin() {
   const [setup, setSetup] = useState<boolean | null>(null);
-  const [operatorEmailLoginAvailable, setOperatorEmailLoginAvailable] = useState(false);
+  const [controlAuthMethods, setControlAuthMethods] = useState<ControlAuthMethods>({ email_code: false, magic_link: false, password: true, providers: [] });
   const [needsLogin, setNeedsLogin] = useState(false);
   const [section, setSection] = useState("Overview");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -222,12 +232,27 @@ function PlatformAdmin() {
   });
   useEffect(() => {
     api
-      .request<{ available: boolean; operator_email_login_available: boolean }>("GET", "/v1/setup/status")
+      .request<{ available: boolean; control_user_email_login_available: boolean; control_auth_methods: ControlAuthMethods }>("GET", "/v1/setup/status")
       .then((value) => {
         setSetup(value.available);
-        setOperatorEmailLoginAvailable(value.operator_email_login_available);
+        setControlAuthMethods(value.control_auth_methods);
         if (!value.available) {
-          if (new URLSearchParams(location.search).get("operator_challenge") === "true") setNeedsLogin(true);
+          const params = new URLSearchParams(location.search);
+          const provider = params.get("control_provider");
+          const providerError = params.get("error");
+          if (provider) {
+            params.delete("control_provider");
+            params.delete("status");
+            params.delete("error");
+            history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}${location.hash}`);
+            if (providerError) {
+              setMessage(`${errorMessagePrefix}${titleCase(provider)} sign-in could not be completed (${providerError.replaceAll("_", " ")}).`);
+              setNeedsLogin(true);
+            } else {
+              setMessage(`${titleCase(provider)} authentication completed.`);
+              void loadOrganizationsRef.current();
+            }
+          } else if (params.get("control_user_challenge") === "true" || params.get("control_invitation") === "true") setNeedsLogin(true);
           else void loadOrganizationsRef.current();
         }
       })
@@ -235,8 +260,8 @@ function PlatformAdmin() {
   }, []);
   useEffect(() => {
     const requireLogin = () => setNeedsLogin(true);
-    globalThis.addEventListener?.(operatorSessionExpiredEvent, requireLogin);
-    return () => globalThis.removeEventListener?.(operatorSessionExpiredEvent, requireLogin);
+    globalThis.addEventListener?.(controlUserSessionExpiredEvent, requireLogin);
+    return () => globalThis.removeEventListener?.(controlUserSessionExpiredEvent, requireLogin);
   }, []);
   async function loadOrganizations() {
     try {
@@ -297,8 +322,8 @@ function PlatformAdmin() {
       />
     );
   if (needsLogin)
-    return <OperatorLogin available={operatorEmailLoginAvailable} onComplete={() => {
-      setMessage("Operator signed in.");
+    return <ControlUserLogin methods={controlAuthMethods} onComplete={() => {
+      setMessage("Platform user signed in.");
       void loadOrganizations();
     }} />;
   const contextValue = application
@@ -408,6 +433,7 @@ function PlatformAdmin() {
         <div className="view-stage" key={`${section}:${application?.id ?? organization?.id ?? "installation"}`}>
           <Workspace
             section={section}
+            installationRole={installationRole}
             organizations={organizations}
             applications={applications}
             organization={organization}
@@ -421,7 +447,7 @@ function PlatformAdmin() {
           />
         </div>
       </main>
-      {accountOpen && <OperatorAccountPanel
+      {accountOpen && <ControlUserAccountPanel
         onClose={() => setAccountOpen(false)}
         onLogout={() => void logout()}
         onOpenSessions={() => {
@@ -438,6 +464,7 @@ function PlatformAdmin() {
 
 function Setup({ onComplete }: { onComplete: () => void }) {
   const [session, setSession] = useState(false);
+  const [enableEmail, setEnableEmail] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -461,7 +488,7 @@ function Setup({ onComplete }: { onComplete: () => void }) {
             "/v1/setup/notification-providers",
             smtpInput(form),
           );
-        await api.request("POST", "/v1/setup/complete", {});
+        await api.request("POST", "/v1/setup/complete", enableEmail ? {} : { password: form.get("owner_password") });
         onComplete();
       }
     } catch (error) {
@@ -476,7 +503,7 @@ function Setup({ onComplete }: { onComplete: () => void }) {
         <p className="eyebrow">FIRST INSTALLATION</p>
         <h1>Make the platform yours.</h1>
         <p>
-          Consume the one-time console credential, establish the first operator,
+          Consume the one-time console credential, establish the first Platform user,
           then permanently close setup.
         </p>
         <form onSubmit={submit}>
@@ -493,7 +520,7 @@ function Setup({ onComplete }: { onComplete: () => void }) {
               </label>
               <div className="fields">
                 <label>
-                  Operator email
+                  Platform user email
                   <input required name="email" type="email" />
                 </label>
                 <label>
@@ -504,18 +531,19 @@ function Setup({ onComplete }: { onComplete: () => void }) {
             </>
           ) : (
             <>
-              <p className="eyebrow">OPERATOR EMAIL</p>
-              <label>
-                <input name="configure_smtp" type="checkbox" /> Configure SMTP now
+              <p className="eyebrow">EMAIL DELIVERY</p>
+              <label className="setup-email-toggle">
+                <input name="configure_smtp" type="checkbox" checked={enableEmail} onChange={(event) => setEnableEmail(event.currentTarget.checked)} />
+                <span><strong>Enable emails now</strong><small>Configure installation SMTP for Platform user sign-in codes, magic links, and control-plane messages. You can do this later.</small></span>
               </label>
-              <div className="fields">
+              {enableEmail && <div className="fields">
                 <label>
                   SMTP host
-                  <input name="host" placeholder="smtp.example.com" autoComplete="off" />
+                  <input required name="host" placeholder="smtp.example.com" autoComplete="off" />
                 </label>
                 <label>
                   Port
-                  <input name="port" type="number" defaultValue="587" />
+                  <input required name="port" type="number" min="1" max="65535" defaultValue="587" />
                 </label>
                 <label>
                   Username
@@ -527,7 +555,7 @@ function Setup({ onComplete }: { onComplete: () => void }) {
                 </label>
                 <label>
                   Sender email
-                  <input name="sender_email" type="email" autoComplete="off" />
+                  <input required name="sender_email" type="email" autoComplete="off" />
                 </label>
                 <label>
                   TLS mode
@@ -536,11 +564,14 @@ function Setup({ onComplete }: { onComplete: () => void }) {
                     <option value="implicit_tls">Implicit TLS</option>
                   </select>
                 </label>
-              </div>
-              <p>
-                SMTP can be skipped, but operator email login will remain
-                unavailable until it is configured.
-              </p>
+              </div>}
+              {!enableEmail && <>
+                <p>Email delivery will remain disabled. Set an initial password so the installation owner is not locked out; email and external providers can be enabled later.</p>
+                <label>
+                  Initial owner password
+                  <input required name="owner_password" type="password" minLength={12} maxLength={1024} autoComplete="new-password" />
+                </label>
+              </>}
             </>
           )}{" "}
           {message && <Toast message={message} onDismiss={() => setMessage("")} />}
@@ -549,27 +580,29 @@ function Setup({ onComplete }: { onComplete: () => void }) {
               ? "Working..."
               : session
                 ? "Complete installation"
-                : "Establish operator"}
+                : "Establish Platform user"}
           </button>
         </form>
       </section>
       <aside>
         <div className="number">93</div>
         <p>
-          PostgreSQL only.
+          This installation runs on a single PostgreSQL database under your control.
           <br />
-          Your data. Your boundary.
+          Everything in it can be exported.
         </p>
       </aside>
     </main>
   );
 }
 
-function OperatorLogin({ available, onComplete }: { available: boolean; onComplete: () => void }) {
+function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods; onComplete: () => void }) {
   const [challenge, setChallenge] = useState("");
-  const [method, setMethod] = useState<"email" | "password">(available ? "email" : "password");
+  const emailAvailable = methods.email_code || methods.magic_link;
+  const [method, setMethod] = useState<"email" | "password">(emailAvailable ? "email" : "password");
   const [accessPath, setAccessPath] = useState<"sign-in" | "invitation">("sign-in");
   const [invitationToken, setInvitationToken] = useState("");
+  const [invitationMethod, setInvitationMethod] = useState("");
   const [busy, setBusy] = useState(false);
   const [magicLinkProcessing, setMagicLinkProcessing] = useState(false);
   const [message, setMessage] = useState("");
@@ -580,17 +613,17 @@ function OperatorLogin({ available, onComplete }: { available: boolean; onComple
   useEffect(() => {
     if (magicLinkStarted.current) return;
     const params = new URLSearchParams(location.search);
-    if (params.get("operator_challenge") !== "true") return;
+    if (params.get("control_user_challenge") !== "true") return;
     magicLinkStarted.current = true;
     const challengeID = params.get("challenge_id");
     const linkToken = params.get("link_token");
     params.delete("challenge_id");
     params.delete("link_token");
-    params.delete("operator_challenge");
+    params.delete("control_user_challenge");
     const query = params.toString();
     history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
     if (!challengeID || !linkToken) {
-      setMessage(`${errorMessagePrefix}This operator magic link is incomplete. Request a new sign-in email.`);
+      setMessage(`${errorMessagePrefix}This Platform user magic link is incomplete. Request a new sign-in email.`);
       return;
     }
     setBusy(true);
@@ -608,17 +641,20 @@ function OperatorLogin({ available, onComplete }: { available: boolean; onComple
   useEffect(() => {
     if (invitationLinkStarted.current) return;
     const params = new URLSearchParams(location.search);
-    if (params.get("organization_invitation") !== "true") return;
+    if (params.get("control_invitation") !== "true") return;
     invitationLinkStarted.current = true;
     const token = params.get("invitation_token") ?? "";
+    const onboardingMethod = params.get("onboarding_method") ?? "";
     setAccessPath("invitation");
     setInvitationToken(token);
-    params.delete("organization_invitation");
+    setInvitationMethod(onboardingMethod);
+    params.delete("control_invitation");
     params.delete("invitation_id");
     params.delete("invitation_token");
+    params.delete("onboarding_method");
     const query = params.toString();
     history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
-    if (!token) setMessage(`${errorMessagePrefix}This organization invitation link is incomplete. Ask for a new invitation.`);
+    if (!token) setMessage(`${errorMessagePrefix}This Platform user invitation link is incomplete. Ask for a new invitation.`);
   }, []);
   function selectAccessPath(path: "sign-in" | "invitation") {
     setAccessPath(path);
@@ -634,7 +670,7 @@ function OperatorLogin({ available, onComplete }: { available: boolean; onComple
         const value = await api.request<{ challenge_id: string }>(
           "POST",
           "/v1/control/auth/email/start",
-          { email: form.get("email"), delivery: "both" },
+          { email: form.get("email"), delivery: methods.email_code && methods.magic_link ? "both" : methods.email_code ? "code" : "link" },
         );
         target.reset();
         setChallenge(value.challenge_id);
@@ -657,7 +693,7 @@ function OperatorLogin({ available, onComplete }: { available: boolean; onComple
     setBusy(true);
     const form = new FormData(event.currentTarget);
     try {
-      await api.request("POST", "/v1/control/organization-invitations/accept", {
+      await api.request("POST", "/v1/control/invitations/accept", {
         invitation_token: form.get("invitation_token"),
         display_name: form.get("display_name"),
       });
@@ -681,16 +717,30 @@ function OperatorLogin({ available, onComplete }: { available: boolean; onComple
       setBusy(false);
     }
   }
+  async function startProvider(provider: string, invitation = false) {
+    setBusy(true);
+    try {
+      const result = await api.request<{ authorize_url: string }>(
+        "POST",
+        invitation ? `/v1/control/invitations/providers/${provider}/start` : `/v1/control/auth/providers/${provider}/start`,
+        invitation ? { invitation_token: invitationToken } : {},
+      );
+      location.assign(result.authorize_url);
+    } catch (error) {
+      setMessage(readError(error));
+      setBusy(false);
+    }
+  }
   return (
     <main className="setup">
       <section>
-        <p className="eyebrow">{accessPath === "sign-in" ? "OPERATOR ACCESS" : "ORGANIZATION INVITATION"}</p>
-        <h1>{accessPath === "sign-in" ? "Return to control." : "Join your organization."}</h1>
-        <p>{accessPath === "sign-in" ? method === "email" ? "We will send a one-time code and sign-in link to your operator email." : "Use the password configured for your operator account." : "Use the one-time credential from your invitation to create or update your operator account."}</p>
+        <p className="eyebrow">{accessPath === "sign-in" ? "PLATFORM ACCESS" : "PLATFORM INVITATION"}</p>
+        <h1>{accessPath === "sign-in" ? "Return to control." : "Accept your access."}</h1>
+        <p>{accessPath === "sign-in" ? method === "email" ? "Receive a one-time email credential for your Platform user." : "Use the password configured for your Platform user account." : "Use the one-time invitation credential and its required onboarding method."}</p>
         {message && <Toast message={message} onDismiss={() => setMessage("")} />}
-        {magicLinkProcessing ? <div className="magic-link-progress" role="status"><div className="mini-loader" /><div><strong>Completing sign-in</strong><span>Verifying your one-time operator link.</span></div></div> : <>
+        {magicLinkProcessing ? <div className="magic-link-progress" role="status"><div className="mini-loader" /><div><strong>Completing sign-in</strong><span>Verifying your one-time Platform user link.</span></div></div> : <>
         {accessPath === "sign-in" ? <>
-        {method === "email" && available && <form className="operator-access-form" onSubmit={submit}>
+        {method === "email" && emailAvailable && <form className="control_user-access-form" onSubmit={submit}>
           {challenge ? (
             <label>
               Eight-character code
@@ -705,7 +755,7 @@ function OperatorLogin({ available, onComplete }: { available: boolean; onComple
             </label>
           ) : (
             <label>
-              Operator email
+              Platform user email
               <input required name="email" type="email" autoComplete="email" />
             </label>
           )}
@@ -714,49 +764,56 @@ function OperatorLogin({ available, onComplete }: { available: boolean; onComple
               ? "Working..."
               : challenge
                 ? "Verify and continue"
-                : "Send sign-in code"}
+                : methods.email_code ? "Send sign-in code" : "Send sign-in link"}
           </button>
         </form>}
-        {!available && <p className="error">Operator email login is unavailable because no installation SMTP provider is configured. Use a configured password, restore an existing session, or run <code>platform93 recover</code>.</p>}
-        {method === "password" && <form className="operator-access-form" onSubmit={submitPassword}>
-          <label>Operator email<input required name="email" type="email" autoComplete="username" /></label>
+        {!emailAvailable && !methods.password && methods.providers.length === 0 && <p className="error">No normal Platform sign-in method is available. Restore a provider or run <code>platform93 recover</code>.</p>}
+        {method === "password" && methods.password && <form className="control_user-access-form" onSubmit={submitPassword}>
+          <label>Platform user email<input required name="email" type="email" autoComplete="username" /></label>
           <label>Password<input required name="password" type="password" minLength={12} autoComplete="current-password" /></label>
           <button disabled={busy}>{busy ? "Working..." : "Sign in with password"}</button>
         </form>}
+        {methods.providers.length > 0 && <div className="external-login-options"><span>Or continue with</span>{methods.providers.map((provider) => <button type="button" disabled={busy} key={provider} onClick={() => void startProvider(provider)}>{titleCase(provider)}</button>)}</div>}
         <div className="login-alternatives">
-          {available && <button type="button" disabled={busy} onClick={() => setMethod(method === "email" ? "password" : "email")}>{method === "email" ? "Use password instead" : "Use an email code or link"}</button>}
-          {available && <span aria-hidden="true">·</span>}
-          <button type="button" disabled={busy} onClick={() => selectAccessPath("invitation")}>Accept an organization invitation</button>
+          {emailAvailable && methods.password && <button type="button" disabled={busy} onClick={() => setMethod(method === "email" ? "password" : "email")}>{method === "email" ? "Use password instead" : "Use an email code or link"}</button>}
+          {emailAvailable && methods.password && <span aria-hidden="true">·</span>}
+          <button type="button" disabled={busy} onClick={() => selectAccessPath("invitation")}>Use an invitation</button>
         </div>
-        </> : <form className="operator-access-form" onSubmit={(event) => void acceptInvitation(event)}>
+        </> : <div className="control_user-access-form">
           <label>
             Invitation credential
             <input required name="invitation_token" type="password" autoComplete="off" value={invitationToken} onChange={(event) => setInvitationToken(event.target.value)} />
           </label>
-          <label>
-            Display name
-            <input name="display_name" autoComplete="name" />
-          </label>
-          <button disabled={busy}>{busy ? "Working..." : "Accept invitation"}</button>
-          <div className="login-alternatives"><button type="button" disabled={busy} onClick={() => selectAccessPath("sign-in")}>Back to operator sign-in</button></div>
-        </form>}
+          {!invitationMethod && <label>Required onboarding method<select value={invitationMethod} onChange={(event) => setInvitationMethod(event.currentTarget.value)}><option value="">Choose method</option><option value="email">Email credential</option>{methods.providers.map((provider) => <option value={provider} key={provider}>{titleCase(provider)}</option>)}</select></label>}
+          {(invitationMethod === "email") && <form onSubmit={(event) => void acceptInvitation(event)}>
+            <input type="hidden" name="invitation_token" value={invitationToken} />
+            <label>Display name<input name="display_name" autoComplete="name" /></label>
+            <button disabled={busy || !invitationToken}>{busy ? "Working..." : "Accept with email"}</button>
+          </form>}
+          {(invitationMethod === "google" || invitationMethod === "apple") && <div className="external-login-options"><span>Provider invitation</span><button type="button" disabled={busy || !invitationToken || !methods.providers.includes(invitationMethod)} onClick={() => void startProvider(invitationMethod, true)}>Accept with {titleCase(invitationMethod)}</button></div>}
+          <div className="login-alternatives"><button type="button" disabled={busy} onClick={() => selectAccessPath("sign-in")}>Back to Platform user sign-in</button></div>
+        </div>}
         </>}
       </section>
       <aside>
         <div className="number">93</div>
-        <p>Operator authority stays outside application-user identity.</p>
+        <p>Platform authority stays outside application-user identity.</p>
       </aside>
     </main>
   );
 }
 
-function OperatorAccountPanel({ onClose, onLogout, onOpenSessions, setMessage }: { onClose: () => void; onLogout: () => void; onOpenSessions: () => void; setMessage: (value: string) => void }) {
-  const [account, setAccount] = useState<OperatorAccount | null>(null);
+function ControlUserAccountPanel({ onClose, onLogout, onOpenSessions, setMessage }: { onClose: () => void; onLogout: () => void; onOpenSessions: () => void; setMessage: (value: string) => void }) {
+  const [account, setAccount] = useState<ControlUserAccount | null>(null);
+  const [methods, setMethods] = useState<ControlAuthMethods>({ email_code: false, magic_link: false, password: false, providers: [] });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   useEffect(() => {
-    api.request<OperatorAccount>("GET", "/v1/control/auth/me")
-      .then(setAccount)
+    Promise.all([
+      api.request<ControlUserAccount>("GET", "/v1/control/auth/me"),
+      api.request<ControlAuthMethods>("GET", "/v1/control/auth/methods"),
+    ])
+      .then(([loadedAccount, loadedMethods]) => { setAccount(loadedAccount); setMethods(loadedMethods); })
       .catch((error) => setMessage(readError(error)))
       .finally(() => setLoading(false));
   }, [setMessage]);
@@ -769,7 +826,7 @@ function OperatorAccountPanel({ onClose, onLogout, onOpenSessions, setMessage }:
     try {
       await api.request("PATCH", "/v1/control/auth/me", { display_name: displayName });
       setAccount({ ...account, display_name: displayName });
-      setMessage("Operator profile updated.");
+      setMessage("Platform user profile updated.");
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
   }
@@ -783,14 +840,31 @@ function OperatorAccountPanel({ onClose, onLogout, onOpenSessions, setMessage }:
       await api.request("PUT", "/v1/control/auth/password", { current_password: form.get("current_password"), new_password: form.get("new_password") });
       setAccount({ ...account, sign_in_methods: { ...account.sign_in_methods, password: true } });
       target.reset();
-      setMessage(account.sign_in_methods.password ? "Operator password changed. Other sessions were revoked." : "Operator password added. Other sessions were revoked.");
+      setMessage(account.sign_in_methods.password ? "Platform user password changed. Other sessions were revoked." : "Platform user password added. Other sessions were revoked.");
+    } catch (error) { setMessage(readError(error)); }
+    finally { setBusy(""); }
+  }
+  async function linkIdentity(provider: string) {
+    setBusy(`link-${provider}`);
+    try {
+      const result = await api.request<{ authorize_url: string }>("POST", `/v1/control/auth/providers/${provider}/link`, {});
+      location.assign(result.authorize_url);
+    } catch (error) { setMessage(readError(error)); setBusy(""); }
+  }
+  async function unlinkIdentity(identity: ControlExternalIdentity) {
+    if (!globalThis.confirm(`Unlink ${titleCase(identity.provider)} from this Platform user?`)) return;
+    setBusy(`unlink-${identity.id}`);
+    try {
+      await api.request("DELETE", `/v1/control/auth/identities/${identity.id}`);
+      setAccount(account ? { ...account, sign_in_methods: { ...account.sign_in_methods, external_identities: account.sign_in_methods.external_identities.filter((item) => item.id !== identity.id) } } : null);
+      setMessage(`${titleCase(identity.provider)} identity unlinked.`);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
   }
   return <div className="account-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <aside className="account-panel" role="dialog" aria-modal="true" aria-labelledby="operator-account-title">
-      <header><div><p className="eyebrow">CONTROL IDENTITY</p><h2 id="operator-account-title">Operator account</h2></div><button className="outline" onClick={onClose}>Close</button></header>
-      {loading ? <LoadingState label="Loading operator account" /> : account && <>
+    <aside className="account-panel" role="dialog" aria-modal="true" aria-labelledby="control_user-account-title">
+      <header><div><p className="eyebrow">CONTROL IDENTITY</p><h2 id="control_user-account-title">Platform user account</h2></div><button className="outline" onClick={onClose}>Close</button></header>
+      {loading ? <LoadingState label="Loading Platform user account" /> : account && <>
         <div className="account-identity"><strong>{account.display_name}</strong><span>{account.email}</span><small>{account.installation_role ? `Installation ${account.installation_role}` : `${account.organizations.length} organization role${account.organizations.length === 1 ? "" : "s"}`}</small></div>
         <form className="account-form" onSubmit={(event) => void updateProfile(event)}>
           <h3>Profile</h3>
@@ -798,7 +872,11 @@ function OperatorAccountPanel({ onClose, onLogout, onOpenSessions, setMessage }:
           <label>Email<input disabled value={account.email} /><small>Email changes require a separately verified change flow and are not available yet.</small></label>
           <button disabled={busy !== ""}>{busy === "profile" ? "Saving..." : "Save profile"}</button>
         </form>
-        <section className="sign-in-method-list"><h3>Sign-in methods</h3><div><strong>Email code</strong><span>Enabled</span></div><div><strong>Magic link</strong><span>Enabled</span></div><div><strong>Password</strong><span>{account.sign_in_methods.password ? "Configured" : "Not configured"}</span></div><p>Google, Apple, and other external identities need a dedicated operator-linking flow. Application login providers are intentionally not reused for control access.</p></section>
+        <section className="sign-in-method-list"><h3>Sign-in methods</h3><div><strong>Email code</strong><span>{account.sign_in_methods.email_code ? "Available" : "Unavailable"}</span></div><div><strong>Magic link</strong><span>{account.sign_in_methods.magic_link ? "Available" : "Unavailable"}</span></div><div><strong>Password</strong><span>{account.sign_in_methods.password ? "Configured" : methods.password ? "Not configured" : "Disabled"}</span></div>
+          {account.sign_in_methods.external_identities.map((identity) => <div key={identity.id}><strong>{titleCase(identity.provider)}</strong><span>{identity.available ? identity.metadata?.email ?? "Linked" : "Linked, provider disabled"}</span><IconButton label={`Unlink ${identity.provider}`} icon="remove" tone="danger" loading={busy === `unlink-${identity.id}`} disabled={busy !== ""} onClick={() => void unlinkIdentity(identity)} /></div>)}
+          {methods.providers.filter((provider) => !account.sign_in_methods.external_identities.some((identity) => identity.provider === provider)).map((provider) => <div key={provider}><strong>{titleCase(provider)}</strong><button type="button" disabled={busy !== ""} onClick={() => void linkIdentity(provider)}>{busy === `link-${provider}` ? "Opening..." : "Link account"}</button></div>)}
+          <p>Installation Google and Apple identities are linked explicitly. Matching email addresses never link accounts automatically.</p>
+        </section>
         <form className="account-form" onSubmit={(event) => void updatePassword(event)}>
           <h3>{account.sign_in_methods.password ? "Change password" : "Add password"}</h3>
           {account.sign_in_methods.password && <label>Current password<input required name="current_password" type="password" autoComplete="current-password" /></label>}
@@ -813,6 +891,7 @@ function OperatorAccountPanel({ onClose, onLogout, onOpenSessions, setMessage }:
 
 function Workspace({
   section,
+  installationRole,
   organizations,
   applications,
   organization,
@@ -825,6 +904,7 @@ function Workspace({
   setMessage,
 }: {
   section: string;
+  installationRole: OrganizationPage["installation_role"];
   organizations: Organization[];
   applications: Application[];
   organization: Organization | null;
@@ -865,7 +945,8 @@ function Workspace({
   }, [application, selectedResource, refresh, setMessage]);
   async function inspect(item: Record<string, unknown>) {
     if (!selectedResource || !application) return;
-    const path = resourceDetailPath(selectedResource.path, String(item.id ?? ""));
+    const resourceID = selectedResource.path === "clients" ? String(item.client_id ?? "") : String(item.id ?? "");
+    const path = resourceDetailPath(selectedResource.path, resourceID);
     if (!path) return;
     try {
       const value = await api.request<Record<string, unknown>>("GET", `/v1/control/applications/${application.id}/${path}`);
@@ -894,8 +975,8 @@ function Workspace({
     } catch (error) { setMessage(readError(error)); }
     finally { setBoundaryAction(""); }
   }
-  if (!application && ["Operators", "Policy", "Email", "Management API", "Sessions"].includes(section))
-    return <ControlPlane organization={organization} section={section} setMessage={setMessage} />;
+  if (!application && ["Platform users", "Policy", "Email", "Management API", "Sessions", "Identity"].includes(section))
+    return <ControlPlane organization={organization} section={section} installationRole={installationRole} setMessage={setMessage} />;
   if (!application && section === "Providers")
     return <ProviderSettings basePath={organization ? `/v1/control/organizations/${organization.id}` : "/v1/control/installation"} scope={organization ? "organization" : "installation"} setMessage={setMessage} />;
   if (!application)
@@ -982,6 +1063,7 @@ function Workspace({
         {selectedResource.path === "event-types" && <EventTypeCreator application={application} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
         {selectedResource.path === "webhooks" && <WebhookCreator application={application} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
         {selectedResource.path === "notification-templates" && <NotificationTemplateCreator application={application} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
+        {selectedResource.path === "permission-grants" && <PermissionGrantManager application={application} setMessage={setMessage} onChanged={() => setRefresh((value) => value + 1)} />}
         {selectedResource.create && <CreateResource application={application} resource={selectedResource} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
         <section className="table">
           <div className="table-head"><span>{selectedResource.label}</span><div><span>{items.length} records</span><IconButton label={`Refresh ${selectedResource.label.toLowerCase()}`} icon="refresh" loading={loading} onClick={() => setRefresh((value) => value + 1)} /></div></div>
@@ -1010,7 +1092,7 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
       const raw = form.get(field.name);
       if (field.type === "checkbox") body[field.name] = raw === "on";
       else if (field.type === "number") body[field.name] = raw ? Number(raw) : undefined;
-      else if (["permissions", "redirect_uris", "allowed_grants", "allowed_scopes", "role_keys", "event_filters"].includes(field.name))
+      else if (["permissions", "redirect_uris", "allowed_grants", "allowed_scopes", "role_keys", "application_role_keys", "workspace_role_keys", "event_filters"].includes(field.name))
         body[field.name] = String(raw ?? "").split(",").map((value) => value.trim()).filter(Boolean);
       else if (raw !== "") body[field.name] = raw;
     }
@@ -1035,6 +1117,7 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
         <div className="create-fields">{resource.create.fields.map((field) => {
           const visible = !field.showWhen || (fieldValues[field.showWhen.field] ?? resource.create!.fields.find((candidate) => candidate.name === field.showWhen!.field)?.options?.[0]?.value) === field.showWhen.value;
           if (!visible) return null;
+          if (field.name === "permissions") return <PermissionListInput key={field.name} name={field.name} label={field.label} />;
           return <label key={field.name}>{field.label}
             {field.options ? <select name={field.name} required={field.required} value={fieldValues[field.name] ?? field.options[0]?.value ?? ""} onChange={(event) => setFieldValues((values) => ({ ...values, [field.name]: event.target.value }))}>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : field.type === "textarea" ? <textarea name={field.name} required={field.required} placeholder={field.placeholder} /> : field.type === "checkbox" ? <input name={field.name} type="checkbox" defaultChecked /> : <input name={field.name} type={field.type ?? "text"} required={field.required} defaultValue={field.placeholder} />}
           </label>;
@@ -1048,19 +1131,19 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
 function ResourceRow({ item, resource, application, setMessage, onInspect, onChanged }: { item: Record<string, unknown>; resource: string; application: Application; setMessage: (value: string) => void; onInspect: () => Promise<void>; onChanged: () => void }) {
   const [pendingAction, setPendingAction] = useState("");
   const id = String(item.id ?? "");
-  const actions: { label: string; icon?: AdminIconName; tone?: "default" | "danger" | "success"; method?: "POST" | "DELETE"; suffix: string; body?: unknown }[] = [];
+  const actions: { label: string; icon?: AdminIconName; tone?: "default" | "danger" | "success"; method?: "POST" | "DELETE"; suffix: string; body?: unknown; headers?: Record<string, string> }[] = [];
   if (resource === "users") actions.push(
     { label: "Verify organization", icon: "verify", tone: "success", suffix: `users/${id}/verify-organization`, body: {} },
-    { label: item.status === "suspended" ? "Restore user" : "Suspend user", icon: item.status === "suspended" ? "restore" : "suspend", tone: item.status === "suspended" ? "default" : "danger", suffix: `users/${id}/${item.status === "suspended" ? "restore" : "suspend"}`, body: { reason: "operator action" } },
+    { label: item.status === "suspended" ? "Restore user" : "Suspend user", icon: item.status === "suspended" ? "restore" : "suspend", tone: item.status === "suspended" ? "default" : "danger", suffix: `users/${id}/${item.status === "suspended" ? "restore" : "suspend"}`, body: { reason: "control_user action" } },
   );
   if (resource === "billing/providers") actions.push({ label: "Verify provider", icon: "verify", tone: "success", suffix: `billing/providers/${id}/verify`, body: {} }, { label: "Reconcile provider", icon: "refresh", suffix: `billing/providers/${id}/reconciliation-runs`, body: {} });
   if (resource === "billing/subscriptions" && item.status !== "canceled") actions.push({ label: "Cancel at period end", suffix: `billing/subscriptions/${id}/cancel`, body: { at_period_end: true } });
   if (resource === "local-entitlement-requests" && item.status === "pending") actions.push(
     { label: "Approve request", icon: "approve", tone: "success", suffix: `local-entitlement-requests/${id}/approve`, body: {} },
-    { label: "Reject request", icon: "reject", tone: "danger", suffix: `local-entitlement-requests/${id}/reject`, body: { reason: "operator rejected" } },
+    { label: "Reject request", icon: "reject", tone: "danger", suffix: `local-entitlement-requests/${id}/reject`, body: { reason: "control_user rejected" } },
   );
-  if (resource === "local-entitlement-requests" && ["rejected", "canceled"].includes(String(item.status))) actions.push({ label: "Reopen request", icon: "restore", suffix: `local-entitlement-requests/${id}/reopen`, body: { reason: "operator reopened for review" } });
-  if (resource === "entitlements") actions.push({ label: item.revoked_at ? "Restore entitlement" : "Revoke entitlement", icon: item.revoked_at ? "restore" : "revoke", tone: item.revoked_at ? "default" : "danger", suffix: `entitlements/${id}/${item.revoked_at ? "restore" : "revoke"}`, body: { reason: item.revoked_at ? "operator restored" : "operator revoked" } });
+  if (resource === "local-entitlement-requests" && ["rejected", "canceled"].includes(String(item.status))) actions.push({ label: "Reopen request", icon: "restore", suffix: `local-entitlement-requests/${id}/reopen`, body: { reason: "control_user reopened for review" } });
+  if (resource === "entitlements") actions.push({ label: item.revoked_at ? "Restore entitlement" : "Revoke entitlement", icon: item.revoked_at ? "restore" : "revoke", tone: item.revoked_at ? "default" : "danger", suffix: `entitlements/${id}/${item.revoked_at ? "restore" : "revoke"}`, body: { reason: item.revoked_at ? "control_user restored" : "control_user revoked" } });
   if (resource === "notification-templates" && !item.inherited) actions.push({ label: item.status === "draft" ? "Publish template" : "Archive template", icon: item.status === "draft" ? "publish" : "archive", tone: item.status === "draft" ? "success" : "danger", suffix: `notification-templates/${id}/${item.status === "draft" ? "publish" : "archive"}`, body: {} });
   if (resource === "notifications" && ["failed", "dead"].includes(String(item.status))) actions.push({ label: "Retry notification", icon: "refresh", suffix: `notifications/${id}/retry`, body: {} });
   if (resource === "webhook-deliveries" && item.status !== "delivered") actions.push({ label: "Replay webhook", icon: "replay", suffix: `webhook-deliveries/${id}/replay`, body: {} });
@@ -1068,19 +1151,28 @@ function ResourceRow({ item, resource, application, setMessage, onInspect, onCha
   if (resource === "sender-identities" && !item.is_default) actions.push({ label: "Make default sender", icon: "star", suffix: `sender-identities/${id}/default`, body: {} });
   if (resource === "roles" && !item.built_in) actions.push({ label: "Delete role", icon: "trash", tone: "danger", method: "DELETE", suffix: `roles/${id}` });
   if (resource === "role-assignments") actions.push({ label: "Remove role assignment", icon: "remove", tone: "danger", method: "DELETE", suffix: `role-assignments/${id}` });
+  if (resource === "permission-grants" && item.status === "active") actions.push({ label: "Revoke direct scope", icon: "revoke", tone: "danger", method: "DELETE", suffix: `permission-grants/${id}`, headers: { "If-Match": `"v${Number(item.version ?? 1).toString(16)}"` } });
   if (resource === "workspaces") actions.push({ label: "Retire workspace", icon: "archive", tone: "danger", method: "DELETE", suffix: `workspaces/${id}` });
+  if (resource === "invitations" && item.status === "pending") actions.push(
+    { label: "Resend invitation", icon: "send", suffix: `invitations/${id}/resend`, body: {} },
+    { label: "Revoke invitation", icon: "revoke", tone: "danger", method: "DELETE", suffix: `invitations/${id}` },
+  );
   if (resource === "webhooks" && !item.disabled_at) actions.push(
     { label: "Send test webhook", icon: "send", suffix: `webhooks/${id}/test`, body: {} },
     { label: "Rotate webhook secret", icon: "key-rotate", suffix: `webhooks/${id}/rotate-secret`, body: {} },
     { label: "Disable webhook", icon: "disable", tone: "danger", method: "DELETE", suffix: `webhooks/${id}` },
   );
+  if (resource === "clients") actions.push(
+    ...(item.client_type === "public" ? [] : [{ label: "Rotate client secret", icon: "key-rotate" as AdminIconName, suffix: `clients/${String(item.client_id)}/rotate-secret`, body: {} }]),
+    { label: "Disable OAuth client", icon: "disable", tone: "danger", method: "DELETE", suffix: `clients/${String(item.client_id)}` },
+  );
   if (resource === "event-types" && item.source === "application" && item.status === "active") actions.push({ label: "Archive event type", icon: "archive", tone: "danger", method: "DELETE", suffix: `event-types/${id}` });
   async function act(action: (typeof actions)[number]) {
     setPendingAction(action.label);
     try {
-      const result = await api.request<Record<string, unknown>>(action.method ?? "POST", `/v1/control/applications/${application.id}/${action.suffix}`, action.body ?? {}, { idempotencyKey: crypto.randomUUID() });
-      const returnedSecret = result?.secret;
-      setMessage(returnedSecret ? `Store this one-time webhook secret now: ${String(returnedSecret)}` : result ? JSON.stringify(result) : `${action.label} completed.`);
+      const result = await api.request<Record<string, unknown>>(action.method ?? "POST", `/v1/control/applications/${application.id}/${action.suffix}`, action.body ?? {}, { idempotencyKey: crypto.randomUUID(), headers: action.headers });
+      const returnedSecret = result?.secret ?? result?.client_secret;
+      setMessage(returnedSecret ? `Store this one-time credential now: ${String(returnedSecret)}` : result ? JSON.stringify(result) : `${action.label} completed.`);
       onChanged();
     } catch (error) { setMessage(readError(error)); }
     finally { setPendingAction(""); }
@@ -1168,7 +1260,7 @@ function PageSummary({ summary, help, action }: { summary: ReactNode; help: Reac
 
 function resourceDetailPath(resource: string, id: string) {
   const supported = new Set([
-    "users", "roles", "workspaces", "products", "entitlements", "local-entitlement-requests", "event-types", "events", "audit-logs",
+    "users", "roles", "permission-grants", "clients", "workspaces", "products", "entitlements", "local-entitlement-requests", "event-types", "events", "audit-logs",
     "notifications", "notification-templates", "notification-providers", "webhooks", "webhook-deliveries", "billing/providers",
     "billing/subscriptions", "billing/invoices", "billing/payments", "billing/refunds",
     "billing/disputes", "billing/reconciliation-runs",
@@ -1190,6 +1282,7 @@ function DetailPanel({ detail, resource, application, setMessage, onClose, onCha
     {resource === "products" && <ProductEntitlementEditor key={String(detail.version ?? 1)} product={detail} application={application} setMessage={setMessage} onChanged={onChanged} />}
     {resource === "products" && <PriceCreator productID={id} application={application} setMessage={setMessage} onChanged={onChanged} />}
     {resource === "roles" && <RoleEditor role={detail} application={application} setMessage={setMessage} onChanged={onChanged} />}
+    {resource === "clients" && <OAuthClientEditor client={detail} application={application} setMessage={setMessage} onChanged={onChanged} />}
     {resource === "workspaces" && <WorkspaceMembers workspaceID={id} application={application} setMessage={setMessage} />}
     {resource === "users" && <UserAdministration user={detail} application={application} setMessage={setMessage} onChanged={onChanged} />}
     {resource === "notification-providers" && <ProviderTest providerID={id} application={application} setMessage={setMessage} />}
@@ -1198,6 +1291,38 @@ function DetailPanel({ detail, resource, application, setMessage, onClose, onCha
     {resource === "event-types" && <EventTypeEditor definition={detail} application={application} setMessage={setMessage} onChanged={onChanged} />}
     {resource !== "notification-templates" && <pre>{JSON.stringify(detail, null, 2)}</pre>}
   </section></div>;
+}
+
+function OAuthClientEditor({ client, application, setMessage, onChanged }: { client: Record<string, unknown>; application: Application; setMessage: (value: string) => void; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const list = (name: string) => String(form.get(name) ?? "").split("\n").map((value) => value.trim()).filter(Boolean);
+    setBusy(true);
+    try {
+      await api.request("PATCH", `/v1/control/applications/${application.id}/clients/${encodeURIComponent(String(client.client_id))}`, {
+        name: String(form.get("name") ?? "").trim(),
+        redirect_uris: list("redirect_uris"),
+        allowed_grants: list("allowed_grants"),
+        allowed_scopes: list("allowed_scopes"),
+      });
+      setMessage("OAuth client and allowed redirect URIs updated.");
+      onChanged();
+    } catch (error) { setMessage(readError(error)); }
+    finally { setBusy(false); }
+  }
+  const lines = (value: unknown) => Array.isArray(value) ? value.map(String).join("\n") : "";
+  return <form className="detail-form" onSubmit={(event) => void submit(event)}>
+    <strong>OAuth client configuration</strong>
+    <label><span>Client ID</span><input disabled value={String(client.client_id ?? "")} /></label>
+    <label><span>Client type</span><input disabled value={String(client.client_type ?? "")} /></label>
+    <label><span>Name</span><input required name="name" defaultValue={String(client.name ?? "")} /></label>
+    <label className="full-field"><span>Allowed redirect URIs</span><textarea required={client.client_type === "public"} name="redirect_uris" defaultValue={lines(client.redirect_uris)} placeholder={'https://app.example/auth/callback\nsampleapp://auth/callback'} /><small>One exact URI per line. Public clients may use HTTPS, loopback HTTP, or a native app scheme such as sampleapp://. OAuth, passwordless, provider, billing, and delegation redirects are checked against this allowlist.</small></label>
+    <label><span>Allowed grants</span><textarea name="allowed_grants" defaultValue={lines(client.allowed_grants)} placeholder={'authorization_code\nrefresh_token'} /></label>
+    <label><span>Allowed OAuth scopes</span><textarea name="allowed_scopes" defaultValue={lines(client.allowed_scopes)} placeholder={'openid\nprofile\nemail'} /></label>
+    <button disabled={busy}>{busy ? "Saving client..." : "Save OAuth client"}</button>
+  </form>;
 }
 
 function RoleEditor({ role, application, setMessage, onChanged }: { role: Record<string, unknown>; application: Application; setMessage: (value: string) => void; onChanged: () => void }) {
@@ -1209,12 +1334,80 @@ function RoleEditor({ role, application, setMessage, onChanged }: { role: Record
       await api.request("PATCH", `/v1/control/applications/${application.id}/roles/${String(role.id)}`, {
         name: form.get("name"),
         permissions: String(form.get("permissions") ?? "").split(",").map((value) => value.trim()).filter(Boolean),
-      });
+      }, { headers: { "If-Match": `"v${Number(role.version ?? 1).toString(16)}"` } });
       setMessage("Role updated.");
       onChanged();
     } catch (error) { setMessage(readError(error)); }
   }
-  return <form className="detail-form" onSubmit={(event) => void submit(event)}><strong>Update custom role</strong><label><span>Name</span><input required name="name" defaultValue={String(role.name ?? "")} /></label><label className="full-field"><span>Permissions, comma separated</span><textarea required name="permissions" defaultValue={Array.isArray(role.permissions) ? role.permissions.join(", ") : ""} /></label><button>Update role</button></form>;
+  return <form className="detail-form" onSubmit={(event) => void submit(event)}><strong>Update custom role</strong><label><span>Name</span><input required name="name" defaultValue={String(role.name ?? "")} /></label><PermissionListInput name="permissions" label="Permission keys" initial={Array.isArray(role.permissions) ? role.permissions.map(String) : []} /><button>Update role</button></form>;
+}
+
+const relativePermissionPattern = /^(?:\*|[a-z0-9][a-z0-9._-]{0,63}(?::(?:[a-z0-9][a-z0-9._-]{0,63}|\*))*)$/;
+
+function PermissionListInput({ name, label, initial = [] }: { name: string; label: string; initial?: string[] }) {
+  const [permissions, setPermissions] = useState(initial);
+  const [draft, setDraft] = useState("");
+  const valid = draft.length <= 160 && relativePermissionPattern.test(draft) && !draft.split(":").slice(0, -1).includes("*");
+  function add() {
+    if (!valid || permissions.includes(draft) || permissions.length >= 200) return;
+    setPermissions((values) => [...values, draft]);
+    setDraft("");
+  }
+  return <fieldset className="permission-list-field">
+    <legend>{label}</legend>
+    <input type="hidden" name={name} value={permissions.join(",")} />
+    <div className="permission-entry"><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); add(); } }} placeholder="invoices:read" aria-invalid={draft !== "" && !valid} /><button type="button" className="outline" disabled={!valid || permissions.includes(draft)} onClick={add}>Add permission</button></div>
+    <small>Lowercase ASCII segments separated by colons. Use <code>*</code> only as the final segment.</small>
+    <div className="permission-chips">{permissions.map((permission) => <span key={permission}><code>{permission}</code><IconButton label={`Remove ${permission}`} icon="remove" tone="danger" onClick={() => setPermissions((values) => values.filter((value) => value !== permission))} /></span>)}</div>
+  </fieldset>;
+}
+
+function PermissionGrantManager({ application, setMessage, onChanged }: { application: Application; setMessage: (value: string) => void; onChanged: () => void }) {
+  const [subjectType, setSubjectType] = useState<PermissionGrant["subject_type"]>("user");
+  const [subjectID, setSubjectID] = useState("");
+  const [workspaceID, setWorkspaceID] = useState("");
+  const [permission, setPermission] = useState("");
+  const [effective, setEffective] = useState<{ roles: { application: string[]; workspaces: Record<string, string[]> }; scopes: string[]; provenance: Array<{ scope: string; source: string; role_key?: string; grant_id?: string }> } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const valid = permission.length <= 160 && relativePermissionPattern.test(permission) && !permission.split(":").slice(0, -1).includes("*") && permission.split(":")[0] !== "roles";
+  const canonical = valid ? `/applications/${application.id}${workspaceID ? `/workspaces/${workspaceID}` : ""}/${permission.replaceAll(":", "/")}` : "Enter a valid lowercase colon-delimited permission.";
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!valid) return;
+    setBusy(true);
+    try {
+      await api.request<PermissionGrant>("POST", `/v1/control/applications/${application.id}/permission-grants`, {
+        subject_type: subjectType, subject_id: subjectID, workspace_id: workspaceID || undefined, permission,
+      }, { idempotencyKey: crypto.randomUUID() });
+      setMessage("Direct scope granted.");
+      setPermission("");
+      onChanged();
+    } catch (error) { setMessage(readError(error)); }
+    finally { setBusy(false); }
+  }
+  async function inspectEffective() {
+    if (!subjectID) return;
+    setBusy(true);
+    try {
+      const query = new URLSearchParams({ subject_type: subjectType, subject_id: subjectID });
+      if (workspaceID) query.set("workspace_id", workspaceID);
+      setEffective(await api.request("GET", `/v1/control/applications/${application.id}/permission-grants/effective?${query}`));
+    } catch (error) { setMessage(readError(error)); }
+    finally { setBusy(false); }
+  }
+  return <section className="create-panel open permission-grant-manager">
+    <form onSubmit={(event) => void create(event)}>
+      <div className="create-fields">
+        <label>Subject type<select value={subjectType} onChange={(event) => setSubjectType(event.target.value as PermissionGrant["subject_type"])}><option value="user">User</option><option value="client">Machine client</option></select></label>
+        <label>Subject ID<input required value={subjectID} onChange={(event) => setSubjectID(event.target.value)} placeholder="UUID" /></label>
+        <label>Workspace ID, optional<input value={workspaceID} onChange={(event) => setWorkspaceID(event.target.value)} placeholder="UUID" /></label>
+        <label>Permission segments<input required value={permission} onChange={(event) => setPermission(event.target.value)} placeholder="members:42:read" aria-invalid={permission !== "" && !valid} /></label>
+      </div>
+      <code className={valid ? "scope-preview valid" : "scope-preview"}>{canonical}</code>
+      <ActionGroup label="Direct scope actions"><button disabled={busy || !valid || !subjectID}>{busy ? "Working..." : "Grant direct scope"}</button><button type="button" className="outline" disabled={busy || !subjectID} onClick={() => void inspectEffective()}>View effective access</button></ActionGroup>
+    </form>
+    {effective && <div className="effective-access"><strong>Effective roles</strong><pre>{JSON.stringify(effective.roles, null, 2)}</pre><strong>Effective scopes and provenance</strong><pre>{effective.provenance.map((entry) => `${entry.scope}\n  ${entry.source}${entry.role_key ? `: ${entry.role_key}` : ""}${entry.grant_id ? `: ${entry.grant_id}` : ""}`).join("\n") || "No effective scopes"}</pre></div>}
+  </section>;
 }
 
 function useEventTypes(application: Application, setMessage: (value: string) => void) {
@@ -1386,7 +1579,7 @@ function UserAdministration({ user, application, setMessage, onChanged }: { user
   }, [application.id, userID, refresh, setMessage]);
   async function revokeAll() {
     try {
-      await api.request("POST", `/v1/control/applications/${application.id}/users/${userID}/sessions/revoke`, { reason: "operator revoked all user sessions" });
+      await api.request("POST", `/v1/control/applications/${application.id}/users/${userID}/sessions/revoke`, { reason: "control_user revoked all user sessions" });
       setMessage("All sessions for this user were revoked.");
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
@@ -1633,19 +1826,23 @@ function emailPreviewDocument(body: string) {
 }
 
 function sanitizeEditorHTML(value: string) {
-  if (typeof document === "undefined") return value;
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = value;
-  wrapper.querySelectorAll("script,iframe,object,embed,form,input,button,style,link,meta").forEach((node) => node.remove());
-  wrapper.querySelectorAll("*").forEach((node) => {
-    for (const attribute of Array.from(node.attributes)) {
-      const name = attribute.name.toLowerCase();
-      const attributeValue = attribute.value.trim().toLowerCase();
-      if (name.startsWith("on") || name === "srcdoc" || ((name === "href" || name === "src") && (attributeValue.startsWith("javascript:") || attributeValue.startsWith("data:text/html")))) node.removeAttribute(attribute.name);
-    }
-    if (node instanceof HTMLImageElement && (!node.src.startsWith("https://") || node.hasAttribute("srcset"))) node.remove();
+  if (typeof window === "undefined") return "";
+  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+    if (node.nodeName !== "IMG") return;
+    const source = (node as Element).getAttribute("src") ?? "";
+    if (!/^(?:https:\/\/[^\s]+|\{\{[A-Za-z][A-Za-z0-9_.-]{0,100}\}\})$/i.test(source)) node.remove();
   });
-  return wrapper.innerHTML;
+  try {
+    return DOMPurify.sanitize(value, {
+      ALLOWED_TAGS: ["a", "b", "blockquote", "br", "div", "em", "h1", "h2", "h3", "h4", "hr", "i", "img", "li", "ol", "p", "span", "strong", "table", "tbody", "td", "th", "thead", "tr", "u", "ul"],
+      ALLOWED_ATTR: ["alt", "height", "href", "src", "title", "width"],
+      ALLOWED_URI_REGEXP: /^(?:(?:https|mailto|tel):[^\s]*|\{\{[A-Za-z][A-Za-z0-9_.-]{0,100}\}\})$/i,
+      FORBID_TAGS: ["button", "embed", "form", "iframe", "input", "link", "meta", "object", "script", "style"],
+      FORBID_ATTR: ["srcdoc", "srcset", "style"],
+    });
+  } finally {
+    DOMPurify.removeHook("afterSanitizeAttributes");
+  }
 }
 
 function TemplateImagePicker({ application, onInsert }: { application: Application; onInsert: (markup: string) => void }) {
@@ -1808,10 +2005,10 @@ function NotificationTemplateComposer({ application, variables, initial, submitL
   async function submit() {
     setBusy(true);
     try {
-      await onSubmit({ key, locale, category, subject_template: subject, text_template: textBody, html_template: htmlBody, variable_schema: customVariableSchema(customVariables) });
+      await onSubmit({ key, locale, category, subject_template: subject, text_template: textBody, html_template: sanitizeEditorHTML(htmlBody), variable_schema: customVariableSchema(customVariables) });
     } finally { setBusy(false); }
   }
-  const renderedHTML = renderTemplatePreview(htmlBody, sampleValues, true);
+  const renderedHTML = sanitizeEditorHTML(renderTemplatePreview(htmlBody, sampleValues, true));
   return <div className="template-composer">
     <header className="template-composer-head"><div><p className="eyebrow">MESSAGE DESIGNER</p><h3>{initial ? `Edit ${key}` : "Compose a notification"}</h3><p>Build the email and plain-text fallback together. Codes are replaced only when the notification is queued.</p></div><span className="template-version">{initial ? `VERSION ${String(initial.version)}` : "NEW DRAFT"}</span></header>
     <div className="template-meta">
@@ -2055,6 +2252,8 @@ type InternalApplicationConfig = {
   passwordless_enabled: boolean;
   personal_api_keys_enabled: boolean;
   delegation_enabled: boolean;
+  user_invitations_enabled: boolean;
+  custom_token_claim_keys: string[];
 };
 
 const defaultInternalApplicationConfig: InternalApplicationConfig = {
@@ -2063,6 +2262,8 @@ const defaultInternalApplicationConfig: InternalApplicationConfig = {
   passwordless_enabled: true,
   personal_api_keys_enabled: false,
   delegation_enabled: false,
+  user_invitations_enabled: false,
+  custom_token_claim_keys: [],
 };
 
 function ApplicationConfigurationSettings({ application, setMessage, onChanged }: { application: Application; setMessage: (value: string) => void; onChanged: (value: Application) => void }) {
@@ -2112,7 +2313,7 @@ function ApplicationConfigurationSettings({ application, setMessage, onChanged }
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
   }
-  const toggle = (key: keyof Omit<InternalApplicationConfig, "registration_mode">) => setInternal((value) => ({ ...value, [key]: !value[key] }));
+  const toggle = (key: "password_enabled" | "passwordless_enabled" | "personal_api_keys_enabled" | "delegation_enabled" | "user_invitations_enabled") => setInternal((value) => ({ ...value, [key]: !value[key] }));
   const publicConfigURL = `${api.baseUrl}/v1/applications/${encodeURIComponent(application.id)}/public-config`;
   return <section className="application-configuration">
     <header><p className="eyebrow">APPLICATION CONFIGURATION</p><h3>Runtime and access policy</h3><p>Public configuration is safe runtime data for clients. Internal configuration is enforced by Platform93 and is never returned as a raw object to unauthenticated callers.</p></header>
@@ -2136,7 +2337,9 @@ function ApplicationConfigurationSettings({ application, setMessage, onChanged }
         <label className="toggle-setting"><input type="checkbox" checked={internal.password_enabled} onChange={() => toggle("password_enabled")} /><span><strong>Password authentication</strong><small>Allow users with a password identity to sign in.</small></span></label>
         <label className="toggle-setting"><input type="checkbox" checked={internal.passwordless_enabled} onChange={() => toggle("passwordless_enabled")} /><span><strong>Email codes and magic links</strong><small>Allow passwordless email challenges for existing users and public signup when enabled.</small></span></label>
         <label className="toggle-setting"><input type="checkbox" checked={internal.personal_api_keys_enabled} onChange={() => toggle("personal_api_keys_enabled")} /><span><strong>Personal API keys</strong><small>Users can create opaque keys carrying their live application permissions. Disabling revokes active keys.</small></span></label>
-        <label className="toggle-setting"><input type="checkbox" checked={internal.delegation_enabled} onChange={() => toggle("delegation_enabled")} /><span><strong>Operator delegation</strong><small>Allow audited, short-lived delegated application-user access. Disabling revokes active delegations.</small></span></label>
+        <label className="toggle-setting"><input type="checkbox" checked={internal.delegation_enabled} onChange={() => toggle("delegation_enabled")} /><span><strong>Platform user delegation</strong><small>Allow audited, short-lived delegated application-user access. Disabling revokes active delegations.</small></span></label>
+        <label className="toggle-setting"><input type="checkbox" checked={internal.user_invitations_enabled} onChange={() => toggle("user_invitations_enabled")} /><span><strong>User-managed invitations</strong><small>Allow workspace owners and authorized members to invite users. Existing invitations remain exchangeable when disabled.</small></span></label>
+        <label>JWT custom claim allowlist<input value={internal.custom_token_claim_keys.join(", ")} onChange={(event) => setInternal((value) => ({ ...value, custom_token_claim_keys: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))} placeholder="plan, account_tier, region" /><small>Selected user custom attributes are emitted only under <code>custom_claims</code>, up to 4 KiB.</small></label>
         <button disabled={busy !== ""}>{busy === "internal" ? "Applying policy..." : "Save access policy"}</button>
       </form>
     </div>
@@ -2219,15 +2422,82 @@ function ApplicationPicker({ organization, setApplication, setMessage, reloadBou
   </section>;
 }
 
-function ControlPlane({ organization, section, setMessage }: {
+function InstallationIdentitySettings({ setMessage }: { setMessage: (value: string) => void }) {
+  const [policy, setPolicy] = useState<{ email_code_enabled: boolean; magic_link_enabled: boolean; password_enabled: boolean } | null>(null);
+  const [providers, setProviders] = useState<Record<string, unknown>[]>([]);
+  const [busy, setBusy] = useState("");
+  const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    Promise.all([
+      api.request<{ email_code_enabled: boolean; magic_link_enabled: boolean; password_enabled: boolean }>("GET", "/v1/control/installation/auth-policy"),
+      api.request<Page<Record<string, unknown>>>("GET", "/v1/control/installation/auth/providers"),
+    ]).then(([loadedPolicy, loadedProviders]) => { setPolicy(loadedPolicy); setProviders(loadedProviders.items); })
+      .catch((error) => setMessage(readError(error)));
+  }, [refresh, setMessage]);
+  async function savePolicy(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const next = { email_code_enabled: form.get("email_code_enabled") === "on", magic_link_enabled: form.get("magic_link_enabled") === "on", password_enabled: form.get("password_enabled") === "on" };
+    setBusy("policy");
+    try {
+      try {
+        await api.request("PATCH", "/v1/control/installation/auth-policy", next);
+      } catch (error) {
+        if (!(error instanceof Platform93Error) || error.problem.code !== "control_auth_confirmation_required" || !globalThis.confirm(`${error.problem.detail} Affected users: ${error.problem.affected_users ?? "unknown"}. Continue?`)) throw error;
+        await api.request("PATCH", "/v1/control/installation/auth-policy", { ...next, confirm_affected_users: true });
+      }
+      setPolicy(next);
+      setMessage("Platform sign-in policy updated.");
+    } catch (error) { setMessage(readError(error)); }
+    finally { setBusy(""); }
+  }
+  async function updateProvider(provider: Record<string, unknown>, field: "inheritable" | "control_login_enabled", value: boolean) {
+    const key = String(provider.provider);
+    setBusy(`${field}-${key}`);
+    try {
+      const body = { [field]: value };
+      try {
+        await api.request("PATCH", `/v1/control/installation/auth/providers/${key}`, body);
+      } catch (error) {
+        if (field !== "control_login_enabled" || value || !(error instanceof Platform93Error) || error.problem.code !== "control_auth_confirmation_required" || !globalThis.confirm(`${error.problem.detail} Affected users: ${error.problem.affected_users ?? "unknown"}. Continue?`)) throw error;
+        await api.request("PATCH", `/v1/control/installation/auth/providers/${key}`, { ...body, confirm_affected_users: true });
+      }
+      setMessage(`${titleCase(key)} ${field === "inheritable" ? "inheritance" : "Platform login"} updated.`);
+      setRefresh((current) => current + 1);
+    } catch (error) { setMessage(readError(error)); }
+    finally { setBusy(""); }
+  }
+  if (!policy) return <LoadingState label="Loading Platform identity policy" />;
+  return <section className="control-scope identity-policy">
+    <div className="scope-heading"><p className="eyebrow">PLATFORM IDENTITY</p><h3>Platform user sign-in</h3><p>Control-plane identity is separate from application users. Disable methods only after every installation owner has another usable method.</p></div>
+    <form className="policy-settings" onSubmit={(event) => void savePolicy(event)}>
+      <label><input name="email_code_enabled" type="checkbox" defaultChecked={policy.email_code_enabled} /><span><strong>Email code</strong><small>Requires an active installation SMTP provider.</small></span></label>
+      <label><input name="magic_link_enabled" type="checkbox" defaultChecked={policy.magic_link_enabled} /><span><strong>Magic link</strong><small>Requires an active installation SMTP provider.</small></span></label>
+      <label><input name="password_enabled" type="checkbox" defaultChecked={policy.password_enabled} /><span><strong>Password</strong><small>Available only to Platform users who configured a password.</small></span></label>
+      <button disabled={busy !== ""}>{busy === "policy" ? "Saving..." : "Save sign-in policy"}</button>
+    </form>
+    <div className="provider-cards">{providers.length === 0 ? <div className="provider-empty">Configure Google or Apple under Providers to enable external Platform sign-in.</div> : providers.map((provider) => {
+      const key = String(provider.provider);
+      return <article key={key}><div><strong>{titleCase(key)}</strong><span className="provider-source local">Installation provider</span></div><code>{String(provider.client_id)}</code>
+        <label className="provider-global-toggle"><input type="checkbox" checked={Boolean(provider.control_login_enabled)} disabled={busy !== ""} onChange={(event) => void updateProvider(provider, "control_login_enabled", event.currentTarget.checked)} /><span>Authenticate linked Platform users</span></label>
+        <label className="provider-global-toggle"><input type="checkbox" checked={Boolean(provider.inheritable)} disabled={busy !== ""} onChange={(event) => void updateProvider(provider, "inheritable", event.currentTarget.checked)} /><span>Available to organizations and applications</span></label>
+      </article>;
+    })}</div>
+  </section>;
+}
+
+function ControlPlane({ organization, section, installationRole, setMessage }: {
   organization: Organization | null;
   section: string;
+  installationRole: OrganizationPage["installation_role"];
   setMessage: (value: string) => void;
 }) {
   const [members, setMembers] = useState<Record<string, unknown>[]>([]);
   const [invitations, setInvitations] = useState<Record<string, unknown>[]>([]);
   const [sessions, setSessions] = useState<Record<string, unknown>[]>([]);
-  const [installationOperators, setInstallationOperators] = useState<Record<string, unknown>[]>([]);
+  const [installationControlUsers, setInstallationControlUsers] = useState<Record<string, unknown>[]>([]);
+  const [installationInvitations, setInstallationInvitations] = useState<Record<string, unknown>[]>([]);
+  const [authMethods, setAuthMethods] = useState<ControlAuthMethods>({ email_code: false, magic_link: false, password: false, providers: [] });
   const [installationAccess, setInstallationAccess] = useState<"loading" | "available" | "unavailable">("loading");
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
@@ -2237,10 +2507,16 @@ function ControlPlane({ organization, section, setMessage }: {
       .catch((error) => setMessage(readError(error)));
   }, [section, refresh, setMessage]);
   useEffect(() => {
-    if (section !== "Operators" || organization) return;
+    if (section !== "Platform users" || organization) return;
     setInstallationAccess("loading");
-    api.request<Page<Record<string, unknown>>>("GET", "/v1/control/installation/operators").then((operatorPage) => {
-      setInstallationOperators(operatorPage.items);
+    Promise.all([
+      api.request<Page<Record<string, unknown>>>("GET", "/v1/control/installation/users"),
+      api.request<Page<Record<string, unknown>>>("GET", "/v1/control/installation/invitations"),
+      api.request<ControlAuthMethods>("GET", "/v1/control/auth/methods"),
+    ]).then(([controlUserPage, invitationPage, loadedMethods]) => {
+      setInstallationControlUsers(controlUserPage.items);
+      setInstallationInvitations(invitationPage.items);
+      setAuthMethods(loadedMethods);
       setInstallationAccess("available");
     }).catch((error) => {
       if (error instanceof Platform93Error && error.problem.status === 403) setInstallationAccess("unavailable");
@@ -2248,7 +2524,7 @@ function ControlPlane({ organization, section, setMessage }: {
     });
   }, [organization, section, refresh, setMessage]);
   useEffect(() => {
-    if (!organization || section !== "Operators") {
+    if (!organization || section !== "Platform users") {
       setMembers([]);
       setInvitations([]);
       return;
@@ -2256,9 +2532,11 @@ function ControlPlane({ organization, section, setMessage }: {
     Promise.all([
       api.request<Page<Record<string, unknown>>>("GET", `/v1/control/organizations/${organization.id}/members`),
       api.request<Page<Record<string, unknown>>>("GET", `/v1/control/organizations/${organization.id}/invitations`),
-    ]).then(([memberPage, invitationPage]) => {
+      api.request<ControlAuthMethods>("GET", "/v1/control/auth/methods"),
+    ]).then(([memberPage, invitationPage, loadedMethods]) => {
       setMembers(memberPage.items);
       setInvitations(invitationPage.items);
+      setAuthMethods(loadedMethods);
     }).catch((error) => setMessage(readError(error)));
   }, [organization, section, refresh, setMessage]);
 
@@ -2268,7 +2546,7 @@ function ControlPlane({ organization, section, setMessage }: {
     const target = event.currentTarget;
     const form = new FormData(target);
     try {
-      const result = await api.request<Record<string, unknown>>("POST", `/v1/control/organizations/${organization.id}/invitations`, { email: form.get("email"), role: form.get("role"), expires_in: 604800 });
+      const result = await api.request<Record<string, unknown>>("POST", `/v1/control/organizations/${organization.id}/invitations`, { email: form.get("email"), role: form.get("role"), onboarding_method: form.get("onboarding_method"), expires_in: 604800 });
       setMessage(`Invitation queued. One-time credential: ${String(result.invitation_token)}`);
       target.reset();
       setRefresh((value) => value + 1);
@@ -2283,38 +2561,40 @@ function ControlPlane({ organization, section, setMessage }: {
     } catch (error) { setMessage(readError(error)); }
   }
 
-  async function createInstallationOperator(event: FormEvent<HTMLFormElement>) {
+  async function inviteInstallationControlUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const target = event.currentTarget;
     const form = new FormData(target);
     try {
-      await api.request("POST", "/v1/control/installation/operators", { email: form.get("email"), display_name: form.get("display_name"), role: form.get("role") });
+      const result = await api.request<Record<string, unknown>>("POST", "/v1/control/installation/invitations", { email: form.get("email"), role: form.get("role"), onboarding_method: form.get("onboarding_method"), expires_in: 604800 });
       target.reset();
-      setMessage("Installation operator created. They can sign in by email after installation SMTP is configured and verified.");
+      setMessage(`Platform user invitation created. One-time credential: ${String(result.invitation_token)}`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
 
-  if (section === "Operators") return <>
-    <PageSummary summary={organization ? `Control access to ${organization.name}` : "Installation control access"} help={organization ? "Organization operators can govern its applications without becoming application users." : "Installation operators govern the deployment. Their control-plane identities remain separate from every application user."} />
-    {!organization && (installationAccess === "loading" ? <LoadingState label="Loading installation operators" /> : installationAccess === "unavailable" ? <div className="empty">Installation operators are visible only to installation operators.</div> : <section className="control-scope">
-      <div className="scope-heading"><p className="eyebrow">WHOLE INSTALLATION</p><h3>Installation operators</h3><p>Add an operator directly. This does not create an application user.</p></div>
-      <section className="create-panel open"><form onSubmit={(event) => void createInstallationOperator(event)}><div className="create-fields"><label>Email<input required name="email" type="email" /></label><label>Display name<input name="display_name" /></label><label>Role<select name="role" defaultValue="auditor"><option>auditor</option><option>admin</option><option>owner</option></select></label></div><button>Add installation operator</button></form></section>
-      <ControlTable title="Installation operators" items={installationOperators} renderActions={(item) => <>{["auditor", "admin", "owner"].filter((role) => role !== item.role).map((role) => <button key={role} onClick={() => void action("PATCH", `/v1/control/installation/operators/${String(item.id)}`, { role })}>Make {role}</button>)}<IconButton label="Remove installation role" icon="remove" tone="danger" onClick={() => void action("DELETE", `/v1/control/installation/operators/${String(item.id)}`)} /></>} />
+  if (section === "Platform users") return <>
+    <PageSummary summary={organization ? `Control access to ${organization.name}` : "Installation control access"} help={organization ? "Organization Platform users can govern its applications without becoming application users." : "Platform users govern the installation. Their control-plane identities remain separate from every application user."} />
+    {!organization && (installationAccess === "loading" ? <LoadingState label="Loading Platform users" /> : installationAccess === "unavailable" ? <div className="empty">Platform users are visible only to installation owners and administrators.</div> : <section className="control-scope">
+      <div className="scope-heading"><p className="eyebrow">WHOLE INSTALLATION</p><h3>Platform users</h3><p>Invite a Platform user with an explicit onboarding method. Accounts become active only after acceptance.</p></div>
+      <section className="create-panel open"><form onSubmit={(event) => void inviteInstallationControlUser(event)}><div className="create-fields"><label>Email<input required name="email" type="email" /></label><label>Role<select name="role" defaultValue="auditor"><option>auditor</option><option>admin</option><option>owner</option></select></label><label>Onboarding method<select name="onboarding_method" defaultValue="email"><option value="email">Email credential</option>{authMethods.providers.map((provider) => <option value={provider} key={provider}>{titleCase(provider)}</option>)}</select></label></div><button>Invite Platform user</button></form></section>
+      <ControlTable title="Platform users" items={installationControlUsers} renderActions={(item) => <>{["auditor", "admin", "owner"].filter((role) => role !== item.role).map((role) => <button key={role} onClick={() => void action("PATCH", `/v1/control/installation/users/${String(item.id)}`, { role })}>Make {role}</button>)}<IconButton label="Remove installation role" icon="remove" tone="danger" onClick={() => void action("DELETE", `/v1/control/installation/users/${String(item.id)}`)} /></>} />
+      <ControlTable title="Platform user invitations" items={installationInvitations} renderActions={(item) => item.status === "pending" ? <><IconButton label="Resend invitation" icon="send" onClick={() => void action("POST", `/v1/control/installation/invitations/${String(item.id)}/resend`, {})} /><IconButton label="Revoke invitation" icon="revoke" tone="danger" onClick={() => void action("DELETE", `/v1/control/installation/invitations/${String(item.id)}`)} /></> : null} />
     </section>)}
     {organization && <section className="control-scope">
-      <div className="scope-heading"><p className="eyebrow">ONE ORGANIZATION</p><h3>Organization operators</h3><p>Invite owners, admins, auditors, or members. They do not become application users.</p></div>
-      <section className="create-panel open"><form onSubmit={(event) => void invite(event)}><strong>Invite to {organization.name}</strong><div className="create-fields"><label>Email<input required name="email" type="email" /></label><label>Role<select name="role" defaultValue="member"><option>member</option><option>auditor</option><option>admin</option><option>owner</option></select></label></div><button>Invite organization operator</button></form></section>
-      <ControlTable title={`${organization.name} operators`} items={members} renderActions={(item) => <>{["member", "auditor", "admin", "owner"].filter((role) => role !== item.role).map((role) => <button key={role} onClick={() => void action("PATCH", `/v1/control/organizations/${organization.id}/members/${String(item.id)}`, { role })}>Make {role}</button>)}<IconButton label="Remove organization member" icon="remove" tone="danger" onClick={() => void action("DELETE", `/v1/control/organizations/${organization.id}/members/${String(item.id)}`)} /></>} />
+      <div className="scope-heading"><p className="eyebrow">ONE ORGANIZATION</p><h3>Organization Platform users</h3><p>Invite owners, admins, auditors, or members. They do not become application users.</p></div>
+      <section className="create-panel open"><form onSubmit={(event) => void invite(event)}><strong>Invite to {organization.name}</strong><div className="create-fields"><label>Email<input required name="email" type="email" /></label><label>Role<select name="role" defaultValue="member"><option>member</option><option>auditor</option><option>admin</option><option>owner</option></select></label><label>Onboarding method<select name="onboarding_method" defaultValue="email"><option value="email">Email credential</option>{authMethods.providers.map((provider) => <option value={provider} key={provider}>{titleCase(provider)}</option>)}</select></label></div><button>Invite Platform user</button></form></section>
+      <ControlTable title={`${organization.name} Platform users`} items={members} renderActions={(item) => <>{["member", "auditor", "admin", "owner"].filter((role) => role !== item.role).map((role) => <button key={role} onClick={() => void action("PATCH", `/v1/control/organizations/${organization.id}/members/${String(item.id)}`, { role })}>Make {role}</button>)}<IconButton label="Remove organization member" icon="remove" tone="danger" onClick={() => void action("DELETE", `/v1/control/organizations/${organization.id}/members/${String(item.id)}`)} /></>} />
       <ControlTable title="Organization invitations" items={invitations} renderActions={(item) => item.status === "pending" ? <><IconButton label="Resend invitation" icon="send" onClick={() => void action("POST", `/v1/control/organizations/${organization.id}/invitations/${String(item.id)}/resend`, {})} /><IconButton label="Revoke invitation" icon="revoke" tone="danger" onClick={() => void action("DELETE", `/v1/control/organizations/${organization.id}/invitations/${String(item.id)}`)} /></> : null} />
     </section>}
   </>;
-  if (section === "Policy" && organization) return <><PageSummary summary={`Limits and capabilities for ${organization.name}`} help="Installation operators define organization capacity and which capabilities its applications may expose. Organization operators can inspect this policy but cannot raise their own limits." /><OrganizationPolicySettings organization={organization} setMessage={setMessage} /></>;
+  if (section === "Policy" && organization) return <><PageSummary summary={`Limits and capabilities for ${organization.name}`} help="Installation Platform users define organization capacity and which capabilities its applications may expose. Organization Platform users can inspect this policy but cannot raise their own limits." /><OrganizationPolicySettings organization={organization} installationRole={installationRole} setMessage={setMessage} /></>;
   if (section === "Management API" && !organization) return <><PageSummary summary="External organization provisioning" help="The management API is a separate machine-only control boundary for provisioning organizations without granting access to this administrator interface." /><ManagementAPISettings setMessage={setMessage} /></>;
+  if (section === "Identity" && !organization) return <><PageSummary summary="Platform user authentication" help="Choose the methods that can authenticate control-plane identities. Application-user authentication remains configured per application." /><InstallationIdentitySettings setMessage={setMessage} /></>;
   if (section === "Email" && !organization) return <><PageSummary summary="Installation email defaults" help="These templates send control-plane messages and provide defaults for applications that have not published an application-specific override." /><InstallationTemplateSettings setMessage={setMessage} /></>;
   if (section === "Sessions") return <>
-    <PageSummary summary="Active sessions for this operator account" help="Operator sessions belong to your control-plane identity and are independent of the currently selected organization or application." />
-    <section className="control-scope"><ControlTable title="Your operator sessions" items={sessions} renderActions={(item) => item.revoked_at ? null : <IconButton label="Revoke session" icon="revoke" tone="danger" onClick={() => void action("DELETE", `/v1/control/auth/sessions/${String(item.id)}`)} />} /><button className="danger-action" onClick={() => void action("POST", "/v1/control/auth/logout-all", {})}>Log out every operator session</button></section>
+    <PageSummary summary="Active sessions for this Platform user account" help="Platform sessions belong to your control-plane identity and are independent of the currently selected organization or application." />
+    <section className="control-scope"><ControlTable title="Your Platform sessions" items={sessions} renderActions={(item) => item.revoked_at ? null : <IconButton label="Revoke session" icon="revoke" tone="danger" onClick={() => void action("DELETE", `/v1/control/auth/sessions/${String(item.id)}`)} />} /><button className="danger-action" onClick={() => void action("POST", "/v1/control/auth/logout-all", {})}>Log out every Platform session</button></section>
   </>;
   return <div className="empty">This control page is unavailable in the selected context.</div>;
 }
@@ -2324,17 +2604,17 @@ const organizationPolicySettings: { key: string; label: string; detail: string }
   { key: "password_authentication", label: "Password authentication", detail: "Applications may enable password sign-in." },
   { key: "passwordless_authentication", label: "Passwordless authentication", detail: "Applications may send email codes and magic links." },
   { key: "personal_api_keys", label: "Personal API keys", detail: "Application users may create personal access keys." },
-  { key: "delegation", label: "Operator delegation", detail: "Organization administrators may create short-lived delegated sessions." },
+  { key: "delegation", label: "Platform user delegation", detail: "Organization administrators may create short-lived delegated sessions." },
   { key: "organization_provider_overrides", label: "Organization provider overrides", detail: "This organization may override installation SMTP, Stripe, Google, and Apple providers." },
   { key: "application_provider_overrides", label: "Application provider overrides", detail: "Applications may override inherited organization or installation providers." },
   { key: "custom_events", label: "Custom events", detail: "Applications may register and publish their own event contracts." },
   { key: "webhooks", label: "Outgoing webhooks", detail: "Applications may create outbound webhook endpoints." },
 ];
 
-function OrganizationPolicySettings({ organization, setMessage }: { organization: Organization; setMessage: (value: string) => void }) {
+function OrganizationPolicySettings({ organization, installationRole, setMessage }: { organization: Organization; installationRole: OrganizationPage["installation_role"]; setMessage: (value: string) => void }) {
   const [policy, setPolicy] = useState<OrganizationPolicy | null>(null);
   const [busy, setBusy] = useState(false);
-  const canEdit = organization.role === "installation:owner" || organization.role === "installation:admin";
+  const canEdit = installationRole === "owner" || installationRole === "admin";
   useEffect(() => {
     api.request<OrganizationPolicy>("GET", `/v1/control/organizations/${organization.id}/policy`)
       .then(setPolicy)
@@ -2365,7 +2645,7 @@ function OrganizationPolicySettings({ organization, setMessage }: { organization
   if (!policy) return <LoadingState label="Loading organization governance policy" />;
   return <section className="governance-panel">
     <header><div><p className="eyebrow">INSTALLATION GOVERNANCE</p><h3>Limits and capabilities</h3></div><span className={canEdit ? "policy-owner" : "policy-locked"}>{canEdit ? "Control-plane managed" : "Read only"}</span></header>
-    <p>These limits belong to the installation. Organization operators can inspect them but cannot change or bypass them.</p>
+    <p>These limits belong to the installation. Organization Platform users can inspect them but cannot change or bypass them.</p>
     <form key={policy.version} onSubmit={(event) => void save(event)}>
       <div className="policy-limits"><label>Maximum applications<input disabled={!canEdit} min="0" name="max_applications" type="number" defaultValue={policy.max_applications ?? ""} placeholder="Unlimited" /><small>{policy.usage.applications} currently active</small></label><label>Maximum users<input disabled={!canEdit} min="0" name="max_users" type="number" defaultValue={policy.max_users ?? ""} placeholder="Unlimited" /><small>{policy.usage.users} currently provisioned across applications</small></label></div>
       <div className="policy-settings">{organizationPolicySettings.map((setting) => <label key={setting.key}><input disabled={!canEdit} type="checkbox" name={setting.key} defaultChecked={policy.enabled_settings[setting.key] !== false} /><span><strong>{setting.label}</strong><small>{setting.detail}</small></span></label>)}</div>
@@ -2466,7 +2746,7 @@ function InstallationTemplateSettings({ setMessage }: { setMessage: (value: stri
     finally { setBusy(""); }
   }
   return <section className="installation-templates">
-    <div className="scope-heading"><p className="eyebrow">DEFAULT EMAILS</p><h3>Installation email templates</h3><p>These published versions send Platform93 operator emails and are inherited by every application until that application publishes its own override.</p></div>
+    <div className="scope-heading"><p className="eyebrow">DEFAULT EMAILS</p><h3>Installation email templates</h3><p>These published versions send Platform93 control-plane emails and are inherited by every application until that application publishes its own override.</p></div>
     {loading ? <LoadingState label="Loading installation email templates" /> : <section className="table"><div className="table-head"><span>Default templates</span><span>{templates.length} versions</span></div>{templates.map((template) => <article key={String(template.id)}><div><strong>{String(template.key)}</strong><small>{String(template.status)} · version {String(template.version)}{template.system_managed ? " · built in" : ""}</small></div><div className="row-actions"><IconButton label="Edit template" icon="edit" loading={busy === template.id} disabled={busy !== ""} onClick={() => void inspect(template)} />{template.status === "draft" && <IconButton label="Publish template" icon="publish" tone="success" disabled={busy !== ""} onClick={() => void publish(template)} />}</div></article>)}</section>}
     {selected && <div className="detail-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}><section className="detail-panel template-detail-panel" role="dialog" aria-modal="true" aria-label="Installation email template"><header><div><p className="eyebrow">INSTALLATION DEFAULT</p><h2>{String(selected.key)}</h2></div><button className="outline" onClick={() => setSelected(null)}>Close</button></header><NotificationTemplateEditor template={selected} application={installationTemplateContext} basePath={basePath} setMessage={setMessage} onChanged={() => { setSelected(null); setRefresh((value) => value + 1); }} /></section></div>}
   </section>;
@@ -2522,8 +2802,14 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
   const [storageProviders, setStorageProviders] = useState<Record<string, unknown>[]>([]);
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState("");
+  const [publicBaseURL, setPublicBaseURL] = useState(api.baseUrl);
   const canInherit = scope !== "application";
+  const providerCallbackURI = (provider: "google" | "apple") =>
+    `${publicBaseURL}/v1/auth/providers/${provider}/callback`;
   useEffect(() => {
+    api.request<{ issuer: string }>("GET", "/oidc/.well-known/openid-configuration")
+      .then((discovery) => setPublicBaseURL(discovery.issuer.replace(/\/oidc\/?$/, "")))
+      .catch(() => setPublicBaseURL(api.baseUrl));
     Promise.all([
       api.request<Page<Record<string, unknown>>>("GET", `${basePath}/auth/providers`),
       api.request<Page<Record<string, unknown>>>("GET", `${basePath}/notification-providers`),
@@ -2542,13 +2828,15 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
     const form = new FormData(target);
     setBusy(kind);
     try {
-      if (kind === "google") await api.request("PUT", `${basePath}/auth/providers/google`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), inheritable: form.get("inheritable") === "on" });
-      if (kind === "apple") await api.request("PUT", `${basePath}/auth/providers/apple`, { client_id: form.get("client_id"), team_id: form.get("team_id"), key_id: form.get("key_id"), private_key_pem: form.get("private_key_pem"), inheritable: form.get("inheritable") === "on" });
+      if (kind === "google") await api.request("PUT", `${basePath}/auth/providers/google`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
+      if (kind === "apple") await api.request("PUT", `${basePath}/auth/providers/apple`, { client_id: form.get("client_id"), team_id: form.get("team_id"), key_id: form.get("key_id"), private_key_pem: form.get("private_key_pem"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
       if (kind === "smtp") await api.request("POST", `${basePath}/notification-providers`, { ...smtpProviderInput(form), inheritable: form.get("inheritable") === "on" });
-      if (kind === "stripe") await api.request("POST", `${basePath}/billing/providers`, { provider: "stripe", secret: form.get("secret"), webhook_secret: form.get("webhook_secret"), api_version: "2026-04-22.dahlia", inheritable: form.get("inheritable") === "on" });
+      if (kind === "stripe") await api.request("POST", `${basePath}/billing/providers`, { provider: "stripe", secret: form.get("secret"), api_version: "2026-04-22.dahlia", inheritable: form.get("inheritable") === "on" });
       if (kind === "storage") await api.request("POST", `${basePath}/storage/providers`, storageProviderInput(form, scope));
       target.reset();
-      setMessage(`${kind === "smtp" ? "SMTP" : kind === "stripe" ? "Stripe" : kind === "storage" ? "S3-compatible storage" : `${titleCase(kind)} login`} provider saved at the ${scope} scope.`);
+      setMessage(kind === "stripe"
+        ? "Stripe provider saved. Copy the webhook endpoint below into Stripe, then save the signing secret Stripe returns."
+        : `${kind === "smtp" ? "SMTP" : kind === "storage" ? "S3-compatible storage" : `${titleCase(kind)} login`} provider saved at the ${scope} scope.`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
@@ -2564,7 +2852,13 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
     try {
       const confirmation = kind === "storage" ? "?confirm_affected_objects=true" : "";
       if (kind === "storage" && !globalThis.confirm("Disable this storage provider? Platform93 operations will stop. Existing anonymous public URLs and unexpired private URLs cannot be revoked by this action.")) return;
-      await api.request("DELETE", `${basePath}/${kind === "auth" ? "auth/providers" : kind === "notification" ? "notification-providers" : kind === "billing" ? "billing/providers" : "storage/providers"}/${identity}${confirmation}`);
+      try {
+        await api.request("DELETE", `${basePath}/${kind === "auth" ? "auth/providers" : kind === "notification" ? "notification-providers" : kind === "billing" ? "billing/providers" : "storage/providers"}/${identity}${confirmation}`);
+      } catch (error) {
+        if ((kind !== "auth" && kind !== "notification") || scope !== "installation" || !(error instanceof Platform93Error) || error.problem.code !== "control_auth_confirmation_required" || !globalThis.confirm(`${error.problem.detail} Affected users: ${error.problem.affected_users ?? "unknown"}. Continue?`)) throw error;
+        const providerPath = kind === "auth" ? `auth/providers/${identity}` : `notification-providers/${identity}`;
+        await api.request("DELETE", `${basePath}/${providerPath}?confirm_affected_users=true`);
+      }
       setMessage("Provider disabled. Children will resolve the next available inherited provider.");
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
@@ -2616,20 +2910,38 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
   }
+  async function toggleControlLogin(provider: Record<string, unknown>, enabled: boolean) {
+    if (scope !== "installation") return;
+    const identity = String(provider.provider);
+    setBusy(`control-login-${identity}`);
+    try {
+      try {
+        await api.request("PATCH", `${basePath}/auth/providers/${identity}`, { control_login_enabled: enabled });
+      } catch (error) {
+        if (enabled || !(error instanceof Platform93Error) || error.problem.code !== "control_auth_confirmation_required" || !globalThis.confirm(`${error.problem.detail} Affected users: ${error.problem.affected_users ?? "unknown"}. Continue?`)) throw error;
+        await api.request("PATCH", `${basePath}/auth/providers/${identity}`, { control_login_enabled: false, confirm_affected_users: true });
+      }
+      setMessage(`${titleCase(identity)} ${enabled ? "can now" : "can no longer"} authenticate Platform users.`);
+      setRefresh((value) => value + 1);
+    } catch (error) { setMessage(readError(error)); }
+    finally { setBusy(""); }
+  }
   const inheritanceField = () => canInherit ? <label className="provider-inheritance"><input name="inheritable" type="checkbox" defaultChecked /><span>{scope === "installation" ? "Use as global default for organizations and applications" : "Allow applications in this organization to inherit this provider"}</span></label> : null;
+  const controlLoginField = () => scope === "installation" ? <label className="provider-inheritance"><input name="control_login_enabled" type="checkbox" /><span>Allow linked Platform users to sign in with this provider</span></label> : null;
   return <section className="provider-settings control-scope">
     <div className="scope-heading"><p className="eyebrow">PROVIDER RESOLUTION</p><h3>{scope === "application" ? "Application integrations" : `${titleCase(scope)} providers`}</h3><p>Resolution order is application, organization, then installation. A local provider overrides inherited providers of the same type. Secrets are encrypted and never returned.</p></div>
     {scope === "application" && <ApplicationFlowSettings basePath={basePath} setMessage={setMessage} />}
     <div className="provider-columns">
-      <section><header><span>01</span><div><h4>Authentication</h4><p>Social identity and account linking.</p></div></header><ProviderCards items={authProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("auth", item, value)} onDisable={(item) => void disable("auth", item)} />
-        <details><summary>Configure Google</summary><form onSubmit={(event) => void submitProvider(event, "google")}><label>OAuth client ID<input required name="client_id" /></label><label>OAuth client secret<input required name="client_secret" type="password" /></label>{inheritanceField()}<button disabled={busy !== ""}>{busy === "google" ? "Saving..." : "Save Google"}</button></form></details>
-        <details><summary>Configure Apple</summary><form onSubmit={(event) => void submitProvider(event, "apple")}><label>Services ID / client ID<input required name="client_id" /></label><label>Team ID<input required name="team_id" /></label><label>Key ID<input required name="key_id" /></label><label>Sign in with Apple private key<textarea required name="private_key_pem" placeholder="-----BEGIN PRIVATE KEY-----" /></label>{inheritanceField()}<button disabled={busy !== ""}>{busy === "apple" ? "Saving..." : "Save Apple"}</button></form></details>
+      <section><header><span>01</span><div><h4>Authentication</h4><p>Social identity and account linking.</p></div></header><ProviderCards items={authProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("auth", item, value)} onToggleControlLogin={scope === "installation" ? (item, value) => void toggleControlLogin(item, value) : undefined} onDisable={(item) => void disable("auth", item)} />
+        <details><summary>Configure Google</summary><ProviderCallbackBox provider="google" uri={providerCallbackURI("google")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "google")}><label>OAuth client ID<input required name="client_id" /></label><label>OAuth client secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "google" ? "Saving..." : "Save Google"}</button></form></details>
+        <details><summary>Configure Apple</summary><ProviderCallbackBox provider="apple" uri={providerCallbackURI("apple")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "apple")}><label>Services ID / client ID<input required name="client_id" /></label><label>Team ID<input required name="team_id" /></label><label>Key ID<input required name="key_id" /></label><label>Sign in with Apple private key<textarea required name="private_key_pem" placeholder="-----BEGIN PRIVATE KEY-----" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "apple" ? "Saving..." : "Save Apple"}</button></form></details>
       </section>
       <section><header><span>02</span><div><h4>Email</h4><p>Transactional and security delivery.</p></div></header><ProviderCards items={smtpProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("notification", item, value)} onVerify={(item) => void verify("notification", item)} onDisable={(item) => void disable("notification", item)} />
         <details><summary>Configure SMTP</summary><form onSubmit={(event) => void submitProvider(event, "smtp")}><label>Name<input required name="name" defaultValue={`${scope} SMTP`} /></label><label>Host<input required name="host" /></label><div className="provider-form-row"><label>Port<input required name="port" type="number" defaultValue="587" /></label><label>TLS<select name="tls_mode" defaultValue="starttls"><option value="starttls">STARTTLS</option><option value="implicit_tls">Implicit TLS</option></select></label></div><label>Username<input name="username" /></label><label>Password<input name="password" type="password" /></label><label>Sender email<input required name="sender_email" type="email" /></label><label>Sender name<input name="sender_name" defaultValue="Platform93" /></label>{inheritanceField()}<button disabled={busy !== ""}>{busy === "smtp" ? "Saving..." : "Save SMTP"}</button></form></details>
       </section>
       <section><header><span>03</span><div><h4>Billing</h4><p>Checkout, subscriptions, and tax.</p></div></header><ProviderCards items={billingProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("billing", item, value)} onVerify={(item) => void verify("billing", item)} onDisable={(item) => void disable("billing", item)} />
-        <details><summary>Configure Stripe</summary><form onSubmit={(event) => void submitProvider(event, "stripe")}><label>Secret key<input required name="secret" type="password" placeholder="sk_..." /></label><label>Webhook signing secret<input name="webhook_secret" type="password" placeholder="whsec_..." /></label>{inheritanceField()}<button disabled={busy !== ""}>{busy === "stripe" ? "Saving..." : "Save Stripe"}</button></form></details>
+        <StripeWebhookSetups items={billingProviders} currentScope={scope} basePath={basePath} busy={busy} setBusy={setBusy} setMessage={setMessage} onSaved={() => setRefresh((value) => value + 1)} />
+        <details><summary>Configure Stripe</summary><form onSubmit={(event) => void submitProvider(event, "stripe")}><label>Secret key<input required name="secret" type="password" placeholder="sk_..." /></label><p className="provider-form-note">Save the Stripe connection first. Platform93 then generates its unique webhook endpoint, which appears above with a copy button and a field for the Stripe signing secret.</p>{inheritanceField()}<button disabled={busy !== ""}>{busy === "stripe" ? "Saving..." : "Save Stripe"}</button></form></details>
       </section>
       <section><header><span>04</span><div><h4>Object storage</h4><p>Light public and private S3-compatible files.</p></div></header><ProviderCards items={storageProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("storage", item, value)} onVerify={(item) => void verify("storage", item)} onEnable={(item) => void enableStorage(item)} onDisable={(item) => void disable("storage", item)} />
         <details><summary>Configure S3-compatible storage</summary><form onSubmit={(event) => void submitProvider(event, "storage")}><label>Name<input required name="name" defaultValue={`${titleCase(scope)} storage`} /></label><label>Endpoint<input required name="endpoint" type="url" placeholder="https://nbg1.your-objectstorage.com" /></label><label>Region<input required name="region" placeholder="nbg1" /></label><div className="provider-form-row"><label>Access key ID<input required name="access_key_id" /></label><label>Secret access key<input required name="secret_access_key" type="password" /></label></div><label>Public bucket<input name="public_bucket" placeholder="platform93-public" /><small>Required for managed email images and permanent public URLs.</small></label><label>Private bucket<input name="private_bucket" placeholder="platform93-private" /></label><label>Public base URL<input name="public_base_url" type="url" placeholder="https://assets.example.com" /><small>Optional proxy or custom-domain base URL.</small></label><div className="provider-form-row"><label>Max object bytes<input name="max_object_bytes" type="number" min="1" defaultValue="26214400" /></label><label>Application quota bytes<input name="max_application_bytes" type="number" min="1" defaultValue="10737418240" /></label></div><div className="provider-form-row"><label>Email image bytes<input name="max_email_image_bytes" type="number" min="1" defaultValue="2097152" /></label><label>Application object count<input name="max_application_objects" type="number" min="1" defaultValue="100000" /></label></div><label className="provider-inheritance"><input name="force_path_style" type="checkbox" /><span>Use path-style bucket URLs (commonly required by MinIO)</span></label>{scope === "installation" && <label className="provider-inheritance"><input name="allow_private_endpoint" type="checkbox" /><span>Explicitly allow an HTTP or private-network endpoint</span></label>}{inheritanceField()}<p className="provider-warning">Use existing dedicated buckets. Verification writes and removes a probe, confirms public anonymous reads, and rejects anonymous private reads. Browser uploads also require bucket CORS.</p><button disabled={busy !== ""}>{busy === "storage" ? "Saving..." : "Save storage"}</button></form></details>
@@ -2639,7 +2951,74 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
   </section>;
 }
 
-function ProviderCards({ items, currentScope, busy, onToggleInheritance, onVerify, onEnable, onDisable }: { items: Record<string, unknown>[]; currentScope: string; busy: string; onToggleInheritance?: (item: Record<string, unknown>, inheritable: boolean) => void; onVerify?: (item: Record<string, unknown>) => void; onEnable?: (item: Record<string, unknown>) => void; onDisable: (item: Record<string, unknown>) => void }) {
+function ProviderCallbackBox({ provider, uri, setMessage }: { provider: "google" | "apple"; uri: string; setMessage: (value: string) => void }) {
+  return <CopyableEndpointBox
+    eyebrow={provider === "google" ? "AUTHORIZED REDIRECT URI" : "RETURN URL"}
+    title={provider === "google" ? "Google OAuth callback" : "Sign in with Apple callback"}
+    value={uri}
+    copyLabel="Copy URI"
+    copiedMessage={`${provider === "google" ? "Google authorized redirect URI" : "Apple return URL"} copied.`}
+    setMessage={setMessage}
+    description={`Add this exact installation-wide URL once in the ${provider === "google" ? "Google Cloud OAuth client" : "Apple Services ID website configuration"}. Inherited applications are resolved securely from the sign-in state.`}
+  />;
+}
+
+function CopyableEndpointBox({ eyebrow, title, value, copyLabel, copiedMessage, description, setMessage, children }: { eyebrow: string; title: string; value: string; copyLabel: string; copiedMessage: string; description: string; setMessage: (value: string) => void; children?: ReactNode }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setMessage(copiedMessage);
+      globalThis.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setMessage(`${errorMessagePrefix}The URL could not be copied. Select the value and copy it manually.`);
+    }
+  }
+  return <aside className="provider-callback-box">
+    <header><div><span>{eyebrow}</span><strong>{title}</strong></div><button type="button" className="outline" onClick={() => void copy()}>{copied ? "Copied" : copyLabel}</button></header>
+    <code>{value}</code>
+    <small>{description}</small>
+    {children}
+  </aside>;
+}
+
+function StripeWebhookSetups({ items, currentScope, basePath, busy, setBusy, setMessage, onSaved }: { items: Record<string, unknown>[]; currentScope: string; basePath: string; busy: string; setBusy: (value: string) => void; setMessage: (value: string) => void; onSaved: () => void }) {
+  if (items.length === 0) return null;
+  return <div className="stripe-webhook-setups">{items.map((provider) => {
+    const id = String(provider.id);
+    const providerScope = String(provider.scope ?? currentScope);
+    const local = providerScope === currentScope;
+    const webhookConfigured = Boolean(provider.webhook_configured);
+    async function saveSecret(event: FormEvent<HTMLFormElement>) {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      setBusy(`stripe-webhook-${id}`);
+      try {
+        await api.request("PATCH", `${basePath}/billing/providers/${id}`, { webhook_secret: form.get("webhook_secret") });
+        event.currentTarget.reset();
+        setMessage("Stripe webhook signing secret saved. Incoming webhook signatures can now be verified.");
+        onSaved();
+      } catch (error) { setMessage(readError(error)); }
+      finally { setBusy(""); }
+    }
+    return <CopyableEndpointBox
+      key={id}
+      eyebrow="WEBHOOK ENDPOINT URL"
+      title={`Stripe webhook · ${titleCase(providerScope)}`}
+      value={String(provider.webhook_uri)}
+      copyLabel="Copy URL"
+      copiedMessage="Stripe webhook endpoint copied."
+      setMessage={setMessage}
+      description="Create an HTTPS webhook endpoint in Stripe Workbench using this exact URL. Stripe will then reveal a signing secret beginning with whsec_."
+    >
+      <div className={`stripe-webhook-status ${webhookConfigured ? "configured" : "missing"}`}>{webhookConfigured ? "Signing secret configured" : "Signing secret not configured"}</div>
+      {local ? <form className="stripe-webhook-secret-form" onSubmit={(event) => void saveSecret(event)}><label>{webhookConfigured ? "Replace signing secret" : "Stripe signing secret"}<input required name="webhook_secret" type="password" placeholder="whsec_..." autoComplete="off" /></label><button disabled={busy !== ""}>{busy === `stripe-webhook-${id}` ? "Saving..." : webhookConfigured ? "Rotate secret" : "Save secret"}</button></form> : <small>Inherited from {providerScope}. Select that scope to update its signing secret.</small>}
+    </CopyableEndpointBox>;
+  })}</div>;
+}
+
+function ProviderCards({ items, currentScope, busy, onToggleInheritance, onToggleControlLogin, onVerify, onEnable, onDisable }: { items: Record<string, unknown>[]; currentScope: string; busy: string; onToggleInheritance?: (item: Record<string, unknown>, inheritable: boolean) => void; onToggleControlLogin?: (item: Record<string, unknown>, enabled: boolean) => void; onVerify?: (item: Record<string, unknown>) => void; onEnable?: (item: Record<string, unknown>) => void; onDisable: (item: Record<string, unknown>) => void }) {
   if (items.length === 0) return <div className="provider-empty">No provider resolves at this scope.</div>;
   return <div className="provider-cards">{items.map((item, index) => {
     const scope = String(item.scope ?? currentScope);
@@ -2651,7 +3030,9 @@ function ProviderCards({ items, currentScope, busy, onToggleInheritance, onVerif
       <div><strong>{name}</strong><span className={`provider-source ${local ? "local" : "inherited"}`}>{local ? `${titleCase(scope)} provider` : `Inherited from ${scope}`}</span></div>
       <code>{String(item.client_id ?? item.sender_email ?? item.public_id ?? "configured")}</code>
       <small>{item.verified_at && !disabled ? "Verified" : item.status ? `Status: ${String(item.status)}` : item.inheritable ? "Available to children" : scope === "application" ? "Application only" : "This scope only"}</small>
+      {Boolean(item.provider) && <small>{Number(item.linked_control_users ?? 0)} linked Platform users · {Number(item.inheriting_applications ?? 0)} inheriting applications</small>}
       {local && currentScope !== "application" && onToggleInheritance && !disabled && <label className="provider-global-toggle"><input type="checkbox" checked={Boolean(item.inheritable)} disabled={busy !== ""} onChange={(event) => onToggleInheritance(item, event.currentTarget.checked)} /><span>{busy === `inherit-${identity}` ? "Updating availability..." : currentScope === "installation" ? "Global default for organizations and applications" : "Available to applications in this organization"}</span></label>}
+      {local && currentScope === "installation" && onToggleControlLogin && !disabled && <label className="provider-global-toggle"><input type="checkbox" checked={Boolean(item.control_login_enabled)} disabled={busy !== ""} onChange={(event) => onToggleControlLogin(item, event.currentTarget.checked)} /><span>{busy === `control-login-${identity}` ? "Updating Platform login..." : "Platform user sign-in"}</span></label>}
       {local && !disabled && <ActionGroup label={`${name} provider actions`} className="provider-card-actions">
         {onVerify && <IconButton label={`Verify ${name}`} icon="verify" tone="success" loading={busy === `verify-${identity}`} disabled={busy !== ""} onClick={() => onVerify(item)} />}
         <IconButton label={`Disable ${name}`} icon="disable" tone="danger" loading={busy === `disable-${identity}`} disabled={busy !== ""} onClick={() => onDisable(item)} />

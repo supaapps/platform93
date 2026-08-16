@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	platformauthz "github.com/supaapps/platform93/internal/authorization"
 	"github.com/supaapps/platform93/internal/identity"
 	"github.com/supaapps/platform93/internal/kernel"
 	"github.com/supaapps/platform93/internal/secure"
@@ -145,7 +146,13 @@ WHERE application_id=$1 AND owner_user_id=$2 AND deleted_at IS NULL)`, chi.URLPa
 		}
 	}
 	attributes, _ := json.Marshal(request.CustomAttributes)
-	result, err := s.app.DB.Exec(r.Context(), `UPDATE users SET
+	tx, err := s.app.DB.Begin(r.Context())
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "The user could not be updated.")
+		return
+	}
+	defer rollback(tx, r.Context())
+	result, err := tx.Exec(r.Context(), `UPDATE users SET
 first_name=COALESCE($1,first_name),last_name=COALESCE($2,last_name),username=COALESCE($3,username),
 locale=COALESCE($4,locale),status=COALESCE($5,status),email_verified_at=CASE WHEN $6::boolean IS NULL THEN email_verified_at WHEN $6 THEN COALESCE(email_verified_at,now()) ELSE NULL END,
 is_org_verified=COALESCE($7,is_org_verified),custom_attributes=CASE WHEN $8::jsonb IS NULL THEN custom_attributes ELSE $8 END,
@@ -156,10 +163,43 @@ version=version+1,updated_at=now() WHERE id=$9 AND application_id=$10 AND versio
 		kernel.WriteProblem(w, r, http.StatusConflict, "user_version_conflict", "The user changed concurrently.")
 		return
 	}
-	w.Header().Set("ETag", kernel.ETag(version+1))
 	if request.Status != nil && *request.Status != "active" {
-		_, _ = s.app.DB.Exec(r.Context(), "UPDATE user_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", chi.URLParam(r, "user_id"))
+		_, err = tx.Exec(r.Context(), "UPDATE user_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL", chi.URLParam(r, "user_id"))
 	}
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if err == nil && parseErr == nil {
+		changed := []string{}
+		if request.FirstName != nil {
+			changed = append(changed, "first_name")
+		}
+		if request.LastName != nil {
+			changed = append(changed, "last_name")
+		}
+		if request.Username != nil {
+			changed = append(changed, "username")
+		}
+		if request.Locale != nil {
+			changed = append(changed, "locale")
+		}
+		if request.Status != nil {
+			changed = append(changed, "status")
+		}
+		if request.EmailVerified != nil {
+			changed = append(changed, "email_verified")
+		}
+		if request.IsOrgVerified != nil {
+			changed = append(changed, "is_org_verified")
+		}
+		if request.CustomAttributes != nil {
+			changed = append(changed, "custom_attributes")
+		}
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "user.updated", "user/"+chi.URLParam(r, "user_id"), actor(r), map[string]any{"user_id": chi.URLParam(r, "user_id"), "changed_fields": changed})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "user_update_failed", "The user update could not be committed.")
+		return
+	}
+	w.Header().Set("ETag", kernel.ETag(version+1))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -444,7 +484,11 @@ FROM users WHERE id=$1 AND application_id=$2`, userID, applicationID).Scan(&emai
 		kernel.WriteProblem(w, r, 401, "account_unavailable", "The account is unavailable.")
 		return
 	}
-	scopes := s.scopes(r, applicationID, userID)
+	access, err := s.userEffectiveAccess(r, applicationID, userID)
+	if err != nil {
+		kernel.WriteProblem(w, r, 500, "authorization_data_invalid", "The account authorization data is invalid and no access token was issued.")
+		return
+	}
 	refresh, _ := secure.RandomToken("p93_refresh_", 32)
 	sessionID := kernel.NewID()
 	expires := s.app.Now().Add(30 * 24 * time.Hour)
@@ -463,15 +507,20 @@ VALUES ($1,$2,$3,$4,$5,now(),CASE WHEN $6 THEN now() END,$7,$8)`,
 		return
 	}
 	now := s.app.Now()
-	access, err := identity.Sign(privateKey, kid, identity.Claims{Issuer: s.app.Issuer(), Subject: userID, Audience: []string{s.app.ApplicationAudience(applicationID)},
+	customClaims, err := s.customClaimsForUser(r.Context(), applicationID.String(), userID)
+	if err != nil {
+		kernel.WriteProblem(w, r, 500, "custom_claims_unavailable", "The configured custom token claims could not be issued.")
+		return
+	}
+	accessToken, err := identity.Sign(privateKey, kid, identity.Claims{Issuer: s.app.Issuer(), Subject: userID, Audience: []string{s.app.ApplicationAudience(applicationID)},
 		ExpiresAt: now.Add(5 * time.Minute).Unix(), IssuedAt: now.Unix(), NotBefore: now.Add(-5 * time.Second).Unix(), JWTID: kernel.NewID().String(),
-		SessionID: sessionID.String(), ApplicationID: applicationID.String(), TokenKind: "access", ActorType: "user", Scope: strings.Join(scopes, " "), Email: email,
-		Locale: locale, EmailVerified: verified, IsOrgVerified: orgVerified, AMR: amr})
+		SessionID: sessionID.String(), ApplicationID: applicationID.String(), TokenKind: "access", ActorType: "user", Scope: strings.Join(access.Scopes, " "), Roles: access.Roles, Email: email,
+		Locale: locale, EmailVerified: verified, IsOrgVerified: orgVerified, CustomClaims: customClaims, AMR: amr})
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "token_creation_failed", "The access token could not be created.")
 		return
 	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh, "token_type": "Bearer", "expires_in": 300, "refresh_expires_at": expires})
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{"access_token": accessToken, "refresh_token": refresh, "token_type": "Bearer", "expires_in": 300, "refresh_expires_at": expires})
 }
 
 func (s *Server) refreshToken(w http.ResponseWriter, r *http.Request) {
@@ -536,11 +585,21 @@ FROM users WHERE id=$1 AND application_id=$2 AND status='active'`, userID, appli
 		return
 	}
 	now := s.app.Now()
+	customClaims, err := s.customClaimsForUser(r.Context(), applicationID.String(), userID)
+	if err != nil {
+		kernel.WriteProblem(w, r, 500, "custom_claims_unavailable", "The configured custom token claims could not be issued.")
+		return
+	}
 	tokenAMR := amr
 	if refresh != "" {
 		tokenAMR = append(append([]string{}, amr...), "refresh_token")
 	}
-	access, err := identity.Sign(privateKey, kid, identity.Claims{Issuer: s.app.Issuer(), Subject: userID, Audience: []string{s.app.ApplicationAudience(applicationID)}, ExpiresAt: now.Add(5 * time.Minute).Unix(), IssuedAt: now.Unix(), NotBefore: now.Add(-5 * time.Second).Unix(), JWTID: kernel.NewID().String(), SessionID: sessionID, ApplicationID: applicationID.String(), TokenKind: "access", ActorType: "user", Scope: strings.Join(s.scopes(r, applicationID, userID), " "), Email: email, Locale: locale, EmailVerified: verified, IsOrgVerified: orgVerified, AMR: tokenAMR})
+	effective, err := s.userEffectiveAccess(r, applicationID, userID)
+	if err != nil {
+		kernel.WriteProblem(w, r, 500, "authorization_data_invalid", "The account authorization data is invalid and no access token was issued.")
+		return
+	}
+	access, err := identity.Sign(privateKey, kid, identity.Claims{Issuer: s.app.Issuer(), Subject: userID, Audience: []string{s.app.ApplicationAudience(applicationID)}, ExpiresAt: now.Add(5 * time.Minute).Unix(), IssuedAt: now.Unix(), NotBefore: now.Add(-5 * time.Second).Unix(), JWTID: kernel.NewID().String(), SessionID: sessionID, ApplicationID: applicationID.String(), TokenKind: "access", ActorType: "user", Scope: strings.Join(effective.Scopes, " "), Roles: effective.Roles, Email: email, Locale: locale, EmailVerified: verified, IsOrgVerified: orgVerified, CustomClaims: customClaims, AMR: tokenAMR})
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "token_creation_failed", "The access token could not be created.")
 		return
@@ -620,9 +679,32 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 		}
 		request.Locale = &normalized
 	}
-	_, err := s.app.DB.Exec(r.Context(), `UPDATE users SET first_name=COALESCE($1,first_name),last_name=COALESCE($2,last_name),username=COALESCE($3,username),locale=COALESCE($4,locale),version=version+1,updated_at=now()
-WHERE id=$5 AND application_id=$6`, request.FirstName, request.LastName, request.Username, request.Locale, actor(r).ID, chi.URLParam(r, "application_id"))
+	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
+		kernel.WriteProblem(w, r, 500, "database_error", "The profile could not be updated.")
+		return
+	}
+	defer rollback(tx, r.Context())
+	_, err = tx.Exec(r.Context(), `UPDATE users SET first_name=COALESCE($1,first_name),last_name=COALESCE($2,last_name),username=COALESCE($3,username),locale=COALESCE($4,locale),version=version+1,updated_at=now()
+WHERE id=$5 AND application_id=$6`, request.FirstName, request.LastName, request.Username, request.Locale, actor(r).ID, chi.URLParam(r, "application_id"))
+	applicationID, parseErr := uuid.Parse(chi.URLParam(r, "application_id"))
+	if err == nil && parseErr == nil {
+		changed := []string{}
+		if request.FirstName != nil {
+			changed = append(changed, "first_name")
+		}
+		if request.LastName != nil {
+			changed = append(changed, "last_name")
+		}
+		if request.Username != nil {
+			changed = append(changed, "username")
+		}
+		if request.Locale != nil {
+			changed = append(changed, "locale")
+		}
+		_, err = s.app.Emit(r.Context(), tx, &applicationID, "user.updated", "user/"+actor(r).ID, actor(r), map[string]any{"user_id": actor(r).ID, "changed_fields": changed})
+	}
+	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, 500, "profile_update_failed", "The profile could not be updated.")
 		return
 	}
@@ -675,11 +757,28 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, 422, "invalid_api_key_expiry", "Expiry must be between 1 and 366 days.")
 		return
 	}
+	request.Scopes = uniqueStrings(request.Scopes)
+	applicationID, err := uuid.Parse(chi.URLParam(r, "application_id"))
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusBadRequest, "invalid_application_id", "The application identifier is invalid.")
+		return
+	}
+	if len(request.Scopes) > 200 || platformauthz.ValidateScopeValues(request.Scopes, applicationID.String()) != nil {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_api_key_scopes", "API key scopes must be unique canonical permissions from this application and cannot contain whitespace or malformed paths.")
+		return
+	}
+	liveScopes := s.permissions(r, applicationID, actor(r).ID)
+	for _, requested := range request.Scopes {
+		if !containsAllowedScope(liveScopes, requested) {
+			kernel.WriteProblem(w, r, http.StatusForbidden, "api_key_scope_escalation", "API key scopes must reduce the user's current effective access.")
+			return
+		}
+	}
 	token, _ := secure.RandomToken("p93_pat_", 32)
 	id := kernel.NewID()
 	prefix := truncate(token, 16)
 	expires := s.app.Now().Add(time.Duration(request.ExpiresInDays) * 24 * time.Hour)
-	_, err := s.app.DB.Exec(r.Context(), `INSERT INTO personal_api_keys
+	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO personal_api_keys
 (id,application_id,user_id,label,token_prefix,token_digest,scopes,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, id, chi.URLParam(r, "application_id"), actor(r).ID, request.Label, prefix, s.app.Vault.Digest(token), request.Scopes, expires)
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "api_key_creation_failed", "The API key could not be created.")
@@ -792,7 +891,7 @@ func (s *Server) discovery(w http.ResponseWriter, r *http.Request) {
 		"code_challenge_methods_supported": []string{"S256"}, "id_token_signing_alg_values_supported": []string{"RS256"},
 		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
 		"scopes_supported":                      []string{"openid", "profile", "email", "offline_access"}, "subject_types_supported": []string{"public"},
-		"claims_supported": []string{"sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "actor_type", "application_id", "scope", "email", "email_verified", "given_name", "family_name", "locale", "is_org_verified"},
+		"claims_supported": []string{"sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "actor_type", "application_id", "scope", "roles", "email", "email_verified", "given_name", "family_name", "locale", "is_org_verified", "custom_claims"},
 	})
 }
 
@@ -842,12 +941,39 @@ func scanUser(row scanner) (userResponse, bool) {
 	return u, true
 }
 
+type effectiveAccess struct {
+	Scopes     []string
+	Roles      identity.RoleClaims
+	Provenance []scopeProvenance
+}
+
+type scopeProvenance struct {
+	Scope       string  `json:"scope"`
+	Source      string  `json:"source"`
+	RoleKey     string  `json:"role_key,omitempty"`
+	GrantID     string  `json:"grant_id,omitempty"`
+	WorkspaceID *string `json:"workspace_id,omitempty"`
+	Permission  string  `json:"permission,omitempty"`
+}
+
+func emptyRoleClaims() identity.RoleClaims {
+	return identity.RoleClaims{Application: []string{}, Workspaces: map[string][]string{}}
+}
+
 func (s *Server) permissions(r *http.Request, applicationID uuid.UUID, userID string) []string {
-	return s.scopes(r, applicationID, userID)
+	access, err := s.userEffectiveAccess(r, applicationID, userID)
+	if err != nil {
+		return []string{}
+	}
+	return access.Scopes
 }
 
 func (s *Server) permissionsForWorkspace(r *http.Request, applicationID uuid.UUID, userID, workspaceID string) []string {
-	values := s.scopes(r, applicationID, userID)
+	access, err := s.userEffectiveAccess(r, applicationID, userID)
+	if err != nil {
+		return []string{}
+	}
+	values := access.Scopes
 	if workspaceID == "" {
 		return values
 	}
@@ -863,35 +989,61 @@ func (s *Server) permissionsForWorkspace(r *http.Request, applicationID uuid.UUI
 }
 
 func (s *Server) scopes(r *http.Request, applicationID uuid.UUID, userID string) []string {
+	access, err := s.userEffectiveAccess(r, applicationID, userID)
+	if err != nil {
+		return []string{}
+	}
+	return access.Scopes
+}
+
+func (s *Server) userEffectiveAccess(r *http.Request, applicationID uuid.UUID, userID string) (effectiveAccess, error) {
 	rows, err := s.app.DB.Query(r.Context(), `SELECT ro.key,ro.scope,ro.permissions,ra.workspace_id::text
 FROM role_assignments ra JOIN roles ro ON ro.id=ra.role_id
 WHERE ra.application_id=$1 AND ra.user_id=$2 ORDER BY ra.created_at,ra.id`, applicationID, userID)
 	if err != nil {
-		return []string{}
+		return effectiveAccess{}, err
 	}
 	defer rows.Close()
-	applicationPrefix := "/applications/" + applicationID.String()
 	set := map[string]struct{}{}
+	provenance := []scopeProvenance{}
+	roles := emptyRoleClaims()
 	for rows.Next() {
 		var roleKey, roleScope string
 		var permissions []string
 		var workspaceID *string
-		if rows.Scan(&roleKey, &roleScope, &permissions, &workspaceID) != nil {
-			continue
+		if scanErr := rows.Scan(&roleKey, &roleScope, &permissions, &workspaceID); scanErr != nil {
+			return effectiveAccess{}, scanErr
 		}
-		prefix := applicationPrefix
-		marker := prefix + "/roles/" + roleKey
+		var roleWorkspaceID *string
 		if roleScope == "workspace" {
 			if workspaceID == nil {
-				continue
+				return effectiveAccess{}, fmt.Errorf("workspace role %q has no workspace", roleKey)
 			}
-			prefix += "/workspaces/" + *workspaceID
-			marker = prefix + "/roles/" + roleKey
+			roleWorkspaceID = workspaceID
+			roles.Workspaces[*workspaceID] = append(roles.Workspaces[*workspaceID], roleKey)
+		} else {
+			roles.Application = append(roles.Application, roleKey)
+		}
+		marker, markerErr := platformauthz.RoleMarker(applicationID.String(), roleWorkspaceID, roleKey)
+		if markerErr != nil {
+			return effectiveAccess{}, markerErr
 		}
 		set[marker] = struct{}{}
+		provenance = append(provenance, scopeProvenance{Scope: marker, Source: "role_marker", RoleKey: roleKey, WorkspaceID: roleWorkspaceID})
 		for _, permission := range permissions {
-			set[expandScope(prefix, permission)] = struct{}{}
+			expanded, expandErr := platformauthz.CanonicalScope(applicationID.String(), roleWorkspaceID, permission)
+			if expandErr != nil {
+				return effectiveAccess{}, expandErr
+			}
+			set[expanded] = struct{}{}
+			provenance = append(provenance, scopeProvenance{Scope: expanded, Source: "role", RoleKey: roleKey, WorkspaceID: roleWorkspaceID, Permission: permission})
 		}
+	}
+	if err = rows.Err(); err != nil {
+		return effectiveAccess{}, err
+	}
+	if err = s.addDirectGrantScopes(r, applicationID, userID, "", set, &provenance); err != nil {
+		return effectiveAccess{}, err
 	}
 	owned, err := s.app.DB.Query(r.Context(), `SELECT id::text FROM workspaces
 WHERE application_id=$1 AND owner_user_id=$2 AND deleted_at IS NULL ORDER BY id`, applicationID, userID)
@@ -899,10 +1051,20 @@ WHERE application_id=$1 AND owner_user_id=$2 AND deleted_at IS NULL ORDER BY id`
 		defer owned.Close()
 		for owned.Next() {
 			var workspaceID string
-			if owned.Scan(&workspaceID) == nil {
-				set[applicationPrefix+"/workspaces/"+workspaceID+"/*"] = struct{}{}
+			if scanErr := owned.Scan(&workspaceID); scanErr != nil {
+				return effectiveAccess{}, scanErr
 			}
+			permission := "*"
+			setScope, scopeErr := platformauthz.CanonicalScope(applicationID.String(), &workspaceID, permission)
+			if scopeErr != nil {
+				return effectiveAccess{}, scopeErr
+			}
+			set[setScope] = struct{}{}
+			workspaceCopy := workspaceID
+			provenance = append(provenance, scopeProvenance{Scope: setScope, Source: "workspace_owner", WorkspaceID: &workspaceCopy, Permission: "*"})
 		}
+	} else {
+		return effectiveAccess{}, err
 	}
 	values := make([]string, 0, len(set))
 	for value := range set {
@@ -911,60 +1073,121 @@ WHERE application_id=$1 AND owner_user_id=$2 AND deleted_at IS NULL ORDER BY id`
 		}
 	}
 	sort.Strings(values)
-	return values
+	sort.Strings(roles.Application)
+	for workspaceID := range roles.Workspaces {
+		sort.Strings(roles.Workspaces[workspaceID])
+	}
+	sort.Slice(provenance, func(i, j int) bool {
+		if provenance[i].Scope == provenance[j].Scope {
+			return provenance[i].Source < provenance[j].Source
+		}
+		return provenance[i].Scope < provenance[j].Scope
+	})
+	return effectiveAccess{Scopes: values, Roles: roles, Provenance: provenance}, nil
 }
 
 func (s *Server) clientScopes(r *http.Request, applicationID uuid.UUID, clientID string) []string {
+	access, err := s.clientEffectiveAccess(r, applicationID, clientID)
+	if err != nil {
+		return []string{}
+	}
+	return access.Scopes
+}
+
+func (s *Server) clientEffectiveAccess(r *http.Request, applicationID uuid.UUID, clientID string) (effectiveAccess, error) {
 	rows, err := s.app.DB.Query(r.Context(), `SELECT ro.key,ro.scope,ro.permissions,ra.workspace_id::text
 FROM clients c JOIN role_assignments ra ON ra.client_id=c.id AND ra.application_id=c.application_id
 JOIN roles ro ON ro.id=ra.role_id AND ro.application_id=ra.application_id
 WHERE c.application_id=$1 AND c.client_id=$2 AND c.disabled_at IS NULL ORDER BY ra.created_at,ra.id`, applicationID, clientID)
 	if err != nil {
-		return []string{}
+		return effectiveAccess{}, err
 	}
 	defer rows.Close()
-	applicationPrefix := "/applications/" + applicationID.String()
 	set := map[string]struct{}{}
+	provenance := []scopeProvenance{}
+	roles := emptyRoleClaims()
+	var clientDatabaseID string
+	if err = s.app.DB.QueryRow(r.Context(), `SELECT id FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, applicationID, clientID).Scan(&clientDatabaseID); err != nil {
+		return effectiveAccess{}, err
+	}
 	for rows.Next() {
 		var roleKey, roleScope string
 		var permissions []string
 		var workspaceID *string
-		if rows.Scan(&roleKey, &roleScope, &permissions, &workspaceID) != nil {
-			continue
+		if scanErr := rows.Scan(&roleKey, &roleScope, &permissions, &workspaceID); scanErr != nil {
+			return effectiveAccess{}, scanErr
 		}
-		prefix := applicationPrefix
+		var roleWorkspaceID *string
 		if roleScope == "workspace" {
 			if workspaceID == nil {
-				continue
+				return effectiveAccess{}, fmt.Errorf("workspace role %q has no workspace", roleKey)
 			}
-			prefix += "/workspaces/" + *workspaceID
+			roleWorkspaceID = workspaceID
+			roles.Workspaces[*workspaceID] = append(roles.Workspaces[*workspaceID], roleKey)
+		} else {
+			roles.Application = append(roles.Application, roleKey)
 		}
-		set[prefix+"/roles/"+roleKey] = struct{}{}
+		marker, markerErr := platformauthz.RoleMarker(applicationID.String(), roleWorkspaceID, roleKey)
+		if markerErr != nil {
+			return effectiveAccess{}, markerErr
+		}
+		set[marker] = struct{}{}
+		provenance = append(provenance, scopeProvenance{Scope: marker, Source: "role_marker", RoleKey: roleKey, WorkspaceID: roleWorkspaceID})
 		for _, permission := range permissions {
-			if expanded := expandScope(prefix, permission); expanded != "" {
-				set[expanded] = struct{}{}
+			expanded, expandErr := platformauthz.CanonicalScope(applicationID.String(), roleWorkspaceID, permission)
+			if expandErr != nil {
+				return effectiveAccess{}, expandErr
 			}
+			set[expanded] = struct{}{}
+			provenance = append(provenance, scopeProvenance{Scope: expanded, Source: "role", RoleKey: roleKey, WorkspaceID: roleWorkspaceID, Permission: permission})
 		}
+	}
+	if err = rows.Err(); err != nil {
+		return effectiveAccess{}, err
+	}
+	if err = s.addDirectGrantScopes(r, applicationID, "", clientDatabaseID, set, &provenance); err != nil {
+		return effectiveAccess{}, err
 	}
 	values := make([]string, 0, len(set))
 	for value := range set {
 		values = append(values, value)
 	}
 	sort.Strings(values)
-	return values
+	sort.Strings(roles.Application)
+	for workspaceID := range roles.Workspaces {
+		sort.Strings(roles.Workspaces[workspaceID])
+	}
+	sort.Slice(provenance, func(i, j int) bool {
+		if provenance[i].Scope == provenance[j].Scope {
+			return provenance[i].Source < provenance[j].Source
+		}
+		return provenance[i].Scope < provenance[j].Scope
+	})
+	return effectiveAccess{Scopes: values, Roles: roles, Provenance: provenance}, nil
 }
 
-func expandScope(prefix, permission string) string {
-	permission = strings.TrimSpace(permission)
-	if strings.HasPrefix(permission, "/applications/") {
-		return permission
+func (s *Server) addDirectGrantScopes(r *http.Request, applicationID uuid.UUID, userID, clientID string, set map[string]struct{}, provenance *[]scopeProvenance) error {
+	rows, err := s.app.DB.Query(r.Context(), `SELECT id::text,permission,canonical_scope,workspace_id::text FROM permission_grants
+WHERE application_id=$1 AND user_id IS NOT DISTINCT FROM NULLIF($2,'')::uuid
+AND client_id IS NOT DISTINCT FROM NULLIF($3,'')::uuid AND revoked_at IS NULL ORDER BY created_at,id`, applicationID, userID, clientID)
+	if err != nil {
+		return err
 	}
-	permission = strings.Trim(permission, "/")
-	permission = strings.ReplaceAll(permission, ":", "/")
-	if permission == "" {
-		return ""
+	defer rows.Close()
+	for rows.Next() {
+		var grantID, permission, canonical string
+		var workspaceID *string
+		if err = rows.Scan(&grantID, &permission, &canonical, &workspaceID); err != nil {
+			return err
+		}
+		expected, canonicalErr := platformauthz.CanonicalScope(applicationID.String(), workspaceID, permission)
+		if canonicalErr != nil || expected != canonical {
+			return fmt.Errorf("permission grant contains invalid canonical data")
+		}
+		set[canonical] = struct{}{}
+		*provenance = append(*provenance, scopeProvenance{Scope: canonical, Source: "direct", GrantID: grantID, WorkspaceID: workspaceID, Permission: permission})
 	}
-	return prefix + "/" + permission
+	return rows.Err()
 }
 
 func (s *Server) authFlag(r *http.Request, key string) bool {

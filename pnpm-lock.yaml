@@ -6,6 +6,7 @@ settings:
 
 overrides:
   js-yaml: 4.3.1
+  nanoid: 3.3.18
   postcss: 8.5.23
   sharp: 0.35.0
 
@@ -13,12 +14,18 @@ importers:
 
   .:
     devDependencies:
+      '@redocly/cli':
+        specifier: 2.46.1
+        version: 2.46.1
       ajv:
         specifier: ^8.17.1
         version: 8.20.0
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.20.0)
+      js-yaml:
+        specifier: 4.3.1
+        version: 4.3.1
 
   sdk/typescript/auth:
     dependencies:
@@ -35,6 +42,19 @@ importers:
       '@types/node':
         specifier: ^22.17.1
         version: 22.20.1
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  sdk/typescript/expo:
+    dependencies:
+      '@supaapps/platform93-auth':
+        specifier: workspace:*
+        version: link:../auth
+      '@supaapps/platform93-sdk':
+        specifier: workspace:*
+        version: link:../sdk
+    devDependencies:
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
@@ -66,6 +86,9 @@ importers:
 
   sdk/typescript/server:
     dependencies:
+      '@supaapps/platform93-sdk':
+        specifier: workspace:*
+        version: link:../sdk
       jose:
         specifier: ^6.0.12
         version: 6.2.8
@@ -79,6 +102,9 @@ importers:
       '@supaapps/platform93-sdk':
         specifier: workspace:*
         version: link:../sdk/typescript/sdk
+      dompurify:
+        specifier: 3.4.13
+        version: 3.4.13
       next:
         specifier: 15.5.23
         version: 15.5.23(@playwright/test@1.62.1)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -430,6 +456,11 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
+  '@redocly/cli@2.46.1':
+    resolution: {integrity: sha512-FSUSq2FU8VN7DmTobTmq7zb3zPnDkRKSMd3n38D62JFJUUZKnLMQtn7BUhsD2dCFH2WgF05I3fbN7QHDQyCBeA==}
+    engines: {node: '>=22.12.0 || >=20.19.0 <21.0.0', npm: '>=10'}
+    hasBin: true
+
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
 
@@ -461,6 +492,9 @@ packages:
 
   '@types/react@19.2.18':
     resolution: {integrity: sha512-AnzbBERsrLKtk2XSfTbYRLjQPdy116Sty4q+T+Bp3IC4l6jNBvreVPAHmpq9qhXQM7CXZPjLVmGMw9sy+hxQ3w==}
+
+  '@types/trusted-types@2.0.7':
+    resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
   '@typescript-eslint/eslint-plugin@8.66.0':
     resolution: {integrity: sha512-p088eaGrzYz1s+7cov0aMOCkNGTJlVxF4jgubf28c8L0Cv9Rloj8YBHnv4hXLq6IIEE1AsjNWavO+k+8kP2Y0A==}
@@ -888,6 +922,9 @@ packages:
   doctrine@3.0.0:
     resolution: {integrity: sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==}
     engines: {node: '>=6.0.0'}
+
+  dompurify@3.4.13:
+    resolution: {integrity: sha512-2vmYIoqjze2d+kakP8S/nS5shfsl587kzwEjcGlTdiksUVgFHnFCsLYDVj/JNqJVOQZGSYBTmuycv0PodwmnMQ==}
 
   dotenv@17.4.2:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
@@ -1451,8 +1488,8 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  nanoid@3.3.17:
-    resolution: {integrity: sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==}
+  nanoid@3.3.18:
+    resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -2200,6 +2237,8 @@ snapshots:
     dependencies:
       playwright: 1.62.1
 
+  '@redocly/cli@2.46.1': {}
+
   '@rtsao/scc@1.1.0': {}
 
   '@rushstack/eslint-patch@1.16.1': {}
@@ -2232,6 +2271,9 @@ snapshots:
   '@types/react@19.2.18':
     dependencies:
       csstype: 3.2.3
+
+  '@types/trusted-types@2.0.7':
+    optional: true
 
   '@typescript-eslint/eslint-plugin@8.66.0(@typescript-eslint/parser@8.66.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)':
     dependencies:
@@ -2666,6 +2708,10 @@ snapshots:
   doctrine@3.0.0:
     dependencies:
       esutils: 2.0.3
+
+  dompurify@3.4.13:
+    optionalDependencies:
+      '@types/trusted-types': 2.0.7
 
   dotenv@17.4.2: {}
 
@@ -3386,7 +3432,7 @@ snapshots:
 
   ms@2.1.3: {}
 
-  nanoid@3.3.17: {}
+  nanoid@3.3.18: {}
 
   napi-postinstall@0.3.4: {}
 
@@ -3546,7 +3592,7 @@ snapshots:
 
   postcss@8.5.23:
     dependencies:
-      nanoid: 3.3.17
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 

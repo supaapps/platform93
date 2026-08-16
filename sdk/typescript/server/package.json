@@ -29,6 +29,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@supaapps/platform93-sdk": "workspace:*",
     "jose": "^6.0.12"
   },
   "devDependencies": {

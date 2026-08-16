@@ -111,6 +111,9 @@ func (s *Server) disableNotificationProviderForScope(w http.ResponseWriter, r *h
 	if !s.authorizeProviderScope(w, r, scope, true) {
 		return
 	}
+	if scope.name() == "installation" && !s.allowControlSMTPRemoval(w, r, chi.URLParam(r, "provider_id"), r.URL.Query().Get("confirm_affected_users") == "true") {
+		return
+	}
 	result, err := s.app.DB.Exec(r.Context(), `UPDATE notification_providers SET disabled_at=now()
 WHERE id=$1 AND application_id IS NOT DISTINCT FROM $2::uuid AND organization_id IS NOT DISTINCT FROM $3::uuid AND disabled_at IS NULL`, chi.URLParam(r, "provider_id"), scope.ApplicationID, scope.OrganizationID)
 	if err != nil || result.RowsAffected() != 1 {

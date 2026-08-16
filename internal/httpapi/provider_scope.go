@@ -47,7 +47,7 @@ func (s *Server) authorizeProviderScope(w http.ResponseWriter, r *http.Request, 
 				kernel.WriteProblem(w, r, http.StatusForbidden, "organization_permission_required", "An organization owner or administrator is required to manage application providers.")
 				return false
 			}
-		} else if !s.operatorBelongsToOrganization(r, organizationID) {
+		} else if !s.controlUserBelongsToOrganization(r, organizationID) {
 			kernel.WriteProblem(w, r, http.StatusNotFound, "application_not_found", "The application was not found.")
 			return false
 		}
@@ -72,7 +72,7 @@ FROM organization_policies WHERE organization_id=$1`, *scope.OrganizationID).Sca
 			kernel.WriteProblem(w, r, http.StatusForbidden, "organization_permission_required", "An organization owner or administrator is required to manage providers.")
 			return false
 		}
-		if s.operatorBelongsToOrganization(r, *scope.OrganizationID) {
+		if s.controlUserBelongsToOrganization(r, *scope.OrganizationID) {
 			return true
 		}
 		kernel.WriteProblem(w, r, http.StatusNotFound, "organization_not_found", "The organization was not found.")

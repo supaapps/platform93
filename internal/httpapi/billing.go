@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/kernel"
 )
@@ -143,13 +144,14 @@ func (s *Server) writeBillingProviderPage(w http.ResponseWriter, r *http.Request
 
 func (s *Server) createCheckoutSession(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		PriceID        string   `json:"price_id"`
-		SubjectType    string   `json:"subject_type"`
-		SubjectID      string   `json:"subject_id"`
-		ProviderID     string   `json:"provider_id"`
-		PaymentMethods []string `json:"payment_methods,omitempty"`
-		SuccessURI     string   `json:"success_uri"`
-		CancelURI      string   `json:"cancel_uri"`
+		PriceID           string   `json:"price_id"`
+		SubjectType       string   `json:"subject_type"`
+		SubjectID         string   `json:"subject_id"`
+		ProviderID        string   `json:"provider_id"`
+		PaymentMethods    []string `json:"payment_methods,omitempty"`
+		SuccessURI        string   `json:"success_uri"`
+		CancelURI         string   `json:"cancel_uri"`
+		ExternalReference *string  `json:"external_reference,omitempty"`
 	}
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
@@ -170,6 +172,10 @@ func (s *Server) createCheckoutSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if request.SubjectType != "user" && request.SubjectType != "workspace" {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_subject", "Subject type must be user or workspace.")
+		return
+	}
+	if request.ExternalReference != nil && (len(*request.ExternalReference) > 255 || strings.TrimSpace(*request.ExternalReference) == "") {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_external_reference", "External reference must contain between 1 and 255 characters.")
 		return
 	}
 	if !s.billingRedirectAllowed(r, request.SuccessURI) || !s.billingRedirectAllowed(r, request.CancelURI) {
@@ -202,7 +208,7 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 	policy["payment_methods"] = request.PaymentMethods
 	policyJSON, _ := json.Marshal(policy)
 	sessionID := kernel.NewID()
-	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO checkout_sessions (id,application_id,subject_type,subject_id,price_id,provider_connection_id,payment_methods,policy_snapshot,success_uri,cancel_uri) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, sessionID, chi.URLParam(r, "application_id"), request.SubjectType, request.SubjectID, request.PriceID, providerConnectionID, request.PaymentMethods, policyJSON, request.SuccessURI, request.CancelURI)
+	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO checkout_sessions (id,application_id,subject_type,subject_id,price_id,provider_connection_id,payment_methods,policy_snapshot,success_uri,cancel_uri,external_reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, sessionID, chi.URLParam(r, "application_id"), request.SubjectType, request.SubjectID, request.PriceID, providerConnectionID, request.PaymentMethods, policyJSON, request.SuccessURI, request.CancelURI, request.ExternalReference)
 	if err != nil {
 		kernel.WriteProblem(w, r, 409, "checkout_creation_failed", "The checkout record could not be created.")
 		return
@@ -239,6 +245,9 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 	form.Set("metadata[platform93_price_id]", request.PriceID)
 	form.Set("metadata[platform93_subject_type]", request.SubjectType)
 	form.Set("metadata[platform93_subject_id]", request.SubjectID)
+	if request.ExternalReference != nil {
+		form.Set("metadata[platform93_external_reference]", *request.ExternalReference)
+	}
 	form.Set("customer", customerID)
 	form.Set("line_items[0][quantity]", "1")
 	form.Set("line_items[0][price]", providerPriceID)
@@ -249,6 +258,9 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 		form.Set("subscription_data[metadata][platform93_price_id]", request.PriceID)
 		form.Set("subscription_data[metadata][platform93_subject_type]", request.SubjectType)
 		form.Set("subscription_data[metadata][platform93_subject_id]", request.SubjectID)
+		if request.ExternalReference != nil {
+			form.Set("subscription_data[metadata][platform93_external_reference]", *request.ExternalReference)
+		}
 		applyStripeTrialPolicy(form, policy)
 	}
 	if mode == "one_time" {
@@ -258,6 +270,9 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 		form.Set("payment_intent_data[metadata][platform93_price_id]", request.PriceID)
 		form.Set("payment_intent_data[metadata][platform93_subject_type]", request.SubjectType)
 		form.Set("payment_intent_data[metadata][platform93_subject_id]", request.SubjectID)
+		if request.ExternalReference != nil {
+			form.Set("payment_intent_data[metadata][platform93_external_reference]", *request.ExternalReference)
+		}
 	}
 	for index, method := range request.PaymentMethods {
 		form.Set(fmt.Sprintf("payment_method_types[%d]", index), method)
@@ -287,7 +302,7 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 		kernel.WriteProblem(w, r, 500, "checkout_update_failed", "The provider checkout could not be saved.")
 		return
 	}
-	kernel.WriteJSON(w, 201, map[string]any{"id": sessionID, "status": "open", "checkout_uri": stripeSession.URL, "provider_session_id": stripeSession.ID})
+	kernel.WriteJSON(w, 201, map[string]any{"id": sessionID, "status": "open", "checkout_uri": stripeSession.URL, "provider_session_id": stripeSession.ID, "external_reference": request.ExternalReference})
 }
 
 func (s *Server) stripeWebhook(w http.ResponseWriter, r *http.Request) {
@@ -538,7 +553,7 @@ func stripeRequest(ctx context.Context, method, uri, secret, version, idempotenc
 	return body, nil
 }
 
-func (s *Server) upsertProviderGrant(ctx context.Context, tx pgx.Tx, applicationID, subjectType, subjectID, productID, priceID, sourceType, sourceID string, expiresAt *time.Time, revoke bool) error {
+func (s *Server) upsertProviderGrant(ctx context.Context, tx pgx.Tx, applicationID, subjectType, subjectID, productID, priceID, sourceType, sourceID string, externalReference *string, expiresAt *time.Time, revoke bool) error {
 	var grantID string
 	lookupErr := tx.QueryRow(ctx, `SELECT id FROM entitlement_grants
 WHERE application_id=$1 AND source_type=$2 AND source_id=$3 AND product_id=$4`, applicationID, sourceType, sourceID, productID).Scan(&grantID)
@@ -563,14 +578,20 @@ WHERE application_id=$1 AND source_type=$2 AND source_id=$3 AND product_id=$4`, 
 				base = *expiresAt
 			}
 			expires := base.Add(time.Duration(graceSeconds) * time.Second)
-			_, err := tx.Exec(ctx, `INSERT INTO entitlement_grant_actions
+			result, err := tx.Exec(ctx, `INSERT INTO entitlement_grant_actions
 (id,grant_id,action,action_key,expires_at,reason,actor_type) VALUES($1,$2,'adjusted',$3,$4,'provider_access_ended','provider')
 ON CONFLICT(grant_id,action_key) DO NOTHING`, kernel.NewID(), grantID, "provider_ended_grace:"+marker, expires)
+			if err == nil && result.RowsAffected() == 1 {
+				err = s.emitProviderGrantEvents(ctx, tx, applicationID, "entitlement.adjusted", grantID, subjectType, subjectID, externalReference)
+			}
 			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO entitlement_grant_actions
+		result, err := tx.Exec(ctx, `INSERT INTO entitlement_grant_actions
 (id,grant_id,action,action_key,reason,actor_type) VALUES($1,$2,'revoked',$3,'provider_access_ended','provider')
 ON CONFLICT(grant_id,action_key) DO NOTHING`, kernel.NewID(), grantID, "provider_ended:"+marker)
+		if err == nil && result.RowsAffected() == 1 {
+			err = s.emitProviderGrantEvents(ctx, tx, applicationID, "entitlement.revoked", grantID, subjectType, subjectID, externalReference)
+		}
 		return err
 	}
 	if lookupErr != nil && lookupErr != pgx.ErrNoRows {
@@ -587,9 +608,12 @@ ON CONFLICT(grant_id,action_key) DO NOTHING`, kernel.NewID(), grantID, "provider
 		if latestAction == "revoked" {
 			action = "restored"
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO entitlement_grant_actions
+		result, err := tx.Exec(ctx, `INSERT INTO entitlement_grant_actions
 (id,grant_id,action,action_key,expires_at,reason,actor_type) VALUES($1,$2,$3,$4,$5,'provider_access_active','provider')
 ON CONFLICT(grant_id,action_key) DO NOTHING`, kernel.NewID(), grantID, action, "provider_active:"+marker, expiresAt)
+		if err == nil && result.RowsAffected() == 1 {
+			err = s.emitProviderGrantEvents(ctx, tx, applicationID, "entitlement."+action, grantID, subjectType, subjectID, externalReference)
+		}
 		return err
 	}
 	features := map[string]any{}
@@ -621,10 +645,38 @@ FROM price_features pf JOIN features f ON f.id=pf.feature_id WHERE pf.price_id=$
 	if err = tx.QueryRow(ctx, "SELECT entitlement_config FROM prices WHERE id=$1", priceID).Scan(&configuration); err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO entitlement_grants
-(id,application_id,subject_type,subject_id,product_id,price_id,source_type,source_id,feature_values,configuration,starts_at,expires_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),$11)
-ON CONFLICT (application_id,source_type,source_id,product_id) WHERE source_id IS NOT NULL DO NOTHING`, kernel.NewID(), applicationID, subjectType, subjectID, productID, priceID, sourceType, sourceID, featuresJSON, configuration, expiresAt)
+	newGrantID := kernel.NewID()
+	var persistedGrantID string
+	var created bool
+	err = tx.QueryRow(ctx, `INSERT INTO entitlement_grants
+(id,application_id,subject_type,subject_id,product_id,price_id,source_type,source_id,feature_values,configuration,starts_at,expires_at,external_reference)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),$11,$12)
+	ON CONFLICT (application_id,source_type,source_id,product_id) WHERE source_id IS NOT NULL DO UPDATE SET external_reference=COALESCE(EXCLUDED.external_reference,entitlement_grants.external_reference)
+RETURNING id,(xmax=0)`, newGrantID, applicationID, subjectType, subjectID, productID, priceID, sourceType, sourceID, featuresJSON, configuration, expiresAt, externalReference).Scan(&persistedGrantID, &created)
+	if err == nil && created {
+		err = s.emitProviderGrantEvents(ctx, tx, applicationID, "entitlement.granted", persistedGrantID, subjectType, subjectID, externalReference)
+	}
+	return err
+}
+
+func (s *Server) emitProviderGrantEvents(ctx context.Context, tx pgx.Tx, applicationID, eventType, grantID, subjectType, subjectID string, externalReference *string) error {
+	parsed, err := uuid.Parse(applicationID)
+	if err != nil {
+		return err
+	}
+	providerActor := map[string]any{"type": "provider"}
+	status := "active"
+	if eventType == "entitlement.revoked" {
+		status = "revoked"
+	}
+	data := map[string]any{"grant_id": grantID, "subject_type": subjectType, "subject_id": subjectID, "external_reference": externalReference, "status": status}
+	if eventType == "entitlement.granted" {
+		data["reason"] = "provider"
+	}
+	if _, err = s.app.Emit(ctx, tx, &parsed, eventType, "entitlement/"+grantID, providerActor, data); err != nil {
+		return err
+	}
+	_, err = s.app.Emit(ctx, tx, &parsed, "entitlement.effective_changed", subjectType+"/"+subjectID, providerActor, map[string]any{"grant_id": grantID, "subject_type": subjectType, "subject_id": subjectID, "external_reference": externalReference})
 	return err
 }
 func applyStripeCheckoutPolicy(form url.Values, policy map[string]any) {

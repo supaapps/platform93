@@ -48,7 +48,11 @@ func run() error {
 			if err := database.Status(databaseURL); err != nil {
 				return err
 			}
+			if err := database.ValidateAuthorization(databaseURL); err != nil {
+				return err
+			}
 			fmt.Println("database: ready")
+			fmt.Println("authorization: valid")
 			return nil
 		case "backup":
 			if len(os.Args) != 3 {

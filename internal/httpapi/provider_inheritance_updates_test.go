@@ -32,12 +32,12 @@ func TestProviderInheritanceUpdatesPreserveHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
-	operatorID, smtpID, stripeID, storageID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
+	controlUserID, smtpID, stripeID, storageID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
 	suffix := smtpID.String()
-	if _, err = db.Exec(context.Background(), `INSERT INTO operators(id,email,normalized_email) VALUES($1,$2,$2)`, operatorID, "provider-health-"+suffix+"@example.test"); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, controlUserID, "provider-health-"+suffix+"@example.test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(context.Background(), `INSERT INTO installation_operator_roles(operator_id,role) VALUES($1,'owner')`, operatorID); err != nil {
+	if _, err = db.Exec(context.Background(), `INSERT INTO installation_control_user_roles(control_user_id,role) VALUES($1,'owner')`, controlUserID); err != nil {
 		t.Fatal(err)
 	}
 	smtpCiphertext, err := vault.Encrypt([]byte(`{"host":"smtp.example.test","port":587,"tls_mode":"starttls"}`), "notification-provider:"+smtpID.String())
@@ -67,7 +67,7 @@ VALUES($1,'Installation storage','http://127.0.0.1:9000','local','public',$2,tru
 		t.Fatal(err)
 	}
 
-	smtpRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": false}, map[string]string{"provider_id": smtpID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	smtpRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": false}, map[string]string{"provider_id": smtpID.String()}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	smtpResponse := httptest.NewRecorder()
 	server.updateInstallationNotificationProvider(smtpResponse, smtpRequest)
 	if smtpResponse.Code != http.StatusOK {
@@ -82,7 +82,7 @@ VALUES($1,'Installation storage','http://127.0.0.1:9000','local','public',$2,tru
 		t.Fatalf("SMTP health changed with inheritance: verified=%v inheritable=%v", storedVerifiedAt, smtpInheritable)
 	}
 
-	stripeRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": false}, map[string]string{"provider_id": stripeID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	stripeRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": false}, map[string]string{"provider_id": stripeID.String()}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	stripeResponse := httptest.NewRecorder()
 	server.updateInstallationBillingProvider(stripeResponse, stripeRequest)
 	if stripeResponse.Code != http.StatusNoContent {
@@ -97,7 +97,7 @@ VALUES($1,'Installation storage','http://127.0.0.1:9000','local','public',$2,tru
 		t.Fatalf("Stripe health changed with inheritance: status=%s inheritable=%v", stripeStatus, stripeInheritable)
 	}
 
-	storageRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": false}, map[string]string{"provider_id": storageID.String()}, kernel.Actor{Type: "operator", ID: operatorID.String()})
+	storageRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"inheritable": false}, map[string]string{"provider_id": storageID.String()}, kernel.Actor{Type: "control_user", ID: controlUserID.String()})
 	storageResponse := httptest.NewRecorder()
 	server.updateInstallationStorageProvider(storageResponse, storageRequest)
 	if storageResponse.Code != http.StatusOK {

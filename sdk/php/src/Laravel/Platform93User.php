@@ -24,7 +24,7 @@ final class Platform93User implements Authenticatable
     public function can(string $permission): bool
     {
         foreach (preg_split('/\s+/', trim((string) ($this->claims['scope'] ?? ''))) ?: [] as $granted) {
-            if ($granted === '*' || $granted === $permission || (str_ends_with($granted, '/*') && ($permission === substr($granted, 0, -2) || str_starts_with($permission, substr($granted, 0, -1))))) {
+            if (\Supaapps\Platform93\Permission::matches($granted, $permission)) {
                 return true;
             }
         }
