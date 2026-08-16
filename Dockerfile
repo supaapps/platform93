@@ -6,6 +6,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY web/package.json web/package.json
 COPY sdk/typescript/sdk/package.json sdk/typescript/sdk/package.json
 COPY sdk/typescript/auth/package.json sdk/typescript/auth/package.json
+COPY sdk/typescript/expo/package.json sdk/typescript/expo/package.json
 COPY sdk/typescript/react/package.json sdk/typescript/react/package.json
 COPY sdk/typescript/server/package.json sdk/typescript/server/package.json
 COPY sdk/typescript/events/package.json sdk/typescript/events/package.json
@@ -14,7 +15,7 @@ COPY web web
 COPY sdk/typescript sdk/typescript
 RUN pnpm build
 
-FROM golang:1.25-bookworm AS backend
+FROM golang:1.25.13-bookworm AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

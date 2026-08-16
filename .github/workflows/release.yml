@@ -4,72 +4,56 @@ on:
 permissions: { contents: read }
 jobs:
   verify:
+    uses: ./.github/workflows/verify.yml
+
+  security:
+    uses: ./.github/workflows/security.yml
+
+  tag:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env: { POSTGRES_DB: platform93_release, POSTGRES_USER: platform93, POSTGRES_PASSWORD: platform93 }
-        ports: ["5432:5432"]
-        options: --health-cmd "pg_isready -U platform93 -d platform93_release" --health-interval 5s --health-timeout 5s --health-retries 20
-    env:
-      PLATFORM93_DATABASE_URL: postgres://platform93:platform93@localhost:5432/platform93_release?sslmode=disable
-      PLATFORM93_MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: "1.25.x", cache: true }
-      - uses: pnpm/action-setup@v4
-        with: { version: 9.13.0 }
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - uses: shivammathur/setup-php@v2
-        with: { php-version: "8.2", tools: composer:v2 }
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm generate && git diff --exit-code
-      - run: node scripts/validate-event-schema.mjs && pnpm check:routes
-      - run: go vet ./... && go test -race -count=1 -p 1 ./...
-      - run: go run ./cmd/platform93 migrate && go run ./cmd/platform93 doctor
-      - run: pnpm lint && pnpm test && pnpm typecheck && pnpm --filter @platform93/admin build
-      - run: composer validate --strict && composer install --no-interaction --prefer-dist && composer audit --no-interaction
-      - run: php sdk/php/tests/conformance.php && php sdk/php/tests/auth_conformance.php
-      - run: python -m pip install build 'PyJWT[crypto]>=2.10,<3' 'httpx>=0.28,<1'
-      - run: python -m build sdk/python/auth && python -m build sdk/python/webhooks
-      - run: PYTHONPATH=sdk/python/auth/src python sdk/python/auth/tests/conformance.py
-      - run: PYTHONPATH=sdk/python/webhooks/src python sdk/python/webhooks/tests/conformance.py
-      - run: docker compose -f deploy/compose/compose.yaml config --quiet
-      - run: docker run --rm -v "$PWD:/work" -w /work alpine/helm:3.17.3 lint deploy/helm/platform93
+        with: { fetch-depth: 0 }
+      - run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "Release tags must reference a commit reachable from origin/main." >&2
+            exit 1
+          }
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+
   artifacts:
-    needs: verify
+    needs: [verify, security, tag]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@v5
-        with: { go-version: "1.25.x", cache: true }
+        with: { go-version: "1.25.13", cache: true }
       - run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          mkdir -p dist
+          BUILD_DATE="$(git show -s --format=%cI "$GITHUB_SHA")"
+          mkdir -p dist/platform93-event-schemas
           for TARGET in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             TARGET_OS="${TARGET%/*}"
             TARGET_ARCH="${TARGET#*/}"
             GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/supaapps/platform93/internal/buildinfo.Version=${VERSION} -X github.com/supaapps/platform93/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/supaapps/platform93/internal/buildinfo.Date=${BUILD_DATE}" -o "dist/platform93-${TARGET_OS}-${TARGET_ARCH}" ./cmd/platform93
           done
           cp api/openapi/platform93.yaml dist/platform93-openapi.yaml
-          cp schemas/events/envelope.schema.json dist/platform93-event-envelope.schema.json
+          cp schemas/events/*.schema.json dist/platform93-event-schemas/
           cp deploy/compose/compose.yaml dist/platform93-compose.yaml
-          sha256sum dist/platform93-* > dist/SHA256SUMS
+          find dist -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
-          files: "dist/*"
+          files: "dist/**"
           generate_release_notes: true
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-          make_latest: ${{ !contains(github.ref_name, '-') }}
+
   image:
-    needs: verify
+    needs: [verify, security, tag]
     runs-on: ubuntu-latest
     permissions: { contents: read, packages: write, id-token: write, attestations: write }
     steps:
@@ -78,12 +62,27 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: imjasonh/setup-crane@v0.4
+      - id: existing
+        run: |
+          IMAGE="ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
+          if crane manifest "$IMAGE" >/dev/null 2>&1; then
+            REVISION="$(crane config "$IMAGE" | jq -r '.config.Labels["org.opencontainers.image.revision"] // empty')"
+            test "$REVISION" = "$GITHUB_SHA" || {
+              echo "Existing image tag belongs to ${REVISION:-an unknown commit}, not $GITHUB_SHA." >&2
+              exit 1
+            }
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: docker/metadata-action@v5
         id: metadata
         with:
           images: ghcr.io/supaapps/platform93
           tags: type=semver,pattern={{version}}
       - uses: docker/build-push-action@v6
+        if: steps.existing.outputs.exists != 'true'
         id: build
         with:
           context: .
@@ -94,9 +93,14 @@ jobs:
           provenance: true
           sbom: true
       - uses: sigstore/cosign-installer@v3
-      - run: cosign sign --yes ghcr.io/supaapps/platform93@${{ steps.build.outputs.digest }}
+      - run: |
+          IMAGE="ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
+          DIGEST="$(crane digest "$IMAGE")"
+          cosign sign --yes "ghcr.io/supaapps/platform93@${DIGEST}"
+      - run: docker run --rm aquasec/trivy:0.61.1 image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
+
   npm:
-    needs: verify
+    needs: [verify, security, tag]
     runs-on: ubuntu-latest
     environment: npm
     permissions: { contents: read, id-token: write }
@@ -109,21 +113,31 @@ jobs:
       - run: pnpm install --frozen-lockfile && pnpm build:packages
       - run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          NPM_TAG="latest"
+          PUBLISH_TAG="next"
           if [[ "$VERSION" == *-* ]]; then
-            NPM_TAG="${VERSION#*-}"
-            NPM_TAG="${NPM_TAG%%.*}"
+            PUBLISH_TAG="${VERSION#*-}"
+            PUBLISH_TAG="${PUBLISH_TAG%%.*}"
           fi
           node scripts/set-release-version.mjs "$VERSION"
           mkdir -p "$RUNNER_TEMP/platform93-npm"
-          for PACKAGE in sdk auth react server events; do
+          for PACKAGE in sdk auth expo react server events; do
             pnpm --dir "sdk/typescript/${PACKAGE}" pack --pack-destination "$RUNNER_TEMP/platform93-npm"
           done
           for TARBALL in "$RUNNER_TEMP"/platform93-npm/*.tgz; do
-            npx --yes npm@11.5.1 publish "$TARBALL" --access public --provenance --tag "$NPM_TAG"
+            NAME="$(tar -xOf "$TARBALL" package/package.json | jq -r .name)"
+            LOCAL_INTEGRITY="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | openssl base64 -A)"
+            if REMOTE_INTEGRITY="$(npm view "${NAME}@${VERSION}" dist.integrity 2>/dev/null)"; then
+              test "$LOCAL_INTEGRITY" = "$REMOTE_INTEGRITY" || {
+                echo "Published ${NAME}@${VERSION} does not match the release tarball." >&2
+                exit 1
+              }
+              continue
+            fi
+            npx --yes npm@11.5.1 publish "$TARBALL" --access public --provenance --tag "$PUBLISH_TAG"
           done
+
   pypi:
-    needs: verify
+    needs: [verify, security, tag]
     runs-on: ubuntu-latest
     environment: pypi
     permissions: { contents: read, id-token: write }
@@ -133,15 +147,19 @@ jobs:
         with: { python-version: "3.11" }
       - run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          sed -i "s/^version = .*/version = \"${VERSION}\"/" sdk/python/auth/pyproject.toml sdk/python/webhooks/pyproject.toml
-          python -m pip install build
+          python -m pip install build packaging
+          PY_VERSION="$(python -c "from packaging.version import Version; print(Version('${VERSION}'))")"
+          sed -i "s/^version = .*/version = \"${PY_VERSION}\"/" sdk/python/auth/pyproject.toml sdk/python/webhooks/pyproject.toml
           mkdir -p dist/python
           python -m build --outdir dist/python sdk/python/auth
           python -m build --outdir dist/python sdk/python/webhooks
       - uses: pypa/gh-action-pypi-publish@release/v1
-        with: { packages-dir: dist/python }
+        with:
+          packages-dir: dist/python
+          skip-existing: true
+
   helm:
-    needs: verify
+    needs: [verify, security, tag]
     runs-on: ubuntu-latest
     permissions: { contents: read, packages: write }
     steps:
@@ -153,4 +171,58 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           helm lint deploy/helm/platform93
           helm package deploy/helm/platform93 --version "$VERSION" --app-version "$VERSION" --destination dist
-          helm push "dist/platform93-${VERSION}.tgz" oci://ghcr.io/supaapps/charts
+          if helm pull oci://ghcr.io/supaapps/charts/platform93 --version "$VERSION" --destination /tmp >/dev/null 2>&1; then
+            mkdir -p /tmp/current /tmp/published
+            tar -xzf "dist/platform93-${VERSION}.tgz" -C /tmp/current
+            tar -xzf "/tmp/platform93-${VERSION}.tgz" -C /tmp/published
+            diff -ru /tmp/current /tmp/published
+          else
+            helm push "dist/platform93-${VERSION}.tgz" oci://ghcr.io/supaapps/charts
+          fi
+
+  finalize:
+    needs: [artifacts, image, npm, pypi, helm]
+    runs-on: ubuntu-latest
+    permissions: { contents: write, packages: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, registry-url: "https://registry.npmjs.org" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: azure/setup-helm@v4
+        with: { version: v3.17.3 }
+      - uses: imjasonh/setup-crane@v0.4
+      - run: python -m pip install packaging
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for PACKAGE in sdk auth expo react server events; do
+            NAME="@supaapps/platform93-${PACKAGE}"
+            if [[ "$PACKAGE" = sdk ]]; then NAME="@supaapps/platform93-sdk"; fi
+            npm view "${NAME}@${VERSION}" version >/dev/null
+          done
+          python - <<'PY'
+          import json, urllib.request
+          from packaging.version import Version
+          version = str(Version("${{ github.ref_name }}"[1:]))
+          for project in ("supaapps-platform93-auth", "supaapps-platform93-webhooks"):
+              with urllib.request.urlopen(f"https://pypi.org/pypi/{project}/{version}/json") as response:
+                  json.load(response)
+          PY
+          helm show chart "oci://ghcr.io/supaapps/charts/platform93" --version "$VERSION" >/dev/null
+          crane manifest "ghcr.io/supaapps/platform93:${VERSION}" >/dev/null
+          gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS --dir /tmp/release
+          if [[ "$VERSION" != *-* ]]; then
+            for PACKAGE in sdk auth expo react server events; do
+              NAME="@supaapps/platform93-${PACKAGE}"
+              if [[ "$PACKAGE" = sdk ]]; then NAME="@supaapps/platform93-sdk"; fi
+              npm dist-tag add "${NAME}@${VERSION}" latest
+            done
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease
+          else
+            gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease=false --latest
+          fi
