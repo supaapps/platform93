@@ -245,8 +245,9 @@ jobs:
           helm upgrade alpha deploy/helm/platform93 --namespace platform93 --reuse-values --set replicas.worker=1 --wait --timeout 5m
           helm rollback alpha 1 --namespace platform93 --wait --timeout 5m
           kubectl -n platform93 exec deployment/alpha-platform93-api -- /app/platform93 doctor
-          helm uninstall alpha --namespace platform93
-          helm uninstall beta --namespace platform93
+          helm uninstall alpha --namespace platform93 --wait --timeout 3m
+          helm uninstall beta --namespace platform93 --wait --timeout 3m
+          kubectl -n platform93 wait --for=delete pod,job -l app.kubernetes.io/name=platform93 --timeout=3m
           ! kubectl -n platform93 get all,configmap,serviceaccount,networkpolicy,pdb -l app.kubernetes.io/name=platform93 --no-headers | grep .
 
   security:
