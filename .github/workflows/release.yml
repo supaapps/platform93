@@ -28,7 +28,7 @@ jobs:
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
 
   artifacts:
-    needs: [verify, security, tag]
+    needs: [verify, security, tag, image]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -36,6 +36,9 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@v5
         with: { go-version: "1.25.13", cache: true }
+      - uses: docker/setup-buildx-action@v3
+      - name: Generate source SBOM
+        run: docker run --rm -v "$PWD:/repo" anchore/syft:v1.42.3 dir:/repo -o spdx-json > "$RUNNER_TEMP/platform93-source.spdx.json"
       - id: build-assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,6 +54,20 @@ jobs:
           cp api/openapi/platform93.yaml dist/platform93-openapi.yaml
           cp schemas/events/*.schema.json dist/
           cp deploy/compose/compose.yaml dist/platform93-compose.yaml
+          mv "$RUNNER_TEMP/platform93-source.spdx.json" dist/platform93-source.spdx.json
+          IMAGE="ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
+          DIGEST="$(docker buildx imagetools inspect "$IMAGE" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          docker buildx imagetools inspect "$IMAGE" --format '{{json .Provenance}}' > dist/platform93-image-provenance.json
+          docker buildx imagetools inspect "$IMAGE" --format '{{json .SBOM}}' > dist/platform93-image.spdx.json
+          jq -n \
+            --arg image "$IMAGE" \
+            --arg digest "$DIGEST" \
+            --arg reference "ghcr.io/supaapps/platform93@$DIGEST" \
+            --arg revision "$GITHUB_SHA" \
+            --arg signature_identity "https://github.com/supaapps/platform93/.github/workflows/release.yml@refs/tags/$GITHUB_REF_NAME" \
+            --arg oidc_issuer "https://token.actions.githubusercontent.com" \
+            '{image: $image, digest: $digest, reference: $reference, revision: $revision, signature: {identity: $signature_identity, oidc_issuer: $oidc_issuer}, attestations: {sbom: "platform93-image.spdx.json", provenance: "platform93-image-provenance.json"}}' \
+            > dist/platform93-oci.json
           (
             cd dist
             find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$RUNNER_TEMP/platform93-SHA256SUMS"
