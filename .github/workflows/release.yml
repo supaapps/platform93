@@ -8,6 +8,10 @@ jobs:
 
   security:
     uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
 
   tag:
     runs-on: ubuntu-latest
