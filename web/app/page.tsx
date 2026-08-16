@@ -1,6 +1,7 @@
 "use client";
 import { startTransition, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Platform93Client, Platform93Error } from "@supaapps/platform93-sdk";
+import DOMPurify from "dompurify";
 import Papa from "papaparse";
 
 type Organization = { id: string; name: string; slug: string; role: string; version?: number; retired_at?: string | null };
@@ -1825,19 +1826,23 @@ function emailPreviewDocument(body: string) {
 }
 
 function sanitizeEditorHTML(value: string) {
-  if (typeof document === "undefined") return value;
-  const wrapper = document.createElement("div");
-  wrapper.innerHTML = value;
-  wrapper.querySelectorAll("script,iframe,object,embed,form,input,button,style,link,meta").forEach((node) => node.remove());
-  wrapper.querySelectorAll("*").forEach((node) => {
-    for (const attribute of Array.from(node.attributes)) {
-      const name = attribute.name.toLowerCase();
-      const attributeValue = attribute.value.trim().toLowerCase();
-      if (name.startsWith("on") || name === "srcdoc" || ((name === "href" || name === "src") && (attributeValue.startsWith("javascript:") || attributeValue.startsWith("data:text/html")))) node.removeAttribute(attribute.name);
-    }
-    if (node instanceof HTMLImageElement && (!node.src.startsWith("https://") || node.hasAttribute("srcset"))) node.remove();
+  if (typeof window === "undefined") return "";
+  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+    if (node.nodeName !== "IMG") return;
+    const source = (node as Element).getAttribute("src") ?? "";
+    if (!/^(?:https:\/\/[^\s]+|\{\{[A-Za-z][A-Za-z0-9_.-]{0,100}\}\})$/i.test(source)) node.remove();
   });
-  return wrapper.innerHTML;
+  try {
+    return DOMPurify.sanitize(value, {
+      ALLOWED_TAGS: ["a", "b", "blockquote", "br", "div", "em", "h1", "h2", "h3", "h4", "hr", "i", "img", "li", "ol", "p", "span", "strong", "table", "tbody", "td", "th", "thead", "tr", "u", "ul"],
+      ALLOWED_ATTR: ["alt", "height", "href", "src", "title", "width"],
+      ALLOWED_URI_REGEXP: /^(?:(?:https|mailto|tel):[^\s]*|\{\{[A-Za-z][A-Za-z0-9_.-]{0,100}\}\})$/i,
+      FORBID_TAGS: ["button", "embed", "form", "iframe", "input", "link", "meta", "object", "script", "style"],
+      FORBID_ATTR: ["srcdoc", "srcset", "style"],
+    });
+  } finally {
+    DOMPurify.removeHook("afterSanitizeAttributes");
+  }
 }
 
 function TemplateImagePicker({ application, onInsert }: { application: Application; onInsert: (markup: string) => void }) {
@@ -2000,10 +2005,10 @@ function NotificationTemplateComposer({ application, variables, initial, submitL
   async function submit() {
     setBusy(true);
     try {
-      await onSubmit({ key, locale, category, subject_template: subject, text_template: textBody, html_template: htmlBody, variable_schema: customVariableSchema(customVariables) });
+      await onSubmit({ key, locale, category, subject_template: subject, text_template: textBody, html_template: sanitizeEditorHTML(htmlBody), variable_schema: customVariableSchema(customVariables) });
     } finally { setBusy(false); }
   }
-  const renderedHTML = renderTemplatePreview(htmlBody, sampleValues, true);
+  const renderedHTML = sanitizeEditorHTML(renderTemplatePreview(htmlBody, sampleValues, true));
   return <div className="template-composer">
     <header className="template-composer-head"><div><p className="eyebrow">MESSAGE DESIGNER</p><h3>{initial ? `Edit ${key}` : "Compose a notification"}</h3><p>Build the email and plain-text fallback together. Codes are replaced only when the notification is queued.</p></div><span className="template-version">{initial ? `VERSION ${String(initial.version)}` : "NEW DRAFT"}</span></header>
     <div className="template-meta">

@@ -611,6 +611,12 @@ test("composes notification templates with built-in and custom codes", async ({ 
   await page.getByRole("button", { name: "Add code", exact: true }).click();
   await expect(page.getByText("{{order_number}}", { exact: true })).toBeVisible();
   await expect(page.frameLocator('iframe[title="Email preview"]').locator("body")).toContainText("Thanks for joining Test Application.");
+  await page.getByRole("button", { name: "HTML", exact: true }).click();
+  await page.getByLabel("HTML source").fill('<p>Safe</p><script>alert(1)</script><img src="data:text/html,bad"><a href="vbscript:alert(1)" onclick="alert(1)">Unsafe link</a>');
+  const preview = page.frameLocator('iframe[title="Email preview"]');
+  await expect(preview.locator("body")).toContainText("Safe");
+  await expect(preview.locator("script, img")).toHaveCount(0);
+  await expect(preview.getByText("Unsafe link")).not.toHaveAttribute("href");
   await page.getByRole("button", { name: "Create draft", exact: true }).click();
   await expect.poll(() => createdTemplate).toMatchObject({
     key: "welcome_email",
