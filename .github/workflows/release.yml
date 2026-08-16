@@ -36,20 +36,47 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@v5
         with: { go-version: "1.25.13", cache: true }
-      - run: |
+      - id: build-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BUILD_DATE="$(git show -s --format=%cI "$GITHUB_SHA")"
-          mkdir -p dist/platform93-event-schemas
+          mkdir -p dist
           for TARGET in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             TARGET_OS="${TARGET%/*}"
             TARGET_ARCH="${TARGET#*/}"
             GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/supaapps/platform93/internal/buildinfo.Version=${VERSION} -X github.com/supaapps/platform93/internal/buildinfo.Commit=${GITHUB_SHA} -X github.com/supaapps/platform93/internal/buildinfo.Date=${BUILD_DATE}" -o "dist/platform93-${TARGET_OS}-${TARGET_ARCH}" ./cmd/platform93
           done
           cp api/openapi/platform93.yaml dist/platform93-openapi.yaml
-          cp schemas/events/*.schema.json dist/platform93-event-schemas/
+          cp schemas/events/*.schema.json dist/
           cp deploy/compose/compose.yaml dist/platform93-compose.yaml
-          find dist -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS
+          (
+            cd dist
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$RUNNER_TEMP/platform93-SHA256SUMS"
+            mv "$RUNNER_TEMP/platform93-SHA256SUMS" SHA256SUMS
+            sha256sum --check SHA256SUMS
+          )
+          ALL_PRESENT=false
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            mkdir -p /tmp/platform93-existing-release
+            gh release download "$GITHUB_REF_NAME" --dir /tmp/platform93-existing-release
+            ALL_PRESENT=true
+            for FILE in dist/*; do
+              PUBLISHED="/tmp/platform93-existing-release/$(basename "$FILE")"
+              if [[ -f "$PUBLISHED" ]]; then
+                cmp "$FILE" "$PUBLISHED" || {
+                  echo "Published asset $(basename "$FILE") does not match the tagged build." >&2
+                  exit 1
+                }
+              else
+                ALL_PRESENT=false
+              fi
+            done
+          fi
+          echo "all-present=$ALL_PRESENT" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
+        if: steps.build-assets.outputs.all-present != 'true'
         with:
           files: "dist/**"
           generate_release_notes: true
@@ -217,7 +244,8 @@ jobs:
           PY
           helm show chart "oci://ghcr.io/supaapps/charts/platform93" --version "$VERSION" >/dev/null
           crane manifest "ghcr.io/supaapps/platform93:${VERSION}" >/dev/null
-          gh release download "$GITHUB_REF_NAME" --pattern SHA256SUMS --dir /tmp/release
+          gh release download "$GITHUB_REF_NAME" --dir /tmp/release
+          (cd /tmp/release && sha256sum --check SHA256SUMS)
           if [[ "$VERSION" != *-* ]]; then
             for PACKAGE in sdk auth expo react server events; do
               NAME="@supaapps/platform93-${PACKAGE}"
