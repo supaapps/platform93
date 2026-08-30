@@ -29,7 +29,8 @@ ARG BUILD_DATE=unknown
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/supaapps/platform93/internal/buildinfo.Version=${VERSION} -X github.com/supaapps/platform93/internal/buildinfo.Commit=${COMMIT} -X github.com/supaapps/platform93/internal/buildinfo.Date=${BUILD_DATE}" -o /out/platform93 ./cmd/platform93
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates postgresql16-client \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache ca-certificates postgresql16-client \
     && addgroup -g 65532 -S nonroot \
     && adduser -u 65532 -S nonroot -G nonroot
 WORKDIR /app
