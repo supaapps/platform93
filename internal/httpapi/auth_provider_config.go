@@ -32,6 +32,10 @@ func (s *Server) configureAppleProvider(w http.ResponseWriter, r *http.Request) 
 	s.configureAuthProvider(w, r, applicationProviderScope(chi.URLParam(r, "application_id")), "apple")
 }
 
+func (s *Server) configureApplicationAuthProvider(w http.ResponseWriter, r *http.Request) {
+	s.configureAuthProvider(w, r, applicationProviderScope(chi.URLParam(r, "application_id")), chi.URLParam(r, "provider"))
+}
+
 func (s *Server) configureInstallationAuthProvider(w http.ResponseWriter, r *http.Request) {
 	s.configureAuthProvider(w, r, installationProviderScope(), chi.URLParam(r, "provider"))
 }
@@ -53,8 +57,8 @@ func (s *Server) updateAuthProvider(w http.ResponseWriter, r *http.Request, scop
 		return
 	}
 	provider := chi.URLParam(r, "provider")
-	if provider != "google" && provider != "apple" {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "unsupported_auth_provider", "Authentication provider must be google or apple.")
+	if !validExternalAuthProvider(provider) {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "unsupported_auth_provider", "The authentication provider is unsupported.")
 		return
 	}
 	var request struct {
@@ -121,6 +125,7 @@ func (s *Server) configureAuthProvider(w http.ResponseWriter, r *http.Request, s
 		TeamID              string `json:"team_id,omitempty"`
 		KeyID               string `json:"key_id,omitempty"`
 		PrivateKey          string `json:"private_key_pem,omitempty"`
+		Tenant              string `json:"tenant,omitempty"`
 		Inheritable         bool   `json:"inheritable,omitempty"`
 		ControlLoginEnabled *bool  `json:"control_login_enabled,omitempty"`
 	}
@@ -129,17 +134,25 @@ func (s *Server) configureAuthProvider(w http.ResponseWriter, r *http.Request, s
 	}
 	request.ClientID = strings.TrimSpace(request.ClientID)
 	credentials := map[string]string{}
-	if provider == "google" {
+	if provider == "google" || provider == "facebook" || provider == "linkedin" {
 		credentials["client_secret"] = strings.TrimSpace(request.ClientSecret)
+	} else if provider == "microsoft" {
+		credentials["client_secret"] = strings.TrimSpace(request.ClientSecret)
+		tenant, tenantErr := normalizeMicrosoftTenant(request.Tenant)
+		if tenantErr != nil {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_microsoft_tenant", tenantErr.Error())
+			return
+		}
+		credentials["tenant"] = tenant
 	} else if provider == "apple" {
 		credentials["team_id"] = strings.TrimSpace(request.TeamID)
 		credentials["key_id"] = strings.TrimSpace(request.KeyID)
 		credentials["private_key_pem"] = strings.TrimSpace(request.PrivateKey)
 	} else {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "unsupported_auth_provider", "Authentication provider must be google or apple.")
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "unsupported_auth_provider", "The authentication provider is unsupported.")
 		return
 	}
-	if request.ClientID == "" || provider == "google" && credentials["client_secret"] == "" || provider == "apple" && (credentials["team_id"] == "" || credentials["key_id"] == "" || credentials["private_key_pem"] == "") {
+	if request.ClientID == "" || provider != "apple" && credentials["client_secret"] == "" || provider == "apple" && (credentials["team_id"] == "" || credentials["key_id"] == "" || credentials["private_key_pem"] == "") {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_auth_provider", "The provider client identifier and credentials are required.")
 		return
 	}
@@ -197,14 +210,18 @@ VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, id, scope.OrganizationID, scope.ApplicationID,
 		kernel.WriteProblem(w, r, http.StatusConflict, "auth_provider_configuration_failed", "The authentication provider could not be configured.")
 		return
 	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "provider": provider, "client_id": request.ClientID, "configured": true,
-		"scope": scope.name(), "inheritable": scope.inheritable(request.Inheritable), "control_login_enabled": controlLoginEnabled && scope.name() == "installation", "callback_uri": s.externalAuthCallbackURI(provider)})
+	response := map[string]any{"id": id, "provider": provider, "client_id": request.ClientID, "configured": true,
+		"scope": scope.name(), "inheritable": scope.inheritable(request.Inheritable), "control_login_enabled": controlLoginEnabled && scope.name() == "installation", "callback_uri": s.externalAuthCallbackURI(provider)}
+	if provider == "microsoft" {
+		response["tenant"] = credentials["tenant"]
+	}
+	kernel.WriteJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) listAuthProviders(w http.ResponseWriter, r *http.Request) {
 	applicationID := chi.URLParam(r, "application_id")
 	items := []map[string]any{}
-	for _, provider := range []string{"google", "apple"} {
+	for _, provider := range externalAuthProviders {
 		if config, err := s.loadEffectiveAuthProvider(r.Context(), applicationID, provider); err == nil {
 			items = append(items, authProviderResponse(config, s.externalAuthCallbackURI(provider)))
 		}
@@ -228,12 +245,12 @@ func (s *Server) listAuthProvidersForScope(w http.ResponseWriter, r *http.Reques
 	if !s.authorizeProviderScope(w, r, scope, false) {
 		return
 	}
-	query := `SELECT id,provider,client_id,inheritable,control_login_enabled,created_at,updated_at,
+	query := `SELECT id,provider,client_id,config_ciphertext,inheritable,control_login_enabled,created_at,updated_at,
 CASE WHEN organization_id IS NOT NULL THEN 'organization' ELSE 'installation' END
 FROM auth_provider_configs
 WHERE application_id IS NULL AND organization_id IS NOT DISTINCT FROM $1::uuid AND disabled_at IS NULL ORDER BY provider`
 	if scope.OrganizationID != nil {
-		query = `SELECT id,provider,client_id,inheritable,control_login_enabled,created_at,updated_at,
+		query = `SELECT id,provider,client_id,config_ciphertext,inheritable,control_login_enabled,created_at,updated_at,
 CASE WHEN organization_id IS NOT NULL THEN 'organization' ELSE 'installation' END
 FROM auth_provider_configs
 WHERE application_id IS NULL AND disabled_at IS NULL AND (organization_id=$1 OR (organization_id IS NULL AND inheritable))
@@ -247,11 +264,11 @@ ORDER BY provider,organization_id NULLS LAST`
 	defer rows.Close()
 	items := []map[string]any{}
 	for rows.Next() {
-		var id, provider, clientID string
+		var id, provider, clientID, ciphertext string
 		var inheritable, controlLoginEnabled bool
 		var createdAt, updatedAt time.Time
 		var providerScope string
-		if rows.Scan(&id, &provider, &clientID, &inheritable, &controlLoginEnabled, &createdAt, &updatedAt, &providerScope) == nil {
+		if rows.Scan(&id, &provider, &clientID, &ciphertext, &inheritable, &controlLoginEnabled, &createdAt, &updatedAt, &providerScope) == nil {
 			var linkedControlUsers, inheritingApplications int
 			_ = s.app.DB.QueryRow(r.Context(), `SELECT count(*) FROM control_user_identities WHERE auth_provider_config_id=$1`, id).Scan(&linkedControlUsers)
 			if inheritable && providerScope == "installation" {
@@ -263,9 +280,16 @@ AND organization_provider.application_id IS NULL AND organization_provider.provi
 				_ = s.app.DB.QueryRow(r.Context(), `SELECT count(*) FROM applications a WHERE a.organization_id=$1 AND a.deleted_at IS NULL
 AND NOT EXISTS(SELECT 1 FROM auth_provider_configs local WHERE local.application_id=a.id AND local.provider=$2 AND local.disabled_at IS NULL)`, scope.OrganizationID, provider).Scan(&inheritingApplications)
 			}
-			items = append(items, map[string]any{"id": id, "provider": provider, "client_id": clientID, "scope": providerScope, "inheritable": inheritable,
+			item := map[string]any{"id": id, "provider": provider, "client_id": clientID, "scope": providerScope, "inheritable": inheritable,
 				"control_login_enabled": controlLoginEnabled, "linked_control_users": linkedControlUsers, "inheriting_applications": inheritingApplications,
-				"inherited": providerScope != scope.name(), "configured": true, "callback_uri": s.externalAuthCallbackURI(provider), "created_at": createdAt, "updated_at": updatedAt})
+				"inherited": providerScope != scope.name(), "configured": true, "callback_uri": s.externalAuthCallbackURI(provider), "created_at": createdAt, "updated_at": updatedAt}
+			if provider == "microsoft" {
+				var credentials map[string]string
+				if plaintext, decryptErr := s.app.Vault.Decrypt(ciphertext, "auth-provider:"+id); decryptErr == nil && json.Unmarshal(plaintext, &credentials) == nil {
+					item["tenant"] = credentials["tenant"]
+				}
+			}
+			items = append(items, item)
 		}
 	}
 	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
@@ -357,8 +381,12 @@ ORDER BY CASE WHEN ap.application_id IS NOT NULL THEN 0 WHEN ap.organization_id 
 }
 
 func authProviderResponse(config externalAuthProviderConfig, callbackURI string) map[string]any {
-	return map[string]any{"id": config.ID, "provider": config.Provider, "client_id": config.ClientID, "configured": true, "scope": config.Scope,
+	response := map[string]any{"id": config.ID, "provider": config.Provider, "client_id": config.ClientID, "configured": true, "scope": config.Scope,
 		"inheritable": config.Inheritable, "control_login_enabled": config.ControlLoginEnabled, "inherited": config.Scope != "application", "callback_uri": callbackURI}
+	if config.Provider == "microsoft" {
+		response["tenant"] = config.Credentials["tenant"]
+	}
+	return response
 }
 
 func (s *Server) externalAuthCallbackURI(provider string) string {

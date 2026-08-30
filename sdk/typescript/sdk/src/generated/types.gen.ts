@@ -79,7 +79,7 @@ export type ControlUserAccount = {
         password: boolean;
         external_identities: Array<{
             id: Uuid;
-            provider: 'google' | 'apple';
+            provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
             metadata: {
                 [key: string]: unknown;
             };
@@ -125,13 +125,17 @@ export type NotificationProvider = {
 
 export type AuthProvider = {
     id: Uuid;
-    provider: 'google' | 'apple';
+    provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     scope: 'installation' | 'organization' | 'application';
     organization_id?: string | null;
     application_id?: string | null;
     client_id: string;
     team_id?: string | null;
     key_id?: string | null;
+    /**
+     * Microsoft tenant mode or tenant UUID. Null for other providers.
+     */
+    tenant?: string | null;
     inheritable: boolean;
     control_login_enabled: boolean;
     configured?: boolean;
@@ -179,7 +183,7 @@ export type ControlUserInvitation = {
     organization_id?: string | null;
     email: string;
     role: 'owner' | 'admin' | 'member' | 'auditor';
-    onboarding_method: 'email' | 'google' | 'apple';
+    onboarding_method: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     status?: 'pending' | 'accepted' | 'revoked' | 'expired';
     expires_at: string;
     token_returned_once?: boolean;
@@ -336,6 +340,7 @@ export type ApplicationInvitation = {
     email: string;
     application_role_keys?: Array<RoleKey>;
     workspace_role_keys?: Array<RoleKey>;
+    onboarding_method: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     status: 'pending' | 'accepted' | 'revoked' | 'expired';
     link?: string;
     expires_at: string;
@@ -348,7 +353,7 @@ export type RevokedSessionCount = {
 };
 
 export type AuthMethods = {
-    methods: Array<'password' | 'email_code' | 'magic_link' | 'google' | 'apple' | 'totp' | 'webauthn'>;
+    methods: Array<'password' | 'email_code' | 'magic_link' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin' | 'totp' | 'webauthn'>;
     registration_enabled: boolean;
     registration_mode: 'public' | 'invite_only';
 };
@@ -686,7 +691,7 @@ export type MfaMethod = {
 
 export type ExternalIdentity = {
     id: Uuid;
-    provider: 'google' | 'apple';
+    provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     email?: string | null;
     created_at: string;
     last_used_at?: string | null;
@@ -1229,7 +1234,7 @@ export type ControlInvitationProviderStart = {
 };
 
 export type UpdateControlInvitationMethod = {
-    onboarding_method?: 'email' | 'google' | 'apple';
+    onboarding_method?: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
 };
 
 export type UpdateManagementApi = {
@@ -1244,6 +1249,10 @@ export type ConfigureAuthProvider = {
     client_id: string;
     team_id?: string;
     key_id?: string;
+    /**
+     * Microsoft tenant mode (common, organizations, consumers) or a tenant UUID.
+     */
+    tenant?: string;
     inheritable?: boolean;
     control_login_enabled?: boolean;
 };
@@ -1374,6 +1383,24 @@ export type ExternalAuthStartRequest = {
 
 export type ExternalAuthExchange = {
     exchange: string;
+    code_verifier?: string;
+};
+
+export type ExternalEmailEnrollmentStart = {
+    email: string;
+    delivery?: 'code' | 'link' | 'both';
+};
+
+export type ExternalEmailEnrollmentVerify = unknown & {
+    enrollment: string;
+    code?: string;
+    link_token?: string;
+};
+
+export type ExternalEmailEnrollmentChallenge = {
+    challenge_id: Uuid;
+    provider: 'microsoft' | 'facebook' | 'linkedin';
+    expires_in: number;
 };
 
 export type VerifyMfa = unknown & {
@@ -1739,7 +1766,7 @@ export type AcceptControlUserInvitation = {
 export type CreateControlUserInvitation = {
     email: string;
     role: 'owner' | 'admin' | 'member' | 'auditor';
-    onboarding_method?: 'email' | 'google' | 'apple';
+    onboarding_method?: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     expires_in?: number;
 };
 
@@ -1760,11 +1787,11 @@ export type ControlAuthMethods = {
     email_code: boolean;
     magic_link: boolean;
     password: boolean;
-    providers: Array<'google' | 'apple'>;
+    providers: Array<'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin'>;
 };
 
 export type ExternalAuthStart = {
-    provider: 'google' | 'apple';
+    provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     authorize_url: string;
     expires_in: number;
 };
@@ -1903,6 +1930,7 @@ export type CreateInvitation = {
     workspace_id?: Uuid;
     application_role_keys?: Array<string>;
     workspace_role_keys?: Array<string>;
+    onboarding_method?: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     expires_in?: number;
 };
 
@@ -2226,7 +2254,7 @@ export type ControlUserInvitationWritable = {
     organization_id?: string | null;
     email: string;
     role: 'owner' | 'admin' | 'member' | 'auditor';
-    onboarding_method: 'email' | 'google' | 'apple';
+    onboarding_method: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     status?: 'pending' | 'accepted' | 'revoked' | 'expired';
     expires_at: string;
     invitation_token?: string;
@@ -2282,6 +2310,7 @@ export type ApplicationInvitationWritable = {
     email: string;
     application_role_keys?: Array<RoleKey>;
     workspace_role_keys?: Array<RoleKey>;
+    onboarding_method: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     status: 'pending' | 'accepted' | 'revoked' | 'expired';
     code?: string;
     link_token?: string;
@@ -2367,6 +2396,10 @@ export type ConfigureAuthProviderWritable = {
     team_id?: string;
     key_id?: string;
     private_key_pem?: string;
+    /**
+     * Microsoft tenant mode (common, organizations, consumers) or a tenant UUID.
+     */
+    tenant?: string;
     inheritable?: boolean;
     control_login_enabled?: boolean;
 };
@@ -2411,6 +2444,20 @@ export type PasswordResetVerifyWritable = {
     code?: string;
     link_token?: string;
     password: string;
+};
+
+export type ExternalAuthStartRequestWritable = {
+    flow?: 'sign_in' | 'sign_up' | 'automatic' | 'link';
+    redirect_uri: string;
+    login_hint?: string;
+    code_challenge?: string;
+};
+
+export type ExternalEmailEnrollmentStartWritable = {
+    enrollment: string;
+    email: string;
+    delivery?: 'code' | 'link' | 'both';
+    code_verifier: string;
 };
 
 export type VerifyMfaWritable = unknown & {
@@ -3036,7 +3083,7 @@ export type GetControlAuthMethodsResponse = GetControlAuthMethodsResponses[keyof
 export type StartControlExternalLoginData = {
     body?: never;
     path: {
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/auth/providers/{provider}/start';
@@ -3054,7 +3101,7 @@ export type StartControlExternalLoginResponse = StartControlExternalLoginRespons
 export type LinkControlExternalIdentityData = {
     body?: never;
     path: {
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/auth/providers/{provider}/link';
@@ -3124,7 +3171,7 @@ export type AcceptControlUserInvitationResponse = AcceptControlUserInvitationRes
 export type StartControlInvitationExternalLoginData = {
     body: ControlInvitationProviderStart;
     path: {
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/invitations/providers/{provider}/start';
@@ -3328,7 +3375,7 @@ export type ListInstallationAuthProvidersResponse = ListInstallationAuthProvider
 export type DisableInstallationAuthProviderData = {
     body?: never;
     path: {
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/installation/auth/providers/{provider}';
@@ -3346,7 +3393,7 @@ export type DisableInstallationAuthProviderResponse = DisableInstallationAuthPro
 export type UpdateInstallationAuthProviderData = {
     body: UpdateInstallationAuthProvider;
     path: {
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/installation/auth/providers/{provider}';
@@ -3373,7 +3420,7 @@ export type UpdateInstallationAuthProviderResponse = UpdateInstallationAuthProvi
 export type ConfigureInstallationAuthProviderData = {
     body: ConfigureAuthProviderWritable;
     path: {
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/installation/auth/providers/{provider}';
@@ -4243,7 +4290,7 @@ export type DisableOrganizationAuthProviderData = {
     body?: never;
     path: {
         organization_id: Uuid;
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/organizations/{organization_id}/auth/providers/{provider}';
@@ -4262,7 +4309,7 @@ export type UpdateOrganizationAuthProviderData = {
     body: ProviderInheritance;
     path: {
         organization_id: Uuid;
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/organizations/{organization_id}/auth/providers/{provider}';
@@ -4290,7 +4337,7 @@ export type ConfigureOrganizationAuthProviderData = {
     body: ConfigureAuthProviderWritable;
     path: {
         organization_id: Uuid;
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/organizations/{organization_id}/auth/providers/{provider}';
@@ -4735,7 +4782,7 @@ export type DisableApplicationAuthProviderData = {
     body?: never;
     path: {
         application_id: Uuid;
-        provider: 'google' | 'apple';
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     };
     query?: never;
     url: '/v1/control/applications/{application_id}/auth/providers/{provider}';
@@ -4749,6 +4796,25 @@ export type DisableApplicationAuthProviderResponses = {
 };
 
 export type DisableApplicationAuthProviderResponse = DisableApplicationAuthProviderResponses[keyof DisableApplicationAuthProviderResponses];
+
+export type ConfigureApplicationAuthProviderData = {
+    body: ConfigureAuthProviderWritable;
+    path: {
+        application_id: Uuid;
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/auth/providers/{provider}';
+};
+
+export type ConfigureApplicationAuthProviderResponses = {
+    /**
+     * Application authentication provider configured
+     */
+    200: AuthProvider;
+};
+
+export type ConfigureApplicationAuthProviderResponse = ConfigureApplicationAuthProviderResponses[keyof ConfigureApplicationAuthProviderResponses];
 
 export type ListApplicationDomainsData = {
     body?: never;
@@ -6648,7 +6714,7 @@ export type ListAuthProvidersResponses = {
 export type ListAuthProvidersResponse = ListAuthProvidersResponses[keyof ListAuthProvidersResponses];
 
 export type StartGoogleAuthData = {
-    body: ExternalAuthStartRequest;
+    body: ExternalAuthStartRequestWritable;
     path: {
         application_id: Uuid;
     };
@@ -6691,7 +6757,7 @@ export type ExchangeGoogleAuthResponses = {
 export type ExchangeGoogleAuthResponse = ExchangeGoogleAuthResponses[keyof ExchangeGoogleAuthResponses];
 
 export type StartAppleAuthData = {
-    body: ExternalAuthStartRequest;
+    body: ExternalAuthStartRequestWritable;
     path: {
         application_id: Uuid;
     };
@@ -6737,6 +6803,89 @@ export type ExchangeAppleAuthResponses = {
 };
 
 export type ExchangeAppleAuthResponse = ExchangeAppleAuthResponses[keyof ExchangeAppleAuthResponses];
+
+export type StartSocialAuthData = {
+    body: ExternalAuthStartRequestWritable;
+    path: {
+        application_id: Uuid;
+        provider: 'microsoft' | 'facebook' | 'linkedin';
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/auth/providers/{provider}/start';
+};
+
+export type StartSocialAuthResponses = {
+    /**
+     * External provider authorization started
+     */
+    201: ExternalAuthStart;
+};
+
+export type StartSocialAuthResponse = StartSocialAuthResponses[keyof StartSocialAuthResponses];
+
+export type ExchangeSocialAuthData = {
+    body: ExternalAuthExchange;
+    path: {
+        application_id: Uuid;
+        provider: 'microsoft' | 'facebook' | 'linkedin';
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/auth/providers/{provider}/exchange';
+};
+
+export type ExchangeSocialAuthResponses = {
+    /**
+     * Rotating user session
+     */
+    200: TokenResponse;
+};
+
+export type ExchangeSocialAuthResponse = ExchangeSocialAuthResponses[keyof ExchangeSocialAuthResponses];
+
+export type SocialAuthCallbackData = {
+    body?: never;
+    path: {
+        provider: 'microsoft' | 'facebook' | 'linkedin';
+    };
+    query?: never;
+    url: '/v1/auth/providers/{provider}/callback';
+};
+
+export type StartExternalEmailEnrollmentData = {
+    body: ExternalEmailEnrollmentStartWritable;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/auth/external-email/start';
+};
+
+export type StartExternalEmailEnrollmentResponses = {
+    /**
+     * External identity email verification queued
+     */
+    202: ExternalEmailEnrollmentChallenge;
+};
+
+export type StartExternalEmailEnrollmentResponse = StartExternalEmailEnrollmentResponses[keyof StartExternalEmailEnrollmentResponses];
+
+export type VerifyExternalEmailEnrollmentData = {
+    body: ExternalEmailEnrollmentVerify;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/auth/external-email/verify';
+};
+
+export type VerifyExternalEmailEnrollmentResponses = {
+    /**
+     * Rotating user session
+     */
+    200: TokenResponse;
+};
+
+export type VerifyExternalEmailEnrollmentResponse = VerifyExternalEmailEnrollmentResponses[keyof VerifyExternalEmailEnrollmentResponses];
 
 export type VerifyMfaData = {
     body: VerifyMfaWritable;
@@ -6836,6 +6985,34 @@ export type ExchangeApplicationInvitationResponses = {
 };
 
 export type ExchangeApplicationInvitationResponse = ExchangeApplicationInvitationResponses[keyof ExchangeApplicationInvitationResponses];
+
+export type StartApplicationInvitationProviderData = {
+    body: ExchangeInvitationWritable;
+    path: {
+        application_id: Uuid;
+        provider: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/auth/invitations/providers/{provider}/start';
+};
+
+export type StartApplicationInvitationProviderErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    401: Problem;
+};
+
+export type StartApplicationInvitationProviderError = StartApplicationInvitationProviderErrors[keyof StartApplicationInvitationProviderErrors];
+
+export type StartApplicationInvitationProviderResponses = {
+    /**
+     * Provider-backed application invitation acceptance started
+     */
+    201: ExternalAuthStart;
+};
+
+export type StartApplicationInvitationProviderResponse = StartApplicationInvitationProviderResponses[keyof StartApplicationInvitationProviderResponses];
 
 export type RedeemApplicationInvitationData = {
     body: RedeemInvitation;
@@ -8334,7 +8511,7 @@ export type RegenerateRecoveryCodesResponses = {
 export type RegenerateRecoveryCodesResponse = RegenerateRecoveryCodesResponses[keyof RegenerateRecoveryCodesResponses];
 
 export type StartGoogleLinkData = {
-    body: ExternalAuthStartRequest;
+    body: ExternalAuthStartRequestWritable;
     path: {
         application_id: Uuid;
     };
@@ -8352,7 +8529,7 @@ export type StartGoogleLinkResponses = {
 export type StartGoogleLinkResponse = StartGoogleLinkResponses[keyof StartGoogleLinkResponses];
 
 export type StartAppleLinkData = {
-    body: ExternalAuthStartRequest;
+    body: ExternalAuthStartRequestWritable;
     path: {
         application_id: Uuid;
     };
@@ -8368,6 +8545,25 @@ export type StartAppleLinkResponses = {
 };
 
 export type StartAppleLinkResponse = StartAppleLinkResponses[keyof StartAppleLinkResponses];
+
+export type StartSocialLinkData = {
+    body: ExternalAuthStartRequestWritable;
+    path: {
+        application_id: Uuid;
+        provider: 'microsoft' | 'facebook' | 'linkedin';
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/auth/providers/{provider}/link';
+};
+
+export type StartSocialLinkResponses = {
+    /**
+     * Authenticated external account-link authorization URL
+     */
+    201: ExternalAuthStart;
+};
+
+export type StartSocialLinkResponse = StartSocialLinkResponses[keyof StartSocialLinkResponses];
 
 export type ListMyIdentitiesData = {
     body?: never;

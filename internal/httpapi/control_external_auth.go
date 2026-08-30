@@ -59,7 +59,7 @@ WHERE credential_digest=$1 AND onboarding_method=$2 AND accepted_at IS NULL AND 
 }
 
 func (s *Server) startControlExternalAuth(w http.ResponseWriter, r *http.Request, provider, flow, requestedBy, invitationID string) {
-	if provider != "google" && provider != "apple" {
+	if !validExternalAuthProvider(provider) {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "control_auth_provider_not_found", "The Platform authentication provider is unavailable.")
 		return
 	}
@@ -76,7 +76,7 @@ func (s *Server) startControlExternalAuth(w http.ResponseWriter, r *http.Request
 	verifier := oauth2.GenerateVerifier()
 	challengeID := kernel.NewID()
 	verifierValue := verifier
-	if provider == "apple" {
+	if provider == "apple" || provider == "facebook" {
 		verifierValue = "apple"
 	}
 	ciphertext, err := s.app.Vault.Encrypt([]byte(verifierValue), "control-external-auth:"+challengeID.String())
@@ -102,10 +102,17 @@ VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, challengeID, config.ID, provider, flow,
 		oauthConfig := oauth2.Config{ClientID: config.ClientID, ClientSecret: config.Credentials["client_secret"], Endpoint: google.Endpoint,
 			RedirectURL: s.externalAuthCallbackURI("google"), Scopes: []string{oidc.ScopeOpenID, "email", "profile"}}
 		authorizeURL = oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("nonce", nonce), oauth2.SetAuthURLParam("prompt", "select_account"))
-	} else {
+	} else if provider == "apple" {
 		query := url.Values{"client_id": {config.ClientID}, "redirect_uri": {s.externalAuthCallbackURI("apple")}, "response_type": {"code"},
 			"response_mode": {"form_post"}, "scope": {"name email"}, "state": {state}, "nonce": {nonce}}
 		authorizeURL = "https://appleid.apple.com/auth/authorize?" + query.Encode()
+	} else {
+		authorizeURL, err = providerAuthorizationURL(config, s.externalAuthCallbackURI(provider), state, nonce, verifier, "")
+		if err != nil {
+			s.consumeControlExternalChallenge(r, challengeID.String())
+			kernel.WriteProblem(w, r, http.StatusInternalServerError, "control_external_auth_start_failed", "The provider authorization request could not be created.")
+			return
+		}
 	}
 	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"provider": provider, "authorize_url": authorizeURL, "expires_in": 600})
 }
@@ -165,8 +172,15 @@ RETURNING id,auth_provider_config_id,flow,requested_by_control_user_id,invitatio
 	var external controlExternalIdentity
 	if decryptErr == nil && provider == "google" {
 		external, err = s.verifyControlGoogle(r, config, string(verifier), nonceDigest)
-	} else if decryptErr == nil {
+	} else if decryptErr == nil && provider == "apple" {
 		external, err = s.verifyControlApple(r, config, nonceDigest)
+	} else if decryptErr == nil {
+		var identity externalProviderIdentity
+		identity, err = exchangeExternalProviderIdentity(r.Context(), config, s.externalAuthCallbackURI(provider), r.Form.Get("code"), string(verifier), nonceDigest, s.app.Vault.Digest)
+		external = controlExternalIdentity{Subject: identity.Subject, Email: kernel.NormalizeEmail(identity.Email), FirstName: identity.FirstName, LastName: identity.LastName}
+		if err == nil && flow == "invitation" && invitationID != nil && !identity.TrustedEmail {
+			err = s.app.DB.QueryRow(r.Context(), `SELECT normalized_email FROM control_user_invitations WHERE id=$1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`, *invitationID).Scan(&external.Email)
+		}
 	} else {
 		err = decryptErr
 	}

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import { Platform93ExpoAuth, Platform93NativeAuthSessionError } from "../dist/index.js";
@@ -19,12 +20,21 @@ test("Google login opens an auth session and stores the exchanged refresh token"
       return { type: "success", url: "sampleapp://auth/callback?external_auth_exchange=once" };
     },
   };
+  let codeChallenge = "";
   const fetch = async (input, init = {}) => {
     if (String(input).endsWith("/auth/providers/google/start")) {
-      assert.deepEqual(JSON.parse(init.body), { redirect_uri: "sampleapp://auth/callback", flow: "automatic" });
+      const body = JSON.parse(init.body);
+      assert.equal(body.redirect_uri, "sampleapp://auth/callback");
+      assert.equal(body.flow, "automatic");
+      assert.match(body.code_challenge, /^[A-Za-z0-9_-]{43}$/);
+      codeChallenge = body.code_challenge;
       return Response.json({ provider: "google", authorize_url: "https://accounts.google.test/authorize", expires_in: 600 }, { status: 201 });
     }
-    if (String(input).endsWith("/auth/providers/google/exchange")) return Response.json(tokens);
+    if (String(input).endsWith("/auth/providers/google/exchange")) {
+      const body = JSON.parse(init.body);
+      assert.equal(createHash("sha256").update(body.code_verifier).digest("base64url"), codeChallenge);
+      return Response.json(tokens);
+    }
     throw new Error(`unexpected request ${input}`);
   };
   const auth = new Platform93ExpoAuth({ baseUrl: "https://platform93.test", applicationId: "application", redirectUri: "sampleapp://auth/callback", secureStore, webBrowser, fetch });

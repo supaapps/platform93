@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -101,8 +102,38 @@ test("external provider redirects exchange their one-time credential", async () 
   assert.equal(start.authorize_url, "https://accounts.google.test/authorize");
   await auth.completeExternalAuthRedirect("google", "sampleapp://auth/callback?external_auth_exchange=exchange-value");
   assert.equal(auth.snapshot().status, "authenticated");
-  assert.deepEqual(calls[0][1], { redirect_uri: "sampleapp://auth/callback", flow: "automatic" });
-  assert.deepEqual(calls[1][1], { exchange: "exchange-value" });
+  assert.equal(calls[0][1].redirect_uri, "sampleapp://auth/callback");
+  assert.equal(calls[0][1].flow, "automatic");
+  assert.match(calls[0][1].code_challenge, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(calls[1][1].exchange, "exchange-value");
+  assert.match(calls[1][1].code_verifier, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
+});
+
+test("untrusted provider signup keeps email completion bound to the original PKCE verifier", async () => {
+  const calls = [];
+  const fetch = async (input, init = {}) => {
+    const body = JSON.parse(init.body ?? "{}");
+    calls.push([String(input), body]);
+    if (String(input).endsWith("/auth/providers/microsoft/start")) {
+      return Response.json({ provider: "microsoft", authorize_url: "https://login.microsoftonline.test/authorize", expires_in: 600 }, { status: 201 });
+    }
+    if (String(input).endsWith("/auth/external-email/start")) {
+      return Response.json({ challenge_id: "challenge", provider: "microsoft", expires_in: 600 }, { status: 202 });
+    }
+    if (String(input).endsWith("/auth/external-email/verify")) return Response.json(tokens("email-complete"));
+    throw new Error(`unexpected request ${input}`);
+  };
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false });
+  await auth.startMicrosoftAuth({ redirectUri: "sampleapp://auth/callback", flow: "sign_up" });
+  const continuation = auth.completeExternalAuthRedirect("microsoft", "sampleapp://auth/callback?external_auth_email_enrollment=enrollment-value");
+  assert.equal(continuation.kind, "email_verification_required");
+  await auth.startExternalEmailEnrollment(continuation, "person@example.test", "code");
+  assert.equal(calls[1][1].code_verifier.length, 43);
+  assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
+  await auth.verifyExternalEmailEnrollment(continuation, { code: "abcd2345" });
+  assert.equal(auth.snapshot().status, "authenticated");
+  assert.equal(calls[2][1].code, "ABCD2345");
 });
 
 test("access token retrieval refreshes only when the current token expires", async () => {

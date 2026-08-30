@@ -16,11 +16,10 @@ func (s *Server) authMethods(w http.ResponseWriter, r *http.Request) {
 	if s.authFlag(r, "passwordless_enabled") {
 		methods = append(methods, "email_code", "magic_link")
 	}
-	if _, err := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), "google"); err == nil {
-		methods = append(methods, "google")
-	}
-	if _, err := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), "apple"); err == nil {
-		methods = append(methods, "apple")
+	for _, provider := range externalAuthProviders {
+		if _, err := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), provider); err == nil {
+			methods = append(methods, provider)
+		}
 	}
 	// Deliberately independent of the supplied email to prevent account discovery.
 	config, _ := s.internalApplicationConfig(r)

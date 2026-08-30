@@ -5,6 +5,8 @@ import {
   type EmailStart,
   type EmailVerify,
   type ExternalAuthAuthorization,
+  type ExternalEmailEnrollmentChallenge,
+  type ExternalEmailEnrollmentContinuation,
   type ExternalAuthFlow,
   type ExternalAuthProvider,
   type InvitationCredential,
@@ -134,6 +136,8 @@ export class Platform93Auth extends EventTarget {
   private accessTokenExpiresAt = 0;
   private status: AuthSnapshot["status"] = "anonymous";
   private refreshPromise: Promise<string | null> | null = null;
+  private readonly externalAuthVerifiers = new Map<ExternalAuthProvider, string>();
+  private readonly externalEmailVerifiers = new Map<string, string>();
   private readonly adapter: SessionAdapter;
   private readonly channel: BroadcastChannel | null;
   private readonly source = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36);
@@ -174,33 +178,76 @@ export class Platform93Auth extends EventTarget {
   signUp(input: PasswordSignUp) { return this.resolve(this.client.application().signUp(input)); }
   startEmail(input: EmailStart) { return this.client.application().startEmail(input); }
   verifyEmail(input: EmailVerify) { return this.resolve(this.client.application().verifyEmail(input)); }
-  startExternalAuth(provider: ExternalAuthProvider, options: ExternalAuthStartOptions): Promise<ExternalAuthAuthorization> {
+  async startExternalAuth(provider: ExternalAuthProvider, options: ExternalAuthStartOptions): Promise<ExternalAuthAuthorization> {
+    const codeVerifier = randomBase64URL(32);
+    const codeChallenge = await sha256Base64URL(codeVerifier);
+    this.externalAuthVerifiers.set(provider, codeVerifier);
     return this.client.application().startExternalAuth(provider, {
       redirect_uri: options.redirectUri,
       flow: options.flow,
       ...(options.loginHint ? { login_hint: options.loginHint } : {}),
+      code_challenge: codeChallenge,
     });
   }
   startGoogleAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("google", options); }
   startAppleAuth(options: Omit<ExternalAuthStartOptions, "loginHint">) { return this.startExternalAuth("apple", options); }
-  exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string) {
-    return this.resolve(this.client.application().exchangeExternalAuth(provider, exchange));
+  startMicrosoftAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("microsoft", options); }
+  startFacebookAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("facebook", options); }
+  startLinkedInAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("linkedin", options); }
+  exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string, codeVerifier = this.externalAuthVerifiers.get(provider)) {
+    this.externalAuthVerifiers.delete(provider);
+    return this.resolve(this.client.application().exchangeExternalAuth(provider, exchange, codeVerifier));
   }
   exchangeGoogleAuth(exchange: string) { return this.exchangeExternalAuth("google", exchange); }
   exchangeAppleAuth(exchange: string) { return this.exchangeExternalAuth("apple", exchange); }
-  completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL) {
+  completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL): Promise<AuthenticationResult> | ExternalEmailEnrollmentContinuation {
     const redirect = input instanceof URL ? input : new URL(input);
     const providerError = redirect.searchParams.get("external_auth_error");
     if (providerError) throw new Error(`Platform93 ${provider} authentication failed: ${providerError}`);
+    const enrollment = redirect.searchParams.get("external_auth_email_enrollment");
+    if (enrollment) {
+      if (provider === "google" || provider === "apple") throw new Error(`Platform93 ${provider} returned an unsupported email enrollment continuation`);
+      const verifier = this.externalAuthVerifiers.get(provider);
+      this.externalAuthVerifiers.delete(provider);
+      if (!verifier) throw new Error(`Platform93 ${provider} email enrollment is missing its PKCE verifier`);
+      this.externalEmailVerifiers.set(enrollment, verifier);
+      return { kind: "email_verification_required", provider, enrollment };
+    }
     const exchange = redirect.searchParams.get("external_auth_exchange");
     if (!exchange) throw new Error(`Platform93 ${provider} redirect is missing its one-time exchange credential`);
     return this.exchangeExternalAuth(provider, exchange);
+  }
+  startExternalEmailEnrollment(continuation: ExternalEmailEnrollmentContinuation, email: string, delivery: "code" | "link" | "both" = "both"): Promise<ExternalEmailEnrollmentChallenge> {
+    const verifier = this.externalEmailVerifiers.get(continuation.enrollment);
+    if (!verifier) throw new Error("Platform93 external email enrollment is missing its PKCE verifier");
+    return this.client.application().startExternalEmailEnrollment({ enrollment: continuation.enrollment, email, delivery, code_verifier: verifier });
+  }
+  async verifyExternalEmailEnrollment(continuation: ExternalEmailEnrollmentContinuation, credential: { code: string } | { linkToken: string }) {
+    const result = await this.resolve(this.client.application().verifyExternalEmailEnrollment({
+      enrollment: continuation.enrollment,
+      ...( "code" in credential ? { code: credential.code.trim().toUpperCase() } : { link_token: credential.linkToken }),
+    }));
+    this.externalEmailVerifiers.delete(continuation.enrollment);
+    return result;
+  }
+  verifyExternalEmailEnrollmentLink(continuation: ExternalEmailEnrollmentContinuation, input: string | URL = globalThis.location.href) {
+    const link = input instanceof URL ? input : new URL(input, globalThis.location?.origin);
+    const enrollment = link.searchParams.get("external_auth_email_enrollment");
+    const linkToken = link.searchParams.get("external_auth_email_link");
+    if (enrollment !== continuation.enrollment || !linkToken) throw new Error("Platform93 external email link is missing or has the wrong enrollment context");
+    return this.verifyExternalEmailEnrollment(continuation, { linkToken });
   }
   async exchangeInvitation(input: InvitationCredential) {
     const codeVerifier = randomBase64URL(32);
     const codeChallenge = await sha256Base64URL(codeVerifier);
     const authorization = await this.client.application().exchangeInvitation({ ...input, code_challenge: codeChallenge });
     return this.resolve(this.client.application().redeemInvitation({ authorization_code: authorization.authorization_code, code_verifier: codeVerifier }));
+  }
+  async startApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationCredential) {
+    const codeVerifier = randomBase64URL(32);
+    const codeChallenge = await sha256Base64URL(codeVerifier);
+    this.externalAuthVerifiers.set(provider, codeVerifier);
+    return this.client.application().startApplicationInvitationProvider(provider, { ...input, code_challenge: codeChallenge });
   }
   verifyMFA(input: MFAVerify) { return this.resolve(this.client.application().verifyMFA(input)); }
 

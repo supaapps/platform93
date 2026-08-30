@@ -103,9 +103,10 @@ func (s *Server) startGoogleLink(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) startGoogleAuthFlow(w http.ResponseWriter, r *http.Request, forcedFlow, requestedBy string) {
 	var request struct {
-		Flow        string `json:"flow,omitempty"`
-		RedirectURI string `json:"redirect_uri"`
-		LoginHint   string `json:"login_hint,omitempty"`
+		Flow          string `json:"flow,omitempty"`
+		RedirectURI   string `json:"redirect_uri"`
+		LoginHint     string `json:"login_hint,omitempty"`
+		CodeChallenge string `json:"code_challenge,omitempty"`
 	}
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
@@ -124,16 +125,20 @@ func (s *Server) startGoogleAuthFlow(w http.ResponseWriter, r *http.Request, for
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "authenticated_link_required", "Linking Google requires a directly authenticated user session.")
 		return
 	}
+	if request.CodeChallenge != "" && !invitationPKCEChallengePattern.MatchString(request.CodeChallenge) {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_pkce_challenge", "The PKCE code challenge is invalid.")
+		return
+	}
 	if err := validateRedirectURI(request.RedirectURI, true); err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "redirect_uri_not_allowed", "The redirect URI is invalid or unsafe.")
 		return
 	}
-	var redirectAllowed bool
-	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients
-WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris)
-AND (NOT $3 OR client_type='public'))`, chi.URLParam(r, "application_id"), request.RedirectURI, isNativeRedirectURI(request.RedirectURI)).Scan(&redirectAllowed)
-	if !redirectAllowed {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "redirect_uri_not_allowed", "The redirect URI must exactly match an enabled client redirect URI.")
+	var redirectAllowed, publicClient bool
+	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris)),
+EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris) AND client_type='public')`,
+		chi.URLParam(r, "application_id"), request.RedirectURI).Scan(&redirectAllowed, &publicClient)
+	if !redirectAllowed || publicClient && request.CodeChallenge == "" {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "pkce_or_redirect_invalid", "The redirect URI must match an enabled client, and public clients require PKCE.")
 		return
 	}
 	provider, err := s.googleProvider(r)
@@ -152,9 +157,10 @@ AND (NOT $3 OR client_type='public'))`, chi.URLParam(r, "application_id"), reque
 	}
 	if err == nil {
 		_, err = s.app.DB.Exec(r.Context(), `INSERT INTO external_auth_challenges
-(id,application_id,provider,flow,requested_by_user_id,app_redirect_uri,state_digest,nonce_digest,verifier_ciphertext,expires_at)
-VALUES ($1,$2,'google',$3,$4,$5,$6,$7,$8,$9)`, challengeID, chi.URLParam(r, "application_id"), request.Flow,
-			requestedByUserID, request.RedirectURI, s.app.Vault.Digest(state), s.app.Vault.Digest(nonce), verifierCiphertext, s.app.Now().Add(10*time.Minute))
+(id,application_id,auth_provider_config_id,provider,flow,requested_by_user_id,app_redirect_uri,state_digest,nonce_digest,verifier_ciphertext,code_challenge,expires_at)
+VALUES ($1,$2,$3,'google',$4,$5,$6,$7,$8,$9,$10,$11)`, challengeID, chi.URLParam(r, "application_id"), provider.ID, request.Flow,
+			requestedByUserID, request.RedirectURI, s.app.Vault.Digest(state), s.app.Vault.Digest(nonce), verifierCiphertext,
+			nullableAuthValue(request.CodeChallenge), s.app.Now().Add(10*time.Minute))
 	}
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "google_auth_start_failed", "The Google authentication flow could not be started.")
@@ -174,13 +180,15 @@ func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusBadRequest, "invalid_google_state", "The Google authentication state is missing.")
 		return
 	}
-	var challengeID, flow, appRedirect, verifierCiphertext string
+	var challengeID, providerConfigID, flow, appRedirect, verifierCiphertext string
 	var requestedBy *string
+	var invitationID *string
 	var nonceDigest []byte
+	var codeChallenge *string
 	err := s.app.DB.QueryRow(r.Context(), `UPDATE external_auth_challenges SET locked_until=now()+interval '2 minutes'
 WHERE application_id=$1 AND provider='google' AND state_digest=$2 AND consumed_at IS NULL AND expires_at>now()
-AND (locked_until IS NULL OR locked_until<now()) RETURNING id,flow,requested_by_user_id,app_redirect_uri,nonce_digest,verifier_ciphertext`,
-		chi.URLParam(r, "application_id"), s.app.Vault.Digest(state)).Scan(&challengeID, &flow, &requestedBy, &appRedirect, &nonceDigest, &verifierCiphertext)
+AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_config_id,flow,requested_by_user_id,invitation_id,app_redirect_uri,nonce_digest,verifier_ciphertext,code_challenge`,
+		chi.URLParam(r, "application_id"), s.app.Vault.Digest(state)).Scan(&challengeID, &providerConfigID, &flow, &requestedBy, &invitationID, &appRedirect, &nonceDigest, &verifierCiphertext, &codeChallenge)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_google_state", "The Google authentication state is invalid or expired.")
 		return
@@ -192,7 +200,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,flow,requested_by_
 	}
 	provider, err := s.googleProvider(r)
 	verifier, decryptErr := s.app.Vault.Decrypt(verifierCiphertext, "external-auth:"+challengeID)
-	if err != nil || decryptErr != nil || r.URL.Query().Get("code") == "" {
+	if err != nil || provider.ID != providerConfigID || decryptErr != nil || r.URL.Query().Get("code") == "" {
 		s.releaseExternalAuthChallenge(r, challengeID)
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_exchange_failed")
 		return
@@ -225,56 +233,37 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,flow,requested_by_
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_identity_invalid")
 		return
 	}
+	if flow == "invitation" && invitationID != nil {
+		external := externalProviderIdentity{Subject: claims.Subject, Email: claims.Email, FirstName: claims.FirstName, LastName: claims.LastName, TrustedEmail: true}
+		config, configErr := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), "google")
+		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, config, external)
+		if configErr != nil || completeErr != nil {
+			s.releaseExternalAuthChallenge(r, challengeID)
+			s.redirectExternalAuth(w, r, appRedirect, "", "invitation_identity_invalid")
+			return
+		}
+		challenge := ""
+		if codeChallenge != nil {
+			challenge = *codeChallenge
+		}
+		s.completeExternalAuthCallback(w, r, challengeID, appRedirect, userID, challenge)
+		return
+	}
 	userID, completeErr := s.completeGoogleIdentity(r, challengeID, flow, requestedBy, claims.Subject, claims.Email, claims.FirstName, claims.LastName)
 	if completeErr != nil {
 		s.releaseExternalAuthChallenge(r, challengeID)
 		s.redirectExternalAuth(w, r, appRedirect, "", completeErr.Error())
 		return
 	}
-	exchangeCode, _ := secure.RandomToken("p93_external_", 32)
-	exchangeID := kernel.NewID()
-	tx, err := s.app.DB.Begin(r.Context())
-	if err == nil {
-		defer rollback(tx, r.Context())
-		_, err = tx.Exec(r.Context(), `INSERT INTO external_auth_exchanges
-(id,application_id,user_id,credential_digest,expires_at) VALUES ($1,$2,$3,$4,$5)`, exchangeID,
-			chi.URLParam(r, "application_id"), userID, s.app.Vault.Digest(exchangeCode), s.app.Now().Add(2*time.Minute))
-		if err == nil {
-			_, err = tx.Exec(r.Context(), `UPDATE external_auth_challenges SET consumed_at=now(),locked_until=NULL WHERE id=$1`, challengeID)
-		}
-		if err == nil {
-			err = tx.Commit(r.Context())
-		}
+	challenge := ""
+	if codeChallenge != nil {
+		challenge = *codeChallenge
 	}
-	if err != nil {
-		s.releaseExternalAuthChallenge(r, challengeID)
-		s.redirectExternalAuth(w, r, appRedirect, "", "exchange_creation_failed")
-		return
-	}
-	s.redirectExternalAuth(w, r, appRedirect, exchangeID.String()+":"+exchangeCode, "")
+	s.completeExternalAuthCallback(w, r, challengeID, appRedirect, userID, challenge)
 }
 
 func (s *Server) exchangeGoogleAuth(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		Exchange string `json:"exchange"`
-	}
-	if !kernel.DecodeJSON(w, r, &request) {
-		return
-	}
-	parts := strings.SplitN(request.Exchange, ":", 2)
-	if len(parts) != 2 {
-		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_external_exchange", "The external authentication exchange is invalid or expired.")
-		return
-	}
-	var userID string
-	err := s.app.DB.QueryRow(r.Context(), `UPDATE external_auth_exchanges SET consumed_at=now()
-WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NULL AND expires_at>now() RETURNING user_id`,
-		parts[0], chi.URLParam(r, "application_id"), s.app.Vault.Digest(parts[1])).Scan(&userID)
-	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_external_exchange", "The external authentication exchange is invalid or expired.")
-		return
-	}
-	s.completePrimaryAuthentication(w, r, userID, []string{"google"})
+	s.exchangeExternalAuth(w, r, "google")
 }
 
 func (s *Server) completeGoogleIdentity(r *http.Request, challengeID, flow string, requestedBy *string, subject, email, firstName, lastName string) (string, error) {
@@ -299,15 +288,18 @@ WHERE application_id=$1 AND provider=$2 AND provider_subject=$3`, chi.URLParam(r
 		if requestedBy == nil {
 			return "", fmt.Errorf("authenticated_link_required")
 		}
-		var existingEmail string
-		if tx.QueryRow(r.Context(), `SELECT normalized_email FROM users WHERE id=$1 AND application_id=$2 AND status='active'`,
-			*requestedBy, chi.URLParam(r, "application_id")).Scan(&existingEmail) != nil || existingEmail != normalized {
-			return "", fmt.Errorf("provider_email_mismatch")
+		var active bool
+		if tx.QueryRow(r.Context(), `SELECT status='active' FROM users WHERE id=$1 AND application_id=$2`,
+			*requestedBy, chi.URLParam(r, "application_id")).Scan(&active) != nil || !active {
+			return "", fmt.Errorf("account_unavailable")
 		}
 		userID = *requestedBy
 		_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata)
 VALUES ($1,$2,$3,$4,$5,jsonb_build_object('email',$6))`, kernel.NewID(), chi.URLParam(r, "application_id"), userID, provider, subject, normalized)
 	} else {
+		if !strings.Contains(normalized, "@") {
+			return "", fmt.Errorf("provider_email_verification_required")
+		}
 		var existingUserID string
 		existingErr := tx.QueryRow(r.Context(), `SELECT id FROM users WHERE application_id=$1 AND normalized_email=$2`,
 			chi.URLParam(r, "application_id"), normalized).Scan(&existingUserID)
