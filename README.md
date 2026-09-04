@@ -46,6 +46,10 @@ docker compose -f deploy/compose/compose.yaml run --rm api bootstrap
 
 Open `http://localhost:8093` and consume the one-time bootstrap credential.
 
+The Compose PostgreSQL service is available to host-side development tools on
+`localhost:15434`; containers continue to connect to `postgres:5432`. Override
+the host mapping with `PLATFORM93_POSTGRES_PORT` when needed.
+
 ## Development
 
 ```bash

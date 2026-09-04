@@ -9,10 +9,10 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env: { POSTGRES_DB: platform93_test, POSTGRES_USER: platform93, POSTGRES_PASSWORD: platform93 }
-        ports: ["5432:5432"]
+        ports: ["15434:5432"]
         options: --health-cmd "pg_isready -U platform93 -d platform93_test" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      PLATFORM93_DATABASE_URL: postgres://platform93:platform93@localhost:5432/platform93_test?sslmode=disable
+      PLATFORM93_DATABASE_URL: postgres://platform93:platform93@localhost:15434/platform93_test?sslmode=disable
       PLATFORM93_MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       PLATFORM93_TEST_S3_ENDPOINT: http://127.0.0.1:9000
       PLATFORM93_TEST_S3_ACCESS_KEY: platform93
@@ -103,10 +103,10 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env: { POSTGRES_DB: platform93_browser, POSTGRES_USER: platform93, POSTGRES_PASSWORD: platform93 }
-        ports: ["5432:5432"]
+        ports: ["15434:5432"]
         options: --health-cmd "pg_isready -U platform93 -d platform93_browser" --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      PLATFORM93_DATABASE_URL: postgres://platform93:platform93@localhost:5432/platform93_browser?sslmode=disable
+      PLATFORM93_DATABASE_URL: postgres://platform93:platform93@localhost:15434/platform93_browser?sslmode=disable
       PLATFORM93_MASTER_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       PLATFORM93_PUBLIC_URL: http://127.0.0.1:8093
       PLATFORM93_ADMIN_ASSETS: web/out
