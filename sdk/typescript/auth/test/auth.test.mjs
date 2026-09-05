@@ -132,6 +132,35 @@ test("external provider exchange fails locally when PKCE state is missing", asyn
   assert.equal(calls, 0);
 });
 
+test("external provider starts cannot overwrite an in-flight PKCE verifier", async () => {
+  let releaseStart;
+  const startResponse = new Promise((resolve) => { releaseStart = resolve; });
+  const calls = [];
+  const fetch = async (input, init = {}) => {
+    calls.push([String(input), JSON.parse(init.body ?? "{}")]);
+    if (String(input).endsWith("/auth/providers/google/start")) {
+      await startResponse;
+      return Response.json({ provider: "google", authorize_url: "https://accounts.google.test/authorize", expires_in: 600 }, { status: 201 });
+    }
+    if (String(input).endsWith("/auth/providers/google/exchange")) return Response.json(tokens("concurrent"));
+    throw new Error(`unexpected request ${input}`);
+  };
+  const authorizationStateStore = new MemoryAuthorizationStateStore();
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+
+  const firstStart = auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback" });
+  await assert.rejects(
+    auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback" }),
+    /google authentication already has a request in progress/,
+  );
+  releaseStart();
+  await firstStart;
+  await auth.completeExternalAuthRedirect("google", "sampleapp://auth/callback?external_auth_exchange=exchange-value");
+
+  assert.equal(calls.filter(([url]) => url.endsWith("/auth/providers/google/start")).length, 1);
+  assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
+});
+
 test("untrusted provider signup keeps email completion bound to the original PKCE verifier", async () => {
   const calls = [];
   const authorizationState = new Map();

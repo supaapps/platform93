@@ -211,16 +211,25 @@ export class Platform93Auth extends EventTarget {
   startEmail(input: EmailStart) { return this.client.application().startEmail(input); }
   verifyEmail(input: EmailVerify) { return this.resolve(this.client.application().verifyEmail(input)); }
   async startExternalAuth(provider: ExternalAuthProvider, options: ExternalAuthStartOptions): Promise<ExternalAuthAuthorization> {
+    if (this.loadAuthorizationVerifier("provider", provider)) {
+      throw new Error(`Platform93 ${provider} authentication already has a request in progress`);
+    }
     const codeVerifier = randomBase64URL(32);
-    const codeChallenge = await sha256Base64URL(codeVerifier);
-    const authorization = await this.client.application().startExternalAuth(provider, {
-      redirect_uri: options.redirectUri,
-      flow: options.flow,
-      ...(options.loginHint ? { login_hint: options.loginHint } : {}),
-      code_challenge: codeChallenge,
-    });
-    this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in);
-    return authorization;
+    this.saveAuthorizationVerifier("provider", provider, codeVerifier, 600);
+    try {
+      const codeChallenge = await sha256Base64URL(codeVerifier);
+      const authorization = await this.client.application().startExternalAuth(provider, {
+        redirect_uri: options.redirectUri,
+        flow: options.flow,
+        ...(options.loginHint ? { login_hint: options.loginHint } : {}),
+        code_challenge: codeChallenge,
+      });
+      this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in);
+      return authorization;
+    } catch (error) {
+      this.removeAuthorizationVerifier("provider", provider);
+      throw error;
+    }
   }
   startGoogleAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("google", options); }
   startAppleAuth(options: Omit<ExternalAuthStartOptions, "loginHint">) { return this.startExternalAuth("apple", options); }
@@ -282,11 +291,20 @@ export class Platform93Auth extends EventTarget {
     return this.resolve(this.client.application().redeemInvitation({ authorization_code: authorization.authorization_code, code_verifier: codeVerifier }));
   }
   async startApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationCredential) {
+    if (this.loadAuthorizationVerifier("provider", provider)) {
+      throw new Error(`Platform93 ${provider} authentication already has a request in progress`);
+    }
     const codeVerifier = randomBase64URL(32);
-    const codeChallenge = await sha256Base64URL(codeVerifier);
-    const authorization = await this.client.application().startApplicationInvitationProvider(provider, { ...input, code_challenge: codeChallenge });
-    this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in);
-    return authorization;
+    this.saveAuthorizationVerifier("provider", provider, codeVerifier, 600);
+    try {
+      const codeChallenge = await sha256Base64URL(codeVerifier);
+      const authorization = await this.client.application().startApplicationInvitationProvider(provider, { ...input, code_challenge: codeChallenge });
+      this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in);
+      return authorization;
+    } catch (error) {
+      this.removeAuthorizationVerifier("provider", provider);
+      throw error;
+    }
   }
   verifyMFA(input: MFAVerify) { return this.resolve(this.client.application().verifyMFA(input)); }
 
