@@ -180,7 +180,8 @@ func (s *Server) googleCallback(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusBadRequest, "invalid_google_state", "The Google authentication state is missing.")
 		return
 	}
-	var challengeID, providerConfigID, flow, appRedirect, verifierCiphertext string
+	var challengeID, flow, appRedirect, verifierCiphertext string
+	var providerConfigID *string
 	var requestedBy *string
 	var invitationID *string
 	var nonceDigest []byte
@@ -200,7 +201,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 	}
 	provider, err := s.googleProvider(r)
 	verifier, decryptErr := s.app.Vault.Decrypt(verifierCiphertext, "external-auth:"+challengeID)
-	if err != nil || provider.ID != providerConfigID || decryptErr != nil || r.URL.Query().Get("code") == "" {
+	if err != nil || !challengeProviderMatches(providerConfigID, provider.ID) || decryptErr != nil || r.URL.Query().Get("code") == "" {
 		s.releaseExternalAuthChallenge(r, challengeID)
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_exchange_failed")
 		return

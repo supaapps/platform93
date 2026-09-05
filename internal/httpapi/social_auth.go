@@ -60,8 +60,8 @@ func (s *Server) startSocialAuthFlow(w http.ResponseWriter, r *http.Request, pro
 	var redirectAllowed, publicClient bool
 	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris)),
 EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris) AND client_type='public')`, applicationID, request.RedirectURI).Scan(&redirectAllowed, &publicClient)
-	if !redirectAllowed || publicClient && request.CodeChallenge == "" {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "pkce_or_redirect_invalid", "The redirect URI must match an enabled client, and public clients require PKCE.")
+	if !redirectAllowed || externalAuthRequiresPKCE(publicClient, request.Flow) && request.CodeChallenge == "" {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "pkce_or_redirect_invalid", "The redirect URI must match an enabled client. Public clients and flows that can create or link users require PKCE.")
 		return
 	}
 	config, err := s.loadEffectiveAuthProvider(r.Context(), applicationID, provider)
@@ -105,6 +105,14 @@ func nullableAuthValue(value string) any {
 	return value
 }
 
+func externalAuthRequiresPKCE(publicClient bool, flow string) bool {
+	return publicClient || flow != "sign_in"
+}
+
+func challengeProviderMatches(challengeProviderConfigID *string, activeProviderConfigID string) bool {
+	return challengeProviderConfigID == nil || *challengeProviderConfigID == activeProviderConfigID
+}
+
 func (s *Server) routeSocialCallback(w http.ResponseWriter, r *http.Request) {
 	provider := chi.URLParam(r, "provider")
 	if provider != "microsoft" && provider != "facebook" && provider != "linkedin" {
@@ -118,7 +126,8 @@ func (s *Server) routeSocialCallback(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) socialCallback(w http.ResponseWriter, r *http.Request, provider string) {
 	state := r.Form.Get("state")
-	var challengeID, providerConfigID, flow, appRedirect, verifierCiphertext string
+	var challengeID, flow, appRedirect, verifierCiphertext string
+	var providerConfigID *string
 	var requestedBy *string
 	var invitationID *string
 	var nonceDigest []byte
@@ -139,7 +148,7 @@ RETURNING id,auth_provider_config_id,flow,requested_by_user_id,invitation_id,app
 	}
 	config, configErr := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), provider)
 	verifier, decryptErr := s.app.Vault.Decrypt(verifierCiphertext, "external-auth:"+challengeID)
-	if configErr != nil || config.ID != providerConfigID || decryptErr != nil || r.Form.Get("code") == "" {
+	if configErr != nil || !challengeProviderMatches(providerConfigID, config.ID) || decryptErr != nil || r.Form.Get("code") == "" {
 		s.releaseExternalAuthChallenge(r, challengeID)
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_exchange_failed")
 		return

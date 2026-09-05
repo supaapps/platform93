@@ -110,7 +110,8 @@ func (s *Server) appleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := r.Form.Get("state")
-	var challengeID, providerConfigID, flow, appRedirect string
+	var challengeID, flow, appRedirect string
+	var providerConfigID *string
 	var requestedBy *string
 	var invitationID *string
 	var nonceDigest []byte
@@ -130,7 +131,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 	}
 	provider, err := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), "apple")
 	clientSecret, secretErr := createAppleClientSecret(provider, s.app.Now())
-	if err != nil || provider.ID != providerConfigID || secretErr != nil || r.Form.Get("code") == "" {
+	if err != nil || !challengeProviderMatches(providerConfigID, provider.ID) || secretErr != nil || r.Form.Get("code") == "" {
 		s.releaseExternalAuthChallenge(r, challengeID)
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_exchange_failed")
 		return

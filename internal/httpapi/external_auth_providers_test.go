@@ -77,6 +77,43 @@ func TestProviderVerifierValue(t *testing.T) {
 	}
 }
 
+func TestExternalAuthRequiresPKCE(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name         string
+		publicClient bool
+		flow         string
+		want         bool
+	}{
+		{name: "public sign in", publicClient: true, flow: "sign_in", want: true},
+		{name: "confidential sign in", flow: "sign_in", want: false},
+		{name: "confidential sign up", flow: "sign_up", want: true},
+		{name: "confidential automatic", flow: "automatic", want: true},
+		{name: "confidential link", flow: "link", want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := externalAuthRequiresPKCE(test.publicClient, test.flow); got != test.want {
+				t.Fatalf("externalAuthRequiresPKCE(%v, %q) = %v, want %v", test.publicClient, test.flow, got, test.want)
+			}
+		})
+	}
+}
+
+func TestChallengeProviderMatches(t *testing.T) {
+	t.Parallel()
+	configured := "provider-config"
+	other := "other-provider-config"
+	if !challengeProviderMatches(nil, configured) {
+		t.Fatal("a challenge created before provider pinning should remain valid")
+	}
+	if !challengeProviderMatches(&configured, configured) {
+		t.Fatal("a challenge pinned to the active provider should remain valid")
+	}
+	if challengeProviderMatches(&other, configured) {
+		t.Fatal("a challenge pinned to another provider must be rejected")
+	}
+}
+
 func TestValidExternalAuthProvider(t *testing.T) {
 	t.Parallel()
 	for _, provider := range []string{"google", "apple", "microsoft", "facebook", "linkedin"} {
