@@ -161,6 +161,25 @@ test("external provider starts cannot overwrite an in-flight PKCE verifier", asy
   assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
 });
 
+test("a malformed provider redirect releases its in-flight PKCE verifier", async () => {
+  let starts = 0;
+  const fetch = async (input) => {
+    if (!String(input).endsWith("/auth/providers/google/start")) throw new Error(`unexpected request ${input}`);
+    starts += 1;
+    return Response.json({ provider: "google", authorize_url: "https://accounts.google.test/authorize", expires_in: 600 }, { status: 201 });
+  };
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false });
+
+  await auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback" });
+  await assert.rejects(
+    auth.completeExternalAuthRedirect("google", "sampleapp://auth/callback"),
+    /redirect is missing its one-time exchange credential/,
+  );
+  await auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback" });
+
+  assert.equal(starts, 2);
+});
+
 test("untrusted provider signup keeps email completion bound to the original PKCE verifier", async () => {
   const calls = [];
   const authorizationState = new Map();

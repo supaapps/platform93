@@ -245,7 +245,13 @@ export class Platform93Auth extends EventTarget {
   exchangeGoogleAuth(exchange: string) { return this.exchangeExternalAuth("google", exchange); }
   exchangeAppleAuth(exchange: string) { return this.exchangeExternalAuth("apple", exchange); }
   async completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL): Promise<AuthenticationResult | ExternalEmailEnrollmentContinuation> {
-    const redirect = input instanceof URL ? input : new URL(input);
+    let redirect: URL;
+    try {
+      redirect = input instanceof URL ? input : new URL(input);
+    } catch {
+      this.removeAuthorizationVerifier("provider", provider);
+      throw new Error(`Platform93 ${provider} redirect is not a valid URL`);
+    }
     const providerError = redirect.searchParams.get("external_auth_error");
     if (providerError) {
       this.removeAuthorizationVerifier("provider", provider);
@@ -253,7 +259,10 @@ export class Platform93Auth extends EventTarget {
     }
     const enrollment = redirect.searchParams.get("external_auth_email_enrollment");
     if (enrollment) {
-      if (provider === "google" || provider === "apple") throw new Error(`Platform93 ${provider} returned an unsupported email enrollment continuation`);
+      if (provider === "google" || provider === "apple") {
+        this.removeAuthorizationVerifier("provider", provider);
+        throw new Error(`Platform93 ${provider} returned an unsupported email enrollment continuation`);
+      }
       const verifier = this.loadAuthorizationVerifier("provider", provider);
       this.removeAuthorizationVerifier("provider", provider);
       if (!verifier) throw new Error(`Platform93 ${provider} email enrollment is missing its PKCE verifier`);
@@ -261,7 +270,10 @@ export class Platform93Auth extends EventTarget {
       return { kind: "email_verification_required", provider, enrollment };
     }
     const exchange = redirect.searchParams.get("external_auth_exchange");
-    if (!exchange) throw new Error(`Platform93 ${provider} redirect is missing its one-time exchange credential`);
+    if (!exchange) {
+      this.removeAuthorizationVerifier("provider", provider);
+      throw new Error(`Platform93 ${provider} redirect is missing its one-time exchange credential`);
+    }
     return this.exchangeExternalAuth(provider, exchange);
   }
   startExternalEmailEnrollment(continuation: ExternalEmailEnrollmentContinuation, email: string, delivery: "code" | "link" | "both" = "both"): Promise<ExternalEmailEnrollmentChallenge> {
