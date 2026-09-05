@@ -30,6 +30,27 @@ func TestFacebookDebugRequestKeepsAppAccessTokenOutOfURL(t *testing.T) {
 	}
 }
 
+func TestFacebookProfileRequestKeepsUserAccessTokenOutOfURL(t *testing.T) {
+	t.Parallel()
+	const (
+		accessToken    = "facebook-user-token"
+		appSecretProof = "signed-token-proof"
+	)
+	request, err := newFacebookProfileRequest(context.Background(), accessToken, appSecretProof)
+	if err != nil {
+		t.Fatalf("newFacebookProfileRequest returned an error: %v", err)
+	}
+	if strings.Contains(request.URL.String(), accessToken) || request.URL.Query().Has("access_token") {
+		t.Fatalf("Facebook profile URL contains the user access token: %s", request.URL.Redacted())
+	}
+	if request.URL.Query().Get("appsecret_proof") != appSecretProof {
+		t.Fatal("Facebook profile URL has the wrong app-secret proof")
+	}
+	if got := request.Header.Get("Authorization"); got != "Bearer "+accessToken {
+		t.Fatalf("Authorization header = %q, want a bearer user access token", got)
+	}
+}
+
 func TestNormalizeMicrosoftTenant(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{

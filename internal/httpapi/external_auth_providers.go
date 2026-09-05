@@ -263,18 +263,17 @@ func exchangeFacebookIdentity(ctx context.Context, config externalAuthProviderCo
 	}
 	proof := hmac.New(sha256.New, []byte(config.Credentials["client_secret"]))
 	_, _ = proof.Write([]byte(token.AccessToken))
-	profileURL := "https://graph.facebook.com/v26.0/me?" + url.Values{
-		"fields":          {"id,first_name,last_name,email"},
-		"access_token":    {token.AccessToken},
-		"appsecret_proof": {hex.EncodeToString(proof.Sum(nil))},
-	}.Encode()
+	profileRequest, err := newFacebookProfileRequest(ctx, token.AccessToken, hex.EncodeToString(proof.Sum(nil)))
+	if err != nil {
+		return externalProviderIdentity{}, fmt.Errorf("facebook profile request failed")
+	}
 	var profile struct {
 		ID        string `json:"id"`
 		Email     string `json:"email"`
 		FirstName string `json:"first_name"`
 		LastName  string `json:"last_name"`
 	}
-	if err = getBoundedJSON(ctx, client, profileURL, &profile); err != nil || profile.ID != debug.Data.UserID {
+	if err = executeBoundedJSON(client, profileRequest, &profile); err != nil || profile.ID != debug.Data.UserID {
 		return externalProviderIdentity{}, fmt.Errorf("invalid facebook profile")
 	}
 	return externalProviderIdentity{Subject: profile.ID, Email: profile.Email, FirstName: profile.FirstName, LastName: profile.LastName,
@@ -290,6 +289,19 @@ func newFacebookDebugRequest(ctx context.Context, inputToken, appAccessToken str
 		return nil, err
 	}
 	request.Header.Set("Authorization", "Bearer "+appAccessToken)
+	return request, nil
+}
+
+func newFacebookProfileRequest(ctx context.Context, accessToken, appSecretProof string) (*http.Request, error) {
+	endpoint := "https://graph.facebook.com/v26.0/me?" + url.Values{
+		"fields":          {"id,first_name,last_name,email"},
+		"appsecret_proof": {appSecretProof},
+	}.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+accessToken)
 	return request, nil
 }
 
