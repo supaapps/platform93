@@ -190,13 +190,16 @@ export type PasswordSignUp = PasswordSignIn & { first_name?: string; last_name?:
 export type EmailStart = { email: string; intent: "sign_in" | "sign_up" | "automatic"; delivery: "code" | "link" | "both"; redirect_uri?: string };
 export type EmailVerify = { challenge_id: string; code?: string; link_token?: string };
 export type ExternalAuthProvider = "google" | "apple" | "microsoft" | "facebook" | "linkedin";
-export type ExternalAuthFlow = "sign_in" | "sign_up" | "automatic";
+export type ExternalAuthFlow = "sign_in" | "sign_up" | "automatic" | "link";
 export type ExternalAuthStart = { redirect_uri: string; flow?: ExternalAuthFlow; login_hint?: string; code_challenge?: string };
 export type ExternalAuthAuthorization = { provider: ExternalAuthProvider; authorize_url: string; expires_in: number };
 export type ExternalEmailEnrollmentContinuation = { kind: "email_verification_required"; provider: "microsoft" | "facebook" | "linkedin"; enrollment: string };
 export type ExternalEmailEnrollmentStart = { enrollment: string; email: string; code_verifier: string; delivery?: "code" | "link" | "both" };
 export type ExternalEmailEnrollmentChallenge = { challenge_id: string; provider: "microsoft" | "facebook" | "linkedin"; expires_in: number };
-export type ExternalEmailEnrollmentVerify = { enrollment: string; code?: string; link_token?: string };
+export type ExternalEmailEnrollmentCredential =
+  | { code: string; link_token?: never }
+  | { link_token: string; code?: never };
+export type ExternalEmailEnrollmentVerify = { enrollment: string } & ExternalEmailEnrollmentCredential;
 export type LocalCheckoutInput = { price_id: string; subject_type?: "user" | "workspace"; subject_id?: string; address_id?: string; external_reference?: string };
 export type CheckoutInput = { price_id: string; provider_id?: string; subject_type?: "user" | "workspace"; subject_id?: string; payment_methods?: Array<"card" | "twint">; success_uri: string; cancel_uri: string; external_reference?: string };
 export type CheckoutSession = { id: string; status: string; checkout_uri: string; provider_session_id: string; external_reference?: string | null };
