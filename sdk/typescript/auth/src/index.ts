@@ -228,6 +228,7 @@ export class Platform93Auth extends EventTarget {
   startFacebookAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("facebook", options); }
   startLinkedInAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("linkedin", options); }
   async exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string, codeVerifier = this.loadAuthorizationVerifier("provider", provider)) {
+    if (!codeVerifier) throw new Error(`Platform93 ${provider} authentication is missing its PKCE verifier`);
     const result = await this.resolve(this.client.application().exchangeExternalAuth(provider, exchange, codeVerifier));
     this.removeAuthorizationVerifier("provider", provider);
     return result;

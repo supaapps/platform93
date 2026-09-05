@@ -82,7 +82,7 @@ WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NU
 		})
 	}
 	applicationID := chi.URLParam(r, "application_id")
-	templateID, locale, payload, renderErr := s.renderSystemNotification(r.Context(), &applicationID, applicationSignInTemplate, request.Email, map[string]any{
+	templateID, locale, payload, renderErr := s.renderSystemNotification(r.Context(), &applicationID, verifyEmailTemplate, request.Email, map[string]any{
 		"code": deliveredCode, "magic_link": magicLink, "expires_minutes": 10, "intent": "external_auth",
 	})
 	if renderErr != nil {

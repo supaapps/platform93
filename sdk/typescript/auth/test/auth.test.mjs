@@ -113,6 +113,25 @@ test("external provider redirects exchange their one-time credential", async () 
   assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
 });
 
+test("external provider exchange fails locally when PKCE state is missing", async () => {
+  let calls = 0;
+  const auth = new Platform93Auth({
+    baseUrl: "https://platform93.test",
+    applicationId: "application",
+    channelName: false,
+    fetch: async () => {
+      calls += 1;
+      throw new Error("the exchange API must not be called");
+    },
+  });
+
+  await assert.rejects(
+    auth.exchangeExternalAuth("google", "exchange-value"),
+    /google authentication is missing its PKCE verifier/,
+  );
+  assert.equal(calls, 0);
+});
+
 test("untrusted provider signup keeps email completion bound to the original PKCE verifier", async () => {
   const calls = [];
   const authorizationState = new Map();
