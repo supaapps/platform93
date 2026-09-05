@@ -16,8 +16,9 @@ func (s *Server) authMethods(w http.ResponseWriter, r *http.Request) {
 	if s.authFlag(r, "passwordless_enabled") {
 		methods = append(methods, "email_code", "magic_link")
 	}
+	configuredProviders := s.loadEffectiveAuthProviders(r.Context(), chi.URLParam(r, "application_id"))
 	for _, provider := range externalAuthProviders {
-		if _, err := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), provider); err == nil {
+		if _, configured := configuredProviders[provider]; configured {
 			methods = append(methods, provider)
 		}
 	}

@@ -354,21 +354,7 @@ WHERE ap.provider=$2 AND ap.disabled_at IS NULL AND (ap.application_id=$1 OR
 ORDER BY CASE WHEN ap.application_id IS NOT NULL THEN 0 WHEN ap.organization_id IS NOT NULL THEN 1 ELSE 2 END LIMIT 1`, applicationID, provider).
 		Scan(&value.ID, &value.Provider, &value.ClientID, &ciphertext, &value.Inheritable, &value.ControlLoginEnabled, &value.Scope)
 	if err != nil && provider == "google" {
-		var metadata []byte
-		err = s.app.DB.QueryRow(ctx, `SELECT id,metadata,ciphertext FROM application_secrets WHERE application_id=$1 AND kind='auth_provider' AND name='google'`, applicationID).Scan(&value.ID, &metadata, &ciphertext)
-		var decoded struct {
-			ClientID string `json:"client_id"`
-		}
-		_ = json.Unmarshal(metadata, &decoded)
-		value.Provider, value.ClientID, value.Scope = "google", decoded.ClientID, "application"
-		if err == nil {
-			secret, decryptErr := s.app.Vault.Decrypt(ciphertext, "application-secret:"+value.ID)
-			if decryptErr == nil {
-				value.Credentials = map[string]string{"client_secret": string(secret)}
-				return value, nil
-			}
-			err = decryptErr
-		}
+		return s.loadLegacyGoogleAuthProvider(ctx, applicationID)
 	}
 	if err != nil {
 		return externalAuthProviderConfig{}, err
@@ -377,6 +363,60 @@ ORDER BY CASE WHEN ap.application_id IS NOT NULL THEN 0 WHEN ap.organization_id 
 	if err != nil || json.Unmarshal(plaintext, &value.Credentials) != nil {
 		return externalAuthProviderConfig{}, fmt.Errorf("%s provider unavailable", provider)
 	}
+	return value, nil
+}
+
+func (s *Server) loadEffectiveAuthProviders(ctx context.Context, applicationID string) map[string]externalAuthProviderConfig {
+	providers := make(map[string]externalAuthProviderConfig, len(externalAuthProviders))
+	rows, err := s.app.DB.Query(ctx, `SELECT DISTINCT ON (ap.provider)
+ap.id,ap.provider,ap.client_id,ap.config_ciphertext,ap.inheritable,ap.control_login_enabled,
+CASE WHEN ap.application_id IS NOT NULL THEN 'application' WHEN ap.organization_id IS NOT NULL THEN 'organization' ELSE 'installation' END
+FROM auth_provider_configs ap JOIN applications a ON a.id=$1
+WHERE ap.provider=ANY($2::text[]) AND ap.disabled_at IS NULL AND (ap.application_id=$1 OR
+(ap.application_id IS NULL AND ap.organization_id=a.organization_id AND ap.inheritable) OR
+(ap.application_id IS NULL AND ap.organization_id IS NULL AND ap.inheritable))
+ORDER BY ap.provider,CASE WHEN ap.application_id IS NOT NULL THEN 0 WHEN ap.organization_id IS NOT NULL THEN 1 ELSE 2 END`, applicationID, externalAuthProviders)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var value externalAuthProviderConfig
+			var ciphertext string
+			if scanErr := rows.Scan(&value.ID, &value.Provider, &value.ClientID, &ciphertext, &value.Inheritable, &value.ControlLoginEnabled, &value.Scope); scanErr != nil {
+				continue
+			}
+			plaintext, decryptErr := s.app.Vault.Decrypt(ciphertext, "auth-provider:"+value.ID)
+			if decryptErr != nil || json.Unmarshal(plaintext, &value.Credentials) != nil {
+				continue
+			}
+			providers[value.Provider] = value
+		}
+	}
+	if _, configured := providers["google"]; !configured {
+		if legacy, legacyErr := s.loadLegacyGoogleAuthProvider(ctx, applicationID); legacyErr == nil {
+			providers["google"] = legacy
+		}
+	}
+	return providers
+}
+
+func (s *Server) loadLegacyGoogleAuthProvider(ctx context.Context, applicationID string) (externalAuthProviderConfig, error) {
+	var value externalAuthProviderConfig
+	var metadata []byte
+	var ciphertext string
+	err := s.app.DB.QueryRow(ctx, `SELECT id,metadata,ciphertext FROM application_secrets WHERE application_id=$1 AND kind='auth_provider' AND name='google'`, applicationID).Scan(&value.ID, &metadata, &ciphertext)
+	var decoded struct {
+		ClientID string `json:"client_id"`
+	}
+	_ = json.Unmarshal(metadata, &decoded)
+	value.Provider, value.ClientID, value.Scope = "google", decoded.ClientID, "application"
+	if err != nil {
+		return externalAuthProviderConfig{}, err
+	}
+	secret, err := s.app.Vault.Decrypt(ciphertext, "application-secret:"+value.ID)
+	if err != nil {
+		return externalAuthProviderConfig{}, err
+	}
+	value.Credentials = map[string]string{"client_secret": string(secret)}
 	return value, nil
 }
 
