@@ -101,6 +101,14 @@ export class Platform93ExpoAuth {
   }
 
   async openProviderSession(
+    provider: "google" | "apple",
+    options?: { flow?: ExternalAuthFlow; loginHint?: string },
+  ): Promise<AuthenticationResult>;
+  async openProviderSession(
+    provider: ExternalEmailEnrollmentContinuation["provider"],
+    options?: { flow?: ExternalAuthFlow; loginHint?: string },
+  ): Promise<AuthenticationResult | ExternalEmailEnrollmentContinuation>;
+  async openProviderSession(
     provider: ExternalAuthProvider,
     options: { flow?: ExternalAuthFlow; loginHint?: string } = {},
   ): Promise<AuthenticationResult | ExternalEmailEnrollmentContinuation> {
