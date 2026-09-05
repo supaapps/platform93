@@ -225,7 +225,19 @@ jobs:
           spec: { selector: { app: postgres }, ports: [{ port: 5432, targetPort: 5432 }] }
           YAML
           kubectl -n platform93 rollout status deployment/postgres --timeout=3m
-          kubectl -n platform93 exec deployment/postgres -- createdb -U platform93 platform93_beta
+          database_ready=false
+          for attempt in $(seq 1 30); do
+            if kubectl -n platform93 exec deployment/postgres -- sh -c \
+              'createdb -U platform93 platform93_beta || psql -U platform93 -d platform93_alpha -Atqc "SELECT 1 FROM pg_database WHERE datname = '\''platform93_beta'\''" | grep -qx 1'; then
+              database_ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$database_ready" != true ]; then
+            kubectl -n platform93 logs deployment/postgres
+            exit 1
+          fi
           kubectl -n platform93 create secret generic alpha-database --from-literal=database-url='postgres://platform93:platform93@postgres:5432/platform93_alpha?sslmode=disable'
           kubectl -n platform93 create secret generic beta-database --from-literal=database-url='postgres://platform93:platform93@postgres:5432/platform93_beta?sslmode=disable'
           kubectl -n platform93 create secret generic alpha-master --from-literal=master-key='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
