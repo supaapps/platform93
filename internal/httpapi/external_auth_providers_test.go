@@ -1,12 +1,34 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestFacebookDebugRequestKeepsAppAccessTokenOutOfURL(t *testing.T) {
+	t.Parallel()
+	const (
+		inputToken     = "facebook-user-token"
+		appAccessToken = "facebook-client|facebook-secret"
+	)
+	request, err := newFacebookDebugRequest(context.Background(), inputToken, appAccessToken)
+	if err != nil {
+		t.Fatalf("newFacebookDebugRequest returned an error: %v", err)
+	}
+	if strings.Contains(request.URL.String(), appAccessToken) || strings.Contains(request.URL.String(), "facebook-secret") {
+		t.Fatalf("Facebook debug URL contains the app access token: %s", request.URL.Redacted())
+	}
+	if request.URL.Query().Get("input_token") != inputToken {
+		t.Fatalf("Facebook debug URL has the wrong input token")
+	}
+	if got := request.Header.Get("Authorization"); got != "Bearer "+appAccessToken {
+		t.Fatalf("Authorization header = %q, want a bearer app access token", got)
+	}
+}
 
 func TestNormalizeMicrosoftTenant(t *testing.T) {
 	t.Parallel()

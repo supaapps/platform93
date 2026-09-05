@@ -247,10 +247,10 @@ func exchangeFacebookIdentity(ctx context.Context, config externalAuthProviderCo
 		return externalProviderIdentity{}, fmt.Errorf("facebook exchange failed")
 	}
 	client := &http.Client{Timeout: 15 * time.Second}
-	debugURL := "https://graph.facebook.com/debug_token?" + url.Values{
-		"input_token":  {token.AccessToken},
-		"access_token": {config.ClientID + "|" + config.Credentials["client_secret"]},
-	}.Encode()
+	debugRequest, err := newFacebookDebugRequest(ctx, token.AccessToken, config.ClientID+"|"+config.Credentials["client_secret"])
+	if err != nil {
+		return externalProviderIdentity{}, fmt.Errorf("facebook token validation request failed")
+	}
 	var debug struct {
 		Data struct {
 			AppID   string `json:"app_id"`
@@ -258,7 +258,7 @@ func exchangeFacebookIdentity(ctx context.Context, config externalAuthProviderCo
 			IsValid bool   `json:"is_valid"`
 		} `json:"data"`
 	}
-	if err = getBoundedJSON(ctx, client, debugURL, &debug); err != nil || !debug.Data.IsValid || debug.Data.AppID != config.ClientID || debug.Data.UserID == "" {
+	if err = executeBoundedJSON(client, debugRequest, &debug); err != nil || !debug.Data.IsValid || debug.Data.AppID != config.ClientID || debug.Data.UserID == "" {
 		return externalProviderIdentity{}, fmt.Errorf("invalid facebook access token")
 	}
 	proof := hmac.New(sha256.New, []byte(config.Credentials["client_secret"]))
@@ -281,11 +281,27 @@ func exchangeFacebookIdentity(ctx context.Context, config externalAuthProviderCo
 		TrustedEmail: false, Metadata: map[string]any{}}, nil
 }
 
+func newFacebookDebugRequest(ctx context.Context, inputToken, appAccessToken string) (*http.Request, error) {
+	endpoint := "https://graph.facebook.com/debug_token?" + url.Values{
+		"input_token": {inputToken},
+	}.Encode()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+appAccessToken)
+	return request, nil
+}
+
 func getBoundedJSON(ctx context.Context, client *http.Client, endpoint string, target any) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
 	}
+	return executeBoundedJSON(client, request, target)
+}
+
+func executeBoundedJSON(client *http.Client, request *http.Request, target any) error {
 	response, err := client.Do(request)
 	if err != nil {
 		return err
