@@ -115,6 +115,16 @@ test("external provider redirects exchange their one-time credential", async () 
 
 test("untrusted provider signup keeps email completion bound to the original PKCE verifier", async () => {
   const calls = [];
+  const authorizationState = new Map();
+  const authorizationStateKeys = [];
+  const authorizationStateStore = {
+    getItem: (key) => authorizationState.get(key) ?? null,
+    setItem: (key, value) => {
+      authorizationStateKeys.push(key);
+      authorizationState.set(key, value);
+    },
+    removeItem: (key) => authorizationState.delete(key),
+  };
   const fetch = async (input, init = {}) => {
     const body = JSON.parse(init.body ?? "{}");
     calls.push([String(input), body]);
@@ -127,12 +137,13 @@ test("untrusted provider signup keeps email completion bound to the original PKC
     if (String(input).endsWith("/auth/external-email/verify")) return Response.json(tokens("email-complete"));
     throw new Error(`unexpected request ${input}`);
   };
-  const authorizationStateStore = new MemoryAuthorizationStateStore();
   const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
   await auth.startMicrosoftAuth({ redirectUri: "sampleapp://auth/callback", flow: "sign_up" });
   const callbackAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
-  const continuation = callbackAuth.completeExternalAuthRedirect("microsoft", "sampleapp://auth/callback?external_auth_email_enrollment=enrollment-value");
+  const continuation = callbackAuth.completeExternalAuthRedirect("microsoft", "sampleapp://auth/callback?external_auth_email_enrollment=enrollment-id%3Asecret-credential");
   assert.equal(continuation.kind, "email_verification_required");
+  assert.equal(authorizationStateKeys.some((key) => key.includes("secret-credential")), false);
+  assert.equal(authorizationStateKeys.some((key) => key.endsWith(".enrollment.enrollment-id")), true);
   const enrollmentAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
   await enrollmentAuth.startExternalEmailEnrollment(continuation, "person@example.test", "code");
   assert.equal(calls[1][1].code_verifier.length, 43);

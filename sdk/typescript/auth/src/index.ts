@@ -399,7 +399,8 @@ export class Platform93Auth extends EventTarget {
   }
 
   private authorizationVerifierKey(kind: "provider" | "enrollment", identifier: string) {
-    return `platform93.${this.applicationId}.pkce.${kind}.${identifier}`;
+    const storageIdentifier = kind === "enrollment" ? identifier.split(":", 1)[0] : identifier;
+    return `platform93.${this.applicationId}.pkce.${kind}.${storageIdentifier}`;
   }
 
   private saveAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string, verifier: string, expiresIn: number) {
