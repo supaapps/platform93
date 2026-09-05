@@ -26,9 +26,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "generate": "openapi-ts",
-    "lint": "tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.type-tests.json",
     "test": "node --test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.type-tests.json"
   },
   "engines": {
     "node": ">=22"
