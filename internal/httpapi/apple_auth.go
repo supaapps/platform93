@@ -65,8 +65,8 @@ func (s *Server) startAppleAuthFlow(w http.ResponseWriter, r *http.Request, forc
 	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris)),
 EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris) AND client_type='public')`,
 		applicationID, request.RedirectURI).Scan(&redirectAllowed, &publicClient)
-	if !redirectAllowed || publicClient && request.CodeChallenge == "" {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "pkce_or_redirect_invalid", "The redirect URI must match an enabled client, and public clients require PKCE.")
+	if !redirectAllowed || externalAuthRequiresPKCE(publicClient, request.Flow) && request.CodeChallenge == "" {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "pkce_or_redirect_invalid", "The redirect URI must match an enabled client. Public clients and flows that can create or link users require PKCE.")
 		return
 	}
 	provider, err := s.loadEffectiveAuthProvider(r.Context(), applicationID, "apple")
