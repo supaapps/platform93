@@ -604,6 +604,8 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
   const [busy, setBusy] = useState(false);
   const [magicLinkProcessing, setMagicLinkProcessing] = useState(false);
   const [message, setMessage] = useState("");
+  const invitationProviderAvailable = methods.providers.includes(invitationMethod);
+  const invitationMethodAvailable = invitationMethod === "email" || invitationProviderAvailable;
   const magicLinkStarted = useRef(false);
   const invitationLinkStarted = useRef(false);
   const onCompleteRef = useRef(onComplete);
@@ -782,13 +784,13 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
             Invitation credential
             <input required name="invitation_token" type="password" autoComplete="off" value={invitationToken} onChange={(event) => setInvitationToken(event.target.value)} />
           </label>
-          {!invitationMethod && <label>Required onboarding method<select value={invitationMethod} onChange={(event) => setInvitationMethod(event.currentTarget.value)}><option value="">Choose method</option><option value="email">Email credential</option>{methods.providers.map((provider) => <option value={provider} key={provider}>{titleCase(provider)}</option>)}</select></label>}
+          {!invitationMethodAvailable && <label>Required onboarding method<select value="" onChange={(event) => setInvitationMethod(event.currentTarget.value)}><option value="">Choose method</option><option value="email">Email credential</option>{methods.providers.map((provider) => <option value={provider} key={provider}>{titleCase(provider)}</option>)}</select></label>}
           {(invitationMethod === "email") && <form onSubmit={(event) => void acceptInvitation(event)}>
             <input type="hidden" name="invitation_token" value={invitationToken} />
             <label>Display name<input name="display_name" autoComplete="name" /></label>
             <button disabled={busy || !invitationToken}>{busy ? "Working..." : "Accept with email"}</button>
           </form>}
-          {invitationMethod !== "" && invitationMethod !== "email" && <div className="external-login-options"><span>Provider invitation</span><button type="button" disabled={busy || !invitationToken || !methods.providers.includes(invitationMethod)} onClick={() => void startProvider(invitationMethod, true)}>Accept with {titleCase(invitationMethod)}</button></div>}
+          {invitationProviderAvailable && <div className="external-login-options"><span>Provider invitation</span><button type="button" disabled={busy || !invitationToken} onClick={() => void startProvider(invitationMethod, true)}>Accept with {titleCase(invitationMethod)}</button></div>}
           <div className="login-alternatives"><button type="button" disabled={busy} onClick={() => selectAccessPath("sign-in")}>Back to Platform user sign-in</button></div>
         </div>}
         </>}
