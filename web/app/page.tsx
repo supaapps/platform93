@@ -2972,7 +2972,7 @@ function ProviderCallbackBox({ provider, uri, setMessage }: { provider: AuthProv
     copyLabel="Copy URI"
     copiedMessage={`${authProviderLabel(provider)} callback URI copied.`}
     setMessage={setMessage}
-    description={`Add this exact installation-wide URL once in the ${label.destination}. Inherited applications are resolved securely from the signed, one-time state.`}
+    description={`Add this exact installation-wide URL once in the ${label.destination}. Inherited applications are resolved securely from one-time state validated by Platform93.`}
   />;
 }
 
