@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   BFFCookieSessionAdapter,
+  MemoryAuthorizationStateStore,
   MemoryTokenStore,
   Platform93Auth,
   TokenStoreSessionAdapter,
@@ -97,11 +98,13 @@ test("external provider redirects exchange their one-time credential", async () 
     if (String(input).endsWith("/auth/providers/google/exchange")) return Response.json(tokens("native"));
     throw new Error(`unexpected request ${input}`);
   };
-  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false });
+  const authorizationStateStore = new MemoryAuthorizationStateStore();
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
   const start = await auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback", flow: "automatic" });
   assert.equal(start.authorize_url, "https://accounts.google.test/authorize");
-  await auth.completeExternalAuthRedirect("google", "sampleapp://auth/callback?external_auth_exchange=exchange-value");
-  assert.equal(auth.snapshot().status, "authenticated");
+  const reloadedAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+  await reloadedAuth.completeExternalAuthRedirect("google", "sampleapp://auth/callback?external_auth_exchange=exchange-value");
+  assert.equal(reloadedAuth.snapshot().status, "authenticated");
   assert.equal(calls[0][1].redirect_uri, "sampleapp://auth/callback");
   assert.equal(calls[0][1].flow, "automatic");
   assert.match(calls[0][1].code_challenge, /^[A-Za-z0-9_-]{43}$/);
@@ -124,15 +127,18 @@ test("untrusted provider signup keeps email completion bound to the original PKC
     if (String(input).endsWith("/auth/external-email/verify")) return Response.json(tokens("email-complete"));
     throw new Error(`unexpected request ${input}`);
   };
-  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false });
+  const authorizationStateStore = new MemoryAuthorizationStateStore();
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
   await auth.startMicrosoftAuth({ redirectUri: "sampleapp://auth/callback", flow: "sign_up" });
-  const continuation = auth.completeExternalAuthRedirect("microsoft", "sampleapp://auth/callback?external_auth_email_enrollment=enrollment-value");
+  const callbackAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+  const continuation = callbackAuth.completeExternalAuthRedirect("microsoft", "sampleapp://auth/callback?external_auth_email_enrollment=enrollment-value");
   assert.equal(continuation.kind, "email_verification_required");
-  await auth.startExternalEmailEnrollment(continuation, "person@example.test", "code");
+  const enrollmentAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+  await enrollmentAuth.startExternalEmailEnrollment(continuation, "person@example.test", "code");
   assert.equal(calls[1][1].code_verifier.length, 43);
   assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
-  await auth.verifyExternalEmailEnrollment(continuation, { code: "abcd2345" });
-  assert.equal(auth.snapshot().status, "authenticated");
+  await enrollmentAuth.verifyExternalEmailEnrollment(continuation, { code: "abcd2345" });
+  assert.equal(enrollmentAuth.snapshot().status, "authenticated");
   assert.equal(calls[2][1].code, "ABCD2345");
 });
 

@@ -51,6 +51,37 @@ export interface TokenStore {
   saveRefreshToken(value: string | null): Promise<void>;
 }
 
+export interface AuthorizationStateStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+export class MemoryAuthorizationStateStore implements AuthorizationStateStore {
+  private readonly values = new Map<string, string>();
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  setItem(key: string, value: string) { this.values.set(key, value); }
+  removeItem(key: string) { this.values.delete(key); }
+}
+
+/** Browser PKCE state is scoped to the current tab and is never used for tokens. */
+export class BrowserSessionAuthorizationStateStore implements AuthorizationStateStore {
+  private readonly fallback = new MemoryAuthorizationStateStore();
+  constructor(private readonly storage: Storage) {}
+  getItem(key: string) {
+    try { return this.storage.getItem(key) ?? this.fallback.getItem(key); }
+    catch { return this.fallback.getItem(key); }
+  }
+  setItem(key: string, value: string) {
+    this.fallback.setItem(key, value);
+    try { this.storage.setItem(key, value); } catch { /* Use the in-memory fallback. */ }
+  }
+  removeItem(key: string) {
+    this.fallback.removeItem(key);
+    try { this.storage.removeItem(key); } catch { /* The fallback is already cleared. */ }
+  }
+}
+
 export class MemoryTokenStore implements TokenStore {
   private value: string | null = null;
   async loadRefreshToken() { return this.value; }
@@ -127,6 +158,7 @@ export type Platform93AuthOptions = {
   baseUrl: string;
   applicationId: string;
   adapter?: SessionAdapter;
+  authorizationStateStore?: AuthorizationStateStore;
   fetch?: typeof globalThis.fetch;
   channelName?: string | false;
 };
@@ -136,9 +168,8 @@ export class Platform93Auth extends EventTarget {
   private accessTokenExpiresAt = 0;
   private status: AuthSnapshot["status"] = "anonymous";
   private refreshPromise: Promise<string | null> | null = null;
-  private readonly externalAuthVerifiers = new Map<ExternalAuthProvider, string>();
-  private readonly externalEmailVerifiers = new Map<string, string>();
   private readonly adapter: SessionAdapter;
+  private readonly authorizationStateStore: AuthorizationStateStore;
   private readonly channel: BroadcastChannel | null;
   private readonly source = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36);
   readonly client: Platform93Client;
@@ -154,6 +185,7 @@ export class Platform93Auth extends EventTarget {
     if (!options.applicationId) throw new Error("Platform93 applicationId is required");
     this.applicationId = options.applicationId;
     this.adapter = options.adapter ?? new TokenStoreSessionAdapter();
+    this.authorizationStateStore = options.authorizationStateStore ?? defaultAuthorizationStateStore();
     this.client = new Platform93Client({
       baseUrl: options.baseUrl,
       applicationId: options.applicationId,
@@ -181,36 +213,41 @@ export class Platform93Auth extends EventTarget {
   async startExternalAuth(provider: ExternalAuthProvider, options: ExternalAuthStartOptions): Promise<ExternalAuthAuthorization> {
     const codeVerifier = randomBase64URL(32);
     const codeChallenge = await sha256Base64URL(codeVerifier);
-    this.externalAuthVerifiers.set(provider, codeVerifier);
-    return this.client.application().startExternalAuth(provider, {
+    const authorization = await this.client.application().startExternalAuth(provider, {
       redirect_uri: options.redirectUri,
       flow: options.flow,
       ...(options.loginHint ? { login_hint: options.loginHint } : {}),
       code_challenge: codeChallenge,
     });
+    this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in);
+    return authorization;
   }
   startGoogleAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("google", options); }
   startAppleAuth(options: Omit<ExternalAuthStartOptions, "loginHint">) { return this.startExternalAuth("apple", options); }
   startMicrosoftAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("microsoft", options); }
   startFacebookAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("facebook", options); }
   startLinkedInAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("linkedin", options); }
-  exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string, codeVerifier = this.externalAuthVerifiers.get(provider)) {
-    this.externalAuthVerifiers.delete(provider);
-    return this.resolve(this.client.application().exchangeExternalAuth(provider, exchange, codeVerifier));
+  async exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string, codeVerifier = this.loadAuthorizationVerifier("provider", provider)) {
+    const result = await this.resolve(this.client.application().exchangeExternalAuth(provider, exchange, codeVerifier));
+    this.removeAuthorizationVerifier("provider", provider);
+    return result;
   }
   exchangeGoogleAuth(exchange: string) { return this.exchangeExternalAuth("google", exchange); }
   exchangeAppleAuth(exchange: string) { return this.exchangeExternalAuth("apple", exchange); }
   completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL): Promise<AuthenticationResult> | ExternalEmailEnrollmentContinuation {
     const redirect = input instanceof URL ? input : new URL(input);
     const providerError = redirect.searchParams.get("external_auth_error");
-    if (providerError) throw new Error(`Platform93 ${provider} authentication failed: ${providerError}`);
+    if (providerError) {
+      this.removeAuthorizationVerifier("provider", provider);
+      throw new Error(`Platform93 ${provider} authentication failed: ${providerError}`);
+    }
     const enrollment = redirect.searchParams.get("external_auth_email_enrollment");
     if (enrollment) {
       if (provider === "google" || provider === "apple") throw new Error(`Platform93 ${provider} returned an unsupported email enrollment continuation`);
-      const verifier = this.externalAuthVerifiers.get(provider);
-      this.externalAuthVerifiers.delete(provider);
+      const verifier = this.loadAuthorizationVerifier("provider", provider);
+      this.removeAuthorizationVerifier("provider", provider);
       if (!verifier) throw new Error(`Platform93 ${provider} email enrollment is missing its PKCE verifier`);
-      this.externalEmailVerifiers.set(enrollment, verifier);
+      this.saveAuthorizationVerifier("enrollment", enrollment, verifier, 600);
       return { kind: "email_verification_required", provider, enrollment };
     }
     const exchange = redirect.searchParams.get("external_auth_exchange");
@@ -218,7 +255,7 @@ export class Platform93Auth extends EventTarget {
     return this.exchangeExternalAuth(provider, exchange);
   }
   startExternalEmailEnrollment(continuation: ExternalEmailEnrollmentContinuation, email: string, delivery: "code" | "link" | "both" = "both"): Promise<ExternalEmailEnrollmentChallenge> {
-    const verifier = this.externalEmailVerifiers.get(continuation.enrollment);
+    const verifier = this.loadAuthorizationVerifier("enrollment", continuation.enrollment);
     if (!verifier) throw new Error("Platform93 external email enrollment is missing its PKCE verifier");
     return this.client.application().startExternalEmailEnrollment({ enrollment: continuation.enrollment, email, delivery, code_verifier: verifier });
   }
@@ -227,7 +264,7 @@ export class Platform93Auth extends EventTarget {
       enrollment: continuation.enrollment,
       ...( "code" in credential ? { code: credential.code.trim().toUpperCase() } : { link_token: credential.linkToken }),
     }));
-    this.externalEmailVerifiers.delete(continuation.enrollment);
+    this.removeAuthorizationVerifier("enrollment", continuation.enrollment);
     return result;
   }
   verifyExternalEmailEnrollmentLink(continuation: ExternalEmailEnrollmentContinuation, input: string | URL = globalThis.location.href) {
@@ -246,8 +283,9 @@ export class Platform93Auth extends EventTarget {
   async startApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationCredential) {
     const codeVerifier = randomBase64URL(32);
     const codeChallenge = await sha256Base64URL(codeVerifier);
-    this.externalAuthVerifiers.set(provider, codeVerifier);
-    return this.client.application().startApplicationInvitationProvider(provider, { ...input, code_challenge: codeChallenge });
+    const authorization = await this.client.application().startApplicationInvitationProvider(provider, { ...input, code_challenge: codeChallenge });
+    this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in);
+    return authorization;
   }
   verifyMFA(input: MFAVerify) { return this.resolve(this.client.application().verifyMFA(input)); }
 
@@ -360,11 +398,46 @@ export class Platform93Auth extends EventTarget {
     this.dispatchEvent(new Event("change"));
   }
 
+  private authorizationVerifierKey(kind: "provider" | "enrollment", identifier: string) {
+    return `platform93.${this.applicationId}.pkce.${kind}.${identifier}`;
+  }
+
+  private saveAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string, verifier: string, expiresIn: number) {
+    const expiresAt = Date.now() + Math.max(1, expiresIn) * 1000;
+    this.authorizationStateStore.setItem(this.authorizationVerifierKey(kind, identifier), JSON.stringify({ verifier, expiresAt }));
+  }
+
+  private loadAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string) {
+    const key = this.authorizationVerifierKey(kind, identifier);
+    const encoded = this.authorizationStateStore.getItem(key);
+    if (!encoded) return undefined;
+    try {
+      const record = JSON.parse(encoded) as { verifier?: unknown; expiresAt?: unknown };
+      if (typeof record.verifier === "string" && /^[A-Za-z0-9_-]{43}$/.test(record.verifier) &&
+        typeof record.expiresAt === "number" && record.expiresAt > Date.now()) return record.verifier;
+    } catch { /* Invalid state is removed below. */ }
+    this.authorizationStateStore.removeItem(key);
+    return undefined;
+  }
+
+  private removeAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string) {
+    this.authorizationStateStore.removeItem(this.authorizationVerifierKey(kind, identifier));
+  }
+
   private async withRefreshLock<T>(operation: () => Promise<T>): Promise<T> {
     const manager = typeof navigator === "undefined" ? undefined : navigator.locks;
     if (!manager) return operation();
     return manager.request(`platform93-refresh:${this.applicationId}`, operation);
   }
+}
+
+function defaultAuthorizationStateStore(): AuthorizationStateStore {
+  try {
+    if (typeof globalThis.sessionStorage !== "undefined") {
+      return new BrowserSessionAuthorizationStateStore(globalThis.sessionStorage);
+    }
+  } catch { /* Some browser privacy modes deny access to sessionStorage. */ }
+  return new MemoryAuthorizationStateStore();
 }
 
 function randomBase64URL(byteLength: number) {
