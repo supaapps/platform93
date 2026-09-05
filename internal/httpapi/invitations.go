@@ -69,8 +69,11 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, applic
 		request.OnboardingMethod = "email"
 	}
 	normalized := kernel.NormalizeEmail(request.Email)
-	if !strings.Contains(normalized, "@") || len(request.ApplicationRoleKeys)+len(request.WorkspaceRoleKeys) > 20 ||
-		request.OnboardingMethod != "email" && !validExternalAuthProvider(request.OnboardingMethod) {
+	if request.OnboardingMethod != "email" && !validExternalAuthProvider(request.OnboardingMethod) {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_invitation_onboarding_method", "Invitation onboarding must use email or a supported external authentication provider.")
+		return
+	}
+	if !strings.Contains(normalized, "@") || len(request.ApplicationRoleKeys)+len(request.WorkspaceRoleKeys) > 20 {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_invitation", "A valid email and at most twenty role keys are required.")
 		return
 	}
