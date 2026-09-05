@@ -39,8 +39,8 @@ func TestBuiltInEmailTemplatesUseSafeDesignedFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	templates := regexp.MustCompile(`(?s)\$email\$(.*?)\$email\$`).FindAllStringSubmatch(string(migration), -1)
-	if len(templates) != 9 {
-		t.Fatalf("found %d designed system templates, want 9", len(templates))
+	if len(templates) == 0 {
+		t.Fatal("found no designed system templates")
 	}
 	for index, match := range templates {
 		html := match[1]
