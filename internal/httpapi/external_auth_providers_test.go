@@ -63,6 +63,20 @@ func TestProviderUsesPKCE(t *testing.T) {
 	}
 }
 
+func TestProviderVerifierValue(t *testing.T) {
+	const verifier = "generated-verifier"
+	for _, provider := range []string{"google", "microsoft", "linkedin"} {
+		if value := providerVerifierValue(provider, verifier); value != verifier {
+			t.Fatalf("expected %s to retain its PKCE verifier, got %q", provider, value)
+		}
+	}
+	for _, provider := range []string{"apple", "facebook"} {
+		if value := providerVerifierValue(provider, verifier); value != provider {
+			t.Fatalf("expected %s placeholder, got %q", provider, value)
+		}
+	}
+}
+
 func TestValidExternalAuthProvider(t *testing.T) {
 	t.Parallel()
 	for _, provider := range []string{"google", "apple", "microsoft", "facebook", "linkedin"} {

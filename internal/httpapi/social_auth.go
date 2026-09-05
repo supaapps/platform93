@@ -73,7 +73,7 @@ EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND
 	nonce, _ := secure.RandomToken("", 32)
 	verifier := oauth2.GenerateVerifier()
 	challengeID := kernel.NewID()
-	verifierCiphertext, err := s.app.Vault.Encrypt([]byte(verifier), "external-auth:"+challengeID.String())
+	verifierCiphertext, err := s.app.Vault.Encrypt([]byte(providerVerifierValue(provider, verifier)), "external-auth:"+challengeID.String())
 	var requestedByUserID any
 	if requestedBy != "" {
 		requestedByUserID = requestedBy

@@ -75,10 +75,7 @@ func (s *Server) startControlExternalAuth(w http.ResponseWriter, r *http.Request
 	nonce, _ := secure.RandomToken("", 32)
 	verifier := oauth2.GenerateVerifier()
 	challengeID := kernel.NewID()
-	verifierValue := verifier
-	if provider == "apple" || provider == "facebook" {
-		verifierValue = "apple"
-	}
+	verifierValue := providerVerifierValue(provider, verifier)
 	ciphertext, err := s.app.Vault.Encrypt([]byte(verifierValue), "control-external-auth:"+challengeID.String())
 	var requestedByValue, invitationValue any
 	if requestedBy != "" {

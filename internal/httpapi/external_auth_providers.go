@@ -62,6 +62,13 @@ func providerUsesPKCE(provider string) bool {
 	return provider == "google" || provider == "microsoft" || provider == "linkedin"
 }
 
+func providerVerifierValue(provider, verifier string) string {
+	if providerUsesPKCE(provider) {
+		return verifier
+	}
+	return provider
+}
+
 func normalizeMicrosoftTenant(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	if value == "" {

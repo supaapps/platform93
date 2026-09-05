@@ -79,10 +79,7 @@ AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`
 	nonce, _ := secure.RandomToken("", 32)
 	verifier := oauth2.GenerateVerifier()
 	challengeID := kernel.NewID()
-	verifierValue := verifier
-	if provider == "apple" || provider == "facebook" {
-		verifierValue = provider
-	}
+	verifierValue := providerVerifierValue(provider, verifier)
 	ciphertext, err := s.app.Vault.Encrypt([]byte(verifierValue), "external-auth:"+challengeID.String())
 	if err == nil {
 		_, err = s.app.DB.Exec(r.Context(), `INSERT INTO external_auth_challenges
