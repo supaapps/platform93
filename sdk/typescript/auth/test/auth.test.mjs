@@ -140,7 +140,7 @@ test("untrusted provider signup keeps email completion bound to the original PKC
   const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
   await auth.startMicrosoftAuth({ redirectUri: "sampleapp://auth/callback", flow: "sign_up" });
   const callbackAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
-  const continuation = callbackAuth.completeExternalAuthRedirect("microsoft", "sampleapp://auth/callback?external_auth_email_enrollment=enrollment-id%3Asecret-credential");
+  const continuation = await callbackAuth.completeExternalAuthRedirect("microsoft", "sampleapp://auth/callback?external_auth_email_enrollment=enrollment-id%3Asecret-credential");
   assert.equal(continuation.kind, "email_verification_required");
   assert.equal(authorizationStateKeys.some((key) => key.includes("secret-credential")), false);
   assert.equal(authorizationStateKeys.some((key) => key.endsWith(".enrollment.enrollment-id")), true);

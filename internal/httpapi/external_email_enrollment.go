@@ -129,8 +129,8 @@ func (s *Server) verifyExternalEmailEnrollment(w http.ResponseWriter, r *http.Re
 		return
 	}
 	parts := strings.SplitN(request.Enrollment, ":", 2)
-	if len(parts) != 2 || request.Code == "" && request.LinkToken == "" {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_external_email_verification", "An enrollment credential and email verification credential are required.")
+	if len(parts) != 2 || !hasExactlyOneExternalEmailCredential(request.Code, request.LinkToken) {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_external_email_verification", "An enrollment credential and exactly one email verification credential are required.")
 		return
 	}
 	if !s.allowAuthAttempt(w, r, "external_email_verify", parts[0], 10, 10*time.Minute) {
@@ -193,4 +193,8 @@ VALUES($1,$2,$3,$4,$5,jsonb_build_object('email',$6))`, kernel.NewID(), applicat
 		return
 	}
 	s.completePrimaryAuthentication(w, r, userID, []string{provider, "email"})
+}
+
+func hasExactlyOneExternalEmailCredential(code, linkToken string) bool {
+	return (code != "") != (linkToken != "")
 }

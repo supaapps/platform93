@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -111,6 +113,23 @@ func TestChallengeProviderMatches(t *testing.T) {
 	}
 	if challengeProviderMatches(&other, configured) {
 		t.Fatal("a challenge pinned to another provider must be rejected")
+	}
+}
+
+func TestExternalEmailVerificationRejectsMultipleCredentials(t *testing.T) {
+	t.Parallel()
+	request := httptest.NewRequest(http.MethodPost, "/v1/applications/application/auth/external-email/verify",
+		strings.NewReader(`{"enrollment":"enrollment:secret","code":"ABCD2345","link_token":"link-secret"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	(&Server{}).verifyExternalEmailEnrollment(response, request)
+
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("verification returned %d, want %d: %s", response.Code, http.StatusUnprocessableEntity, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "exactly one email verification credential") {
+		t.Fatalf("verification returned an unclear problem: %s", response.Body.String())
 	}
 }
 

@@ -234,7 +234,7 @@ export class Platform93Auth extends EventTarget {
   }
   exchangeGoogleAuth(exchange: string) { return this.exchangeExternalAuth("google", exchange); }
   exchangeAppleAuth(exchange: string) { return this.exchangeExternalAuth("apple", exchange); }
-  completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL): Promise<AuthenticationResult> | ExternalEmailEnrollmentContinuation {
+  async completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL): Promise<AuthenticationResult | ExternalEmailEnrollmentContinuation> {
     const redirect = input instanceof URL ? input : new URL(input);
     const providerError = redirect.searchParams.get("external_auth_error");
     if (providerError) {
