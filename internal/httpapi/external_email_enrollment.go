@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -45,9 +47,8 @@ func (s *Server) startExternalEmailEnrollment(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var provider, redirectURI, codeChallenge string
-	var emailSentAt *time.Time
-	err := s.app.DB.QueryRow(r.Context(), `SELECT provider,app_redirect_uri,code_challenge,email_sent_at FROM external_auth_email_enrollments
-WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NULL AND expires_at>now()`, parts[0], chi.URLParam(r, "application_id"), s.app.Vault.Digest(parts[1])).Scan(&provider, &redirectURI, &codeChallenge, &emailSentAt)
+	err := s.app.DB.QueryRow(r.Context(), `SELECT provider,app_redirect_uri,code_challenge FROM external_auth_email_enrollments
+	WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NULL AND expires_at>now()`, parts[0], chi.URLParam(r, "application_id"), s.app.Vault.Digest(parts[1])).Scan(&provider, &redirectURI, &codeChallenge)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_external_email_enrollment", "The external email enrollment is invalid or expired.")
 		return
@@ -55,12 +56,6 @@ WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NU
 	verifierDigest := sha256.Sum256([]byte(request.CodeVerifier))
 	if !equalBytes([]byte(codeChallenge), []byte(base64.RawURLEncoding.EncodeToString(verifierDigest[:]))) {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "external_email_pkce_failed", "The external email enrollment is not bound to this browser session.")
-		return
-	}
-	if emailSentAt != nil && emailSentAt.Add(time.Minute).After(s.app.Now()) {
-		retry := int(time.Until(emailSentAt.Add(time.Minute)).Seconds()) + 1
-		w.Header().Set("Retry-After", fmtInt(retry))
-		kernel.WriteProblem(w, r, http.StatusTooManyRequests, "external_email_resend_cooldown", "The verification email can be resent after the cooldown.")
 		return
 	}
 	code := randomCode(8)
@@ -93,11 +88,16 @@ WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NU
 	tx, err := s.app.DB.Begin(r.Context())
 	if err == nil {
 		defer rollback(tx, r.Context())
-		result, updateErr := tx.Exec(r.Context(), `UPDATE external_auth_email_enrollments SET normalized_email=$1,code_digest=$2,link_digest=$3,attempts=0,email_sent_at=now(),pkce_verified_at=COALESCE(pkce_verified_at,now())
-WHERE id=$4 AND application_id=$5 AND credential_digest=$6 AND consumed_at IS NULL AND expires_at>now()`, request.Email, codeDigest, linkDigest, parts[0], applicationID, s.app.Vault.Digest(parts[1]))
-		err = updateErr
-		if err == nil && result.RowsAffected() != 1 {
-			err = pgx.ErrNoRows
+		var cooldownUntil *time.Time
+		cooldownUntil, err = reserveExternalEmailDelivery(r.Context(), tx, request.Email, codeDigest, linkDigest, parts[0], applicationID, s.app.Vault.Digest(parts[1]))
+		if err == nil && cooldownUntil != nil {
+			retry := int(cooldownUntil.Sub(s.app.Now()).Seconds()) + 1
+			if retry < 1 {
+				retry = 1
+			}
+			w.Header().Set("Retry-After", fmtInt(retry))
+			kernel.WriteProblem(w, r, http.StatusTooManyRequests, "external_email_resend_cooldown", "The verification email can be resent after the cooldown.")
+			return
 		}
 		if err == nil {
 			ciphertext, encryptErr := s.app.Vault.Encrypt(payload, "notification:"+notificationID.String())
@@ -117,6 +117,29 @@ VALUES($1,$2,$3,$4,$5,$6,'queued')`, notificationID, applicationID, templateID, 
 		return
 	}
 	kernel.WriteJSON(w, http.StatusAccepted, map[string]any{"challenge_id": parts[0], "provider": provider, "expires_in": 600})
+}
+
+func reserveExternalEmailDelivery(ctx context.Context, tx pgx.Tx, email string, codeDigest, linkDigest []byte, enrollmentID, applicationID string, credentialDigest []byte) (*time.Time, error) {
+	result, err := tx.Exec(ctx, `UPDATE external_auth_email_enrollments SET normalized_email=$1,code_digest=$2,link_digest=$3,attempts=0,email_sent_at=now(),pkce_verified_at=COALESCE(pkce_verified_at,now())
+	WHERE id=$4 AND application_id=$5 AND credential_digest=$6 AND consumed_at IS NULL AND expires_at>now()
+	  AND (email_sent_at IS NULL OR email_sent_at <= now() - interval '1 minute')`, email, codeDigest, linkDigest, enrollmentID, applicationID, credentialDigest)
+	if err != nil {
+		return nil, err
+	}
+	if result.RowsAffected() == 1 {
+		return nil, nil
+	}
+	var cooldownUntil time.Time
+	err = tx.QueryRow(ctx, `SELECT email_sent_at + interval '1 minute' FROM external_auth_email_enrollments
+	WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NULL AND expires_at>now()
+	  AND email_sent_at > now() - interval '1 minute'`, enrollmentID, applicationID, credentialDigest).Scan(&cooldownUntil)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, pgx.ErrNoRows
+		}
+		return nil, err
+	}
+	return &cooldownUntil, nil
 }
 
 func (s *Server) verifyExternalEmailEnrollment(w http.ResponseWriter, r *http.Request) {
