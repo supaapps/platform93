@@ -258,7 +258,7 @@ func (s *Server) exchangeExternalAuth(w http.ResponseWriter, r *http.Request, pr
 			err = fmt.Errorf("invalid verifier")
 		} else {
 			digest := sha256.Sum256([]byte(request.CodeVerifier))
-			if base64.RawURLEncoding.EncodeToString(digest[:]) != *codeChallenge {
+			if !equalBytes([]byte(base64.RawURLEncoding.EncodeToString(digest[:])), []byte(*codeChallenge)) {
 				err = fmt.Errorf("invalid verifier")
 			}
 		}
