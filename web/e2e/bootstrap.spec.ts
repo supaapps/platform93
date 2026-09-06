@@ -31,6 +31,24 @@ test("consumes a Platform user magic link and removes it from the URL", async ({
   await expect(page.getByText("Create the first boundary")).toBeVisible();
 });
 
+test("keeps provider-bound invitations on their required onboarding method", async ({ page }) => {
+  await page.route("**/v1/setup/status", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({
+      available: false,
+      control_user_email_login_available: true,
+      control_auth_methods: { email_code: true, magic_link: true, password: true, providers: [] },
+    }),
+  }));
+
+  await page.goto("/?control_invitation=true&invitation_token=p93_invitation_test&onboarding_method=google");
+
+  await expect(page.getByLabel("Required onboarding method")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Accept with Google" })).toBeDisabled();
+  await expect(page.getByText("This invitation requires Google, but that sign-in provider is currently unavailable.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Accept with email" })).toHaveCount(0);
+});
+
 test("creates and renames organization and application boundaries", async ({ page }) => {
   const organizationID = "01900000-0000-7000-8000-000000000101";
   const applicationID = "01900000-0000-7000-8000-000000000102";

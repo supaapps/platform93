@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 import {
   BFFCookieSessionAdapter,
+  MemoryAuthorizationStateStore,
   MemoryTokenStore,
   Platform93Auth,
   TokenStoreSessionAdapter,
@@ -96,13 +98,134 @@ test("external provider redirects exchange their one-time credential", async () 
     if (String(input).endsWith("/auth/providers/google/exchange")) return Response.json(tokens("native"));
     throw new Error(`unexpected request ${input}`);
   };
-  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false });
+  const authorizationStateStore = new MemoryAuthorizationStateStore();
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
   const start = await auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback", flow: "automatic" });
   assert.equal(start.authorize_url, "https://accounts.google.test/authorize");
+  const reloadedAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+  await reloadedAuth.completeExternalAuthRedirect("google", "sampleapp://auth/callback?external_auth_exchange=exchange-value");
+  assert.equal(reloadedAuth.snapshot().status, "authenticated");
+  assert.equal(calls[0][1].redirect_uri, "sampleapp://auth/callback");
+  assert.equal(calls[0][1].flow, "automatic");
+  assert.match(calls[0][1].code_challenge, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(calls[1][1].exchange, "exchange-value");
+  assert.match(calls[1][1].code_verifier, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
+});
+
+test("external provider exchange fails locally when PKCE state is missing", async () => {
+  let calls = 0;
+  const auth = new Platform93Auth({
+    baseUrl: "https://platform93.test",
+    applicationId: "application",
+    channelName: false,
+    fetch: async () => {
+      calls += 1;
+      throw new Error("the exchange API must not be called");
+    },
+  });
+
+  await assert.rejects(
+    auth.exchangeExternalAuth("google", "exchange-value"),
+    /google authentication is missing its PKCE verifier/,
+  );
+  assert.equal(calls, 0);
+});
+
+test("external provider starts cannot overwrite an in-flight PKCE verifier", async () => {
+  let releaseStart;
+  const startResponse = new Promise((resolve) => { releaseStart = resolve; });
+  const calls = [];
+  const fetch = async (input, init = {}) => {
+    calls.push([String(input), JSON.parse(init.body ?? "{}")]);
+    if (String(input).endsWith("/auth/providers/google/start")) {
+      await startResponse;
+      return Response.json({ provider: "google", authorize_url: "https://accounts.google.test/authorize", expires_in: 600 }, { status: 201 });
+    }
+    if (String(input).endsWith("/auth/providers/google/exchange")) return Response.json(tokens("concurrent"));
+    throw new Error(`unexpected request ${input}`);
+  };
+  const authorizationStateStore = new MemoryAuthorizationStateStore();
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+
+  const firstStart = auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback" });
+  await assert.rejects(
+    auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback" }),
+    /google authentication already has a request in progress/,
+  );
+  releaseStart();
+  await firstStart;
   await auth.completeExternalAuthRedirect("google", "sampleapp://auth/callback?external_auth_exchange=exchange-value");
-  assert.equal(auth.snapshot().status, "authenticated");
-  assert.deepEqual(calls[0][1], { redirect_uri: "sampleapp://auth/callback", flow: "automatic" });
-  assert.deepEqual(calls[1][1], { exchange: "exchange-value" });
+
+  assert.equal(calls.filter(([url]) => url.endsWith("/auth/providers/google/start")).length, 1);
+  assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
+});
+
+test("a malformed provider redirect releases its in-flight PKCE verifier", async () => {
+  let starts = 0;
+  const fetch = async (input) => {
+    if (!String(input).endsWith("/auth/providers/google/start")) throw new Error(`unexpected request ${input}`);
+    starts += 1;
+    return Response.json({ provider: "google", authorize_url: "https://accounts.google.test/authorize", expires_in: 600 }, { status: 201 });
+  };
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false });
+
+  await auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback" });
+  await assert.rejects(
+    auth.completeExternalAuthRedirect("google", "sampleapp://auth/callback"),
+    /redirect is missing its one-time exchange credential/,
+  );
+  await auth.startGoogleAuth({ redirectUri: "sampleapp://auth/callback" });
+
+  assert.equal(starts, 2);
+});
+
+test("untrusted provider signup keeps email completion bound to the original PKCE verifier", async () => {
+  const calls = [];
+  const authorizationState = new Map();
+  const authorizationStateKeys = [];
+  const authorizationStateStore = {
+    getItem: (key) => authorizationState.get(key) ?? null,
+    setItem: (key, value) => {
+      authorizationStateKeys.push(key);
+      authorizationState.set(key, value);
+    },
+    removeItem: (key) => authorizationState.delete(key),
+  };
+  const fetch = async (input, init = {}) => {
+    const body = JSON.parse(init.body ?? "{}");
+    calls.push([String(input), body]);
+    if (String(input).endsWith("/auth/providers/microsoft/start")) {
+      return Response.json({ provider: "microsoft", authorize_url: "https://login.microsoftonline.test/authorize", expires_in: 600 }, { status: 201 });
+    }
+    if (String(input).endsWith("/auth/external-email/start")) {
+      return Response.json({ challenge_id: "challenge", provider: "microsoft", expires_in: 600 }, { status: 202 });
+    }
+    if (String(input).endsWith("/auth/external-email/verify")) return Response.json(tokens("email-complete"));
+    throw new Error(`unexpected request ${input}`);
+  };
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+  await auth.startMicrosoftAuth({ redirectUri: "sampleapp://auth/callback", flow: "sign_up" });
+  const callbackAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+  const continuation = await callbackAuth.completeExternalAuthRedirect("microsoft", "sampleapp://auth/callback?external_auth_email_enrollment=enrollment-id%3Asecret-credential");
+  assert.equal(continuation.kind, "email_verification_required");
+  assert.equal(authorizationStateKeys.some((key) => key.includes("secret-credential")), false);
+  assert.equal(authorizationStateKeys.some((key) => key.endsWith(".enrollment.enrollment-id")), true);
+  const enrollmentAuth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", fetch, channelName: false, authorizationStateStore });
+  await enrollmentAuth.startExternalEmailEnrollment(continuation, "person@example.test", "code");
+  assert.equal(calls[1][1].code_verifier.length, 43);
+  assert.equal(createHash("sha256").update(calls[1][1].code_verifier).digest("base64url"), calls[0][1].code_challenge);
+  await enrollmentAuth.verifyExternalEmailEnrollment(continuation, { code: "abcd2345" });
+  assert.equal(enrollmentAuth.snapshot().status, "authenticated");
+  assert.equal(calls[2][1].code, "ABCD2345");
+});
+
+test("external email link verification requires an explicit URL outside browsers", () => {
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", channelName: false });
+  assert.throws(
+    () => auth.verifyExternalEmailEnrollmentLink({ kind: "email_verification_required", provider: "microsoft", enrollment: "enrollment-id:credential" }),
+    /requires an explicit link URL outside a browser/,
+  );
 });
 
 test("access token retrieval refreshes only when the current token expires", async () => {

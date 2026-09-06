@@ -17,7 +17,7 @@ Platform93 does not import an old database or automatically adopt Stripe objects
 | Auth guard packages | Platform93 TypeScript, Go, PHP, or Python verifier |
 | Config fetcher | Public application configuration SDK method |
 
-Password, email-code, magic-link, Google, Apple, MFA, email verification, rotating
+Password, email-code, magic-link, Google, Apple, Microsoft, Facebook, LinkedIn, MFA, email verification, rotating
 sessions, personal API keys, and delegation have native Platform93 flows. OAuth
 browser integrations use authorization code with PKCE. Application invitations
 and optional workspace role assignment use the unified invitation API; invitation

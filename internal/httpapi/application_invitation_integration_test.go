@@ -180,6 +180,24 @@ WHERE application_id=$1 AND user_id=$2 AND role_id=$3`, applicationID, userID, r
 		t.Fatalf("invitation authorization code replay was accepted: %d %s", replayResponse.Code, replayResponse.Body.String())
 	}
 
+	providerCode := "EFGH6789"
+	providerInvitationID := kernel.NewID()
+	providerEmail := "provider-" + suffix + "@example.test"
+	if _, err = db.Exec(context.Background(), `INSERT INTO application_invitations
+(id,application_id,normalized_email,link_credential_digest,code_credential_digest,application_roles,workspace_roles,onboarding_method,expires_at,inviter_type,inviter_id,last_sent_at,resend_available_at)
+VALUES($1,$2,$3,$4,$5,'{}','{}','microsoft',now()+interval '1 hour','control_user',$6,now(),now()+interval '1 minute')`,
+		providerInvitationID, applicationID, providerEmail, vault.Digest("unused-link"), vault.Digest(providerCode), controlUserID); err != nil {
+		t.Fatal(err)
+	}
+	providerBypassRequest := requestWithRoute(t, http.MethodPost, "/", map[string]any{
+		"email": providerEmail, "code": providerCode, "code_challenge": challenge,
+	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{})
+	providerBypassResponse := httptest.NewRecorder()
+	server.exchangeInvitation(providerBypassResponse, providerBypassRequest)
+	if providerBypassResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("provider invitation was accepted through the email-only exchange: %d %s", providerBypassResponse.Code, providerBypassResponse.Body.String())
+	}
+
 	if _, err = db.Exec(context.Background(), `UPDATE application_invitations SET expires_at=now()-interval '1 second' WHERE id=$1`, created.ID); err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ name: platform93
 services:
   postgres:
     image: postgres:16-alpine
+    ports: ["${PLATFORM93_POSTGRES_PORT:-15434}:5432"]
     environment:
       POSTGRES_DB: platform93
       POSTGRES_USER: platform93

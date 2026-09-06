@@ -32,6 +32,9 @@ release, pasted into issues, or printed in logs.
 | SMTP | Verification, localized login/invitation email, attachment, retry, and dead-letter recovery pass. |
 | Google | Application and Platform-user login/link/invitation flows pass with state, nonce, and PKCE checks. |
 | Apple | Application and Platform-user login/link/invitation flows pass with state and nonce checks. |
+| Microsoft | Application and Platform-user flows pass for the configured tenant mode, with state, nonce, PKCE, and Platform93 email completion for new application users. |
+| Facebook | Access tokens are debugged against the configured App ID; application signup completes Platform93 email verification. |
+| LinkedIn | OIDC login, nonce, PKCE, verified-email handling, and missing-email completion pass. |
 | S3 | Public/private verification, direct upload, private download, deletion, inheritance, and disabled-provider behavior pass. |
 
 Record only the date, release candidate, tester, environment class, and redacted

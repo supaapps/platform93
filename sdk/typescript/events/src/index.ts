@@ -30,13 +30,14 @@ type UserStateData = UserIDData & { reason: string };
 type VerificationData<Verified extends boolean> = UserIDData & { verified: Verified; reason: string };
 type StorageObjectData = { object_id: ID; owner_type: "installation" | "application" | "user" | "workspace"; visibility: "public" | "private"; size_bytes: number };
 type StorageProviderData = { provider_id: ID; scope: "installation" | "organization" | "application"; public_enabled: boolean; private_enabled: boolean };
-type InvitationLifecycleData = { invitation_id: ID; status: "pending" | "accepted" | "revoked" | "expired"; workspace_id?: ID | null; user_id?: ID; expires_at?: string };
+type InvitationLifecycleData = { invitation_id: ID; status: "pending" | "accepted" | "revoked" | "expired"; workspace_id?: ID | null; user_id?: ID; expires_at?: string; onboarding_method?: "email" | ExternalAuthProvider };
 type WorkspaceLifecycleData = { workspace_id: ID; status: "active" | "archived" | "removed"; user_id?: ID; owner_user_id?: ID; role_keys?: string[]; changed_fields?: string[] };
 type EntitlementLifecycleData = { grant_id: ID; status?: "active" | "revoked" | "expired"; subject_type?: "user" | "workspace"; subject_id?: ID; external_reference?: string | null; expires_at?: string | null; reason?: string };
 type BillingLifecycleData<Key extends string> = { status: string; external_reference: string | null } & Record<Key, ID>;
 type PermissionGrantLifecycleData = { grant_id: ID; subject_type: "user" | "client"; subject_id: ID; workspace_id: ID | null; permission: string; canonical_scope: string };
-type ControlUserIdentityData = { control_user_id: ID; provider: "google" | "apple" };
-type ControlInvitationData = { invitation_id: ID; organization_id?: ID | null; control_user_id?: ID; role: "owner" | "admin" | "member" | "auditor"; onboarding_method: "email" | "google" | "apple"; status: "pending" | "accepted" | "revoked" };
+type ExternalAuthProvider = "google" | "apple" | "microsoft" | "facebook" | "linkedin";
+type ControlUserIdentityData = { control_user_id: ID; provider: ExternalAuthProvider };
+type ControlInvitationData = { invitation_id: ID; organization_id?: ID | null; control_user_id?: ID; role: "owner" | "admin" | "member" | "auditor"; onboarding_method: "email" | ExternalAuthProvider; status: "pending" | "accepted" | "revoked" };
 
 export interface Platform93EventDataMap {
   "organization.created": NamedData;
@@ -54,8 +55,8 @@ export interface Platform93EventDataMap {
   "control_user.invitation_revoked": ControlInvitationData;
   "control_user.invitation_accepted": ControlInvitationData & { control_user_id: ID };
   "control_auth.policy_updated": { email_code_enabled: boolean; magic_link_enabled: boolean; password_enabled: boolean };
-  "control_auth.provider_login_enabled": { provider: "google" | "apple"; enabled: true };
-  "control_auth.provider_login_disabled": { provider: "google" | "apple"; enabled: false };
+  "control_auth.provider_login_enabled": { provider: ExternalAuthProvider; enabled: true };
+  "control_auth.provider_login_disabled": { provider: ExternalAuthProvider; enabled: false };
   "delegation.created": { delegation_id: ID; user_id: ID; workspace_id: ID | null; permissions: string[]; reason: string; expires_at: string };
   "delegation.exchanged": { delegation_id: ID; user_id: ID };
   "delegation.revoked": { delegation_id: ID };

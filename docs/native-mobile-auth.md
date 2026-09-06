@@ -11,7 +11,7 @@ as `javascript`, `data`, and `file` are rejected.
 
 The application-wide flow configuration may continue to point at the web client. A
 native application passes its own client ID and redirect URI to
-`createAuthorizationRequest`, or uses `@supaapps/platform93-expo` for Google and Apple:
+`createAuthorizationRequest`, or uses `@supaapps/platform93-expo` for Google, Apple, Microsoft, Facebook, and LinkedIn:
 
 ```ts
 import * as SecureStore from "expo-secure-store";
@@ -30,9 +30,10 @@ const auth = new Platform93ExpoAuth({
 
 await auth.initialize();
 await auth.signInWithGoogle({ flow: "automatic" });
+await auth.signInWithMicrosoft({ flow: "automatic" });
 ```
 
-Google and Apple redirect to Platform93's fixed provider callback first. Platform93
+External providers redirect to Platform93's fixed provider callback first. Platform93
 then redirects to the native URI with a short-lived, single-use exchange credential.
 The adapter exchanges it immediately and stores only the rotating refresh credential
 in SecureStore. No OAuth client secret belongs in the mobile application.

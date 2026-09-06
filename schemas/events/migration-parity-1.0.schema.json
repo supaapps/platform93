@@ -18,7 +18,8 @@
         "status": { "enum": ["pending", "accepted", "revoked", "expired"] },
         "expires_at": { "type": "string", "format": "date-time" },
         "application_role_keys": { "type": "array", "items": { "type": "string" } },
-        "workspace_role_keys": { "type": "array", "items": { "type": "string" } }
+        "workspace_role_keys": { "type": "array", "items": { "type": "string" } },
+        "onboarding_method": { "enum": ["email", "google", "apple", "microsoft", "facebook", "linkedin"] }
       },
       "additionalProperties": false
     },
@@ -55,7 +56,7 @@
       "required": ["control_user_id", "provider"],
       "properties": {
         "control_user_id": { "type": "string", "format": "uuid" },
-        "provider": { "enum": ["google", "apple"] }
+        "provider": { "enum": ["google", "apple", "microsoft", "facebook", "linkedin"] }
       },
       "additionalProperties": false
     },
@@ -67,7 +68,7 @@
         "organization_id": { "type": ["string", "null"], "format": "uuid" },
         "control_user_id": { "type": "string", "format": "uuid" },
         "role": { "enum": ["owner", "admin", "member", "auditor"] },
-        "onboarding_method": { "enum": ["email", "google", "apple"] },
+        "onboarding_method": { "enum": ["email", "google", "apple", "microsoft", "facebook", "linkedin"] },
         "status": { "enum": ["pending", "accepted", "revoked"] }
       },
       "additionalProperties": false
@@ -86,7 +87,7 @@
       "type": "object",
       "required": ["provider", "enabled"],
       "properties": {
-        "provider": { "enum": ["google", "apple"] },
+        "provider": { "enum": ["google", "apple", "microsoft", "facebook", "linkedin"] },
         "enabled": { "type": "boolean" }
       },
       "additionalProperties": false

@@ -14,7 +14,7 @@ Inheritance can be enabled or disabled after a provider is created without resub
 
 ## Authentication
 
-Google and Sign in with Apple can be configured at any scope. Each application still has its own users, external identities, challenges, sessions, and consuming-application redirect allowlist even when it inherits provider credentials. The provider callback is installation-wide: Platform93 resolves the application from the random, single-use sign-in state stored before redirecting to the provider.
+Google, Apple, Microsoft, Facebook, and LinkedIn can be configured at any scope. Each application still has its own users, external identities, challenges, sessions, and consuming-application redirect allowlist even when it inherits provider credentials. Every provider has one installation-wide callback URL: Platform93 resolves the application from the random, single-use sign-in state stored before redirecting to the provider.
 
 Register these exact callback URLs once with the provider:
 
@@ -23,7 +23,9 @@ https://platform.example/v1/auth/providers/google/callback
 https://platform.example/v1/auth/providers/apple/callback
 ```
 
-Google requires a web OAuth client ID and client secret. Apple requires a Services ID, Team ID, Sign in with Apple Key ID, and ES256 private key. Apple posts the authorization result to the callback, so the public Platform93 URL must use HTTPS outside local development.
+Google requires a web OAuth client ID and client secret. Apple requires a Services ID, Team ID, Sign in with Apple Key ID, and ES256 private key. Microsoft requires an Entra application ID, client secret, and tenant mode (`common`, `organizations`, `consumers`, or an exact tenant UUID). Facebook requires an App ID and App secret. LinkedIn requires a client ID, client secret, and the OpenID Connect product. Apple posts the authorization result to the callback, so the public Platform93 URL must use HTTPS outside local development.
+
+Platform93 accepts provider email as verified identity data only when the provider supplies a verified OpenID Connect email claim. Microsoft and Facebook email/profile fields are never treated as proof of mailbox ownership. A new application signup through either provider must complete Platform93 email-code or magic-link verification before the user is created. LinkedIn follows the same fallback when no verified email claim is available.
 
 Changing a parent authentication provider affects new authorization flows. Existing Platform93 sessions and linked provider identities remain application-owned.
 

@@ -12,7 +12,7 @@ clean-install prerelease and must not be tagged `v1.0.0` yet.
   cross-organization/application middleware tests.
 - Platform user account profile, footer logout, email code/link and optional Argon2id
   password login, recent-auth password enrollment, and session revocation controls.
-- Password, email code/link, Google authorization code with PKCE, rotating refresh
+- Password, email code/link, Google, Apple, Microsoft, Facebook, and LinkedIn provider authentication, rotating refresh
   families, replay containment, account lifecycle, personal keys, TOTP, WebAuthn,
   recovery codes, recent-auth gates, sessions, consent, and delegation contracts.
 - Fosite-backed OAuth 2.1/OIDC discovery, S256 authorization code, token, refresh,
@@ -61,7 +61,7 @@ clean-install prerelease and must not be tagged `v1.0.0` yet.
   final published multi-architecture image is rescanned after it is built.
 - Alpha databases must be recreated. Existing external application data and Stripe
   resources are not imported or adopted automatically.
-- The redacted Stripe, SMTP, Google, Apple, and S3 release-candidate checklist in
+- The redacted Stripe, SMTP, Google, Apple, Microsoft, Facebook, LinkedIn, and S3 release-candidate checklist in
   [Release Process](releasing.md) must be complete before the stable tag.
 
 ## Blocking `v1.0.0`
@@ -72,7 +72,7 @@ clean-install prerelease and must not be tagged `v1.0.0` yet.
   or record an ADR changing that requirement with equivalent compile-time verification.
 - Run real-provider Stripe test-clock suites across Checkout, portal, subscription
   proration/cancellation, tax, refunds, disputes, duplicate/stale/missed webhooks, and TWINT.
-- Run real Google, SMTP, and browser virtual-authenticator suites for passwordless,
+- Run real external-provider, SMTP, and browser virtual-authenticator suites for passwordless,
   password reset, account linking, TOTP, WebAuthn, recovery, and step-up behavior.
 - Complete granular Platform user permissions beyond owner/admin/auditor/member roles.
 - Add multi-process crash/lease/duplicate-delivery chaos tests, sustained load tests,

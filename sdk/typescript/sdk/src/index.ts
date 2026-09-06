@@ -91,11 +91,20 @@ export class ApplicationClient {
   startEmail(input: EmailStart) { return this.client.request<{ challenge_id: string; expires_in: number }>("POST", this.path("/auth/email/start"), input); }
   verifyEmail(input: EmailVerify) { return this.client.request<AuthenticationResult>("POST", this.path("/auth/email/verify"), input); }
   startExternalAuth(provider: ExternalAuthProvider, input: ExternalAuthStart) { return this.client.request<ExternalAuthAuthorization>("POST", this.path(`/auth/providers/${provider}/start`), input); }
-  exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string) { return this.client.request<AuthenticationResult>("POST", this.path(`/auth/providers/${provider}/exchange`), { exchange }); }
+  exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string, codeVerifier?: string) { return this.client.request<AuthenticationResult>("POST", this.path(`/auth/providers/${provider}/exchange`), { exchange, ...(codeVerifier ? { code_verifier: codeVerifier } : {}) }); }
   startGoogleAuth(input: ExternalAuthStart) { return this.startExternalAuth("google", input); }
-  exchangeGoogleAuth(exchange: string) { return this.exchangeExternalAuth("google", exchange); }
+  exchangeGoogleAuth(exchange: string, codeVerifier?: string) { return this.exchangeExternalAuth("google", exchange, codeVerifier); }
   startAppleAuth(input: ExternalAuthStart) { return this.startExternalAuth("apple", input); }
-  exchangeAppleAuth(exchange: string) { return this.exchangeExternalAuth("apple", exchange); }
+  exchangeAppleAuth(exchange: string, codeVerifier?: string) { return this.exchangeExternalAuth("apple", exchange, codeVerifier); }
+  startMicrosoftAuth(input: ExternalAuthStart) { return this.startExternalAuth("microsoft", input); }
+  exchangeMicrosoftAuth(exchange: string, codeVerifier?: string) { return this.exchangeExternalAuth("microsoft", exchange, codeVerifier); }
+  startFacebookAuth(input: ExternalAuthStart) { return this.startExternalAuth("facebook", input); }
+  exchangeFacebookAuth(exchange: string, codeVerifier?: string) { return this.exchangeExternalAuth("facebook", exchange, codeVerifier); }
+  startLinkedInAuth(input: ExternalAuthStart) { return this.startExternalAuth("linkedin", input); }
+  exchangeLinkedInAuth(exchange: string, codeVerifier?: string) { return this.exchangeExternalAuth("linkedin", exchange, codeVerifier); }
+  startExternalEmailEnrollment(input: ExternalEmailEnrollmentStart) { return this.client.request<ExternalEmailEnrollmentChallenge>("POST", this.path("/auth/external-email/start"), input); }
+  verifyExternalEmailEnrollment(input: ExternalEmailEnrollmentVerify) { return this.client.request<AuthenticationResult>("POST", this.path("/auth/external-email/verify"), input); }
+  startApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationExchange) { return this.client.request<ExternalAuthAuthorization>("POST", this.path(`/auth/invitations/providers/${provider}/start`), input); }
   exchangeInvitation(input: InvitationExchange) { return this.client.request<InvitationAuthorizationCode>("POST", this.path("/auth/invitations/exchange"), input); }
   redeemInvitation(input: { authorization_code: string; code_verifier: string }) { return this.client.request<AuthenticationResult>("POST", this.path("/auth/invitations/token"), input); }
   verifyMFA(input: MFAVerify) { return this.client.request<TokenResponse>("POST", this.path("/auth/mfa/verify"), input); }
@@ -180,10 +189,17 @@ export type PasswordSignIn = { email: string; password: string };
 export type PasswordSignUp = PasswordSignIn & { first_name?: string; last_name?: string };
 export type EmailStart = { email: string; intent: "sign_in" | "sign_up" | "automatic"; delivery: "code" | "link" | "both"; redirect_uri?: string };
 export type EmailVerify = { challenge_id: string; code?: string; link_token?: string };
-export type ExternalAuthProvider = "google" | "apple";
-export type ExternalAuthFlow = "sign_in" | "sign_up" | "automatic";
-export type ExternalAuthStart = { redirect_uri: string; flow?: ExternalAuthFlow; login_hint?: string };
+export type ExternalAuthProvider = "google" | "apple" | "microsoft" | "facebook" | "linkedin";
+export type ExternalAuthFlow = "sign_in" | "sign_up" | "automatic" | "link";
+export type ExternalAuthStart = { redirect_uri: string; flow?: ExternalAuthFlow; login_hint?: string; code_challenge?: string };
 export type ExternalAuthAuthorization = { provider: ExternalAuthProvider; authorize_url: string; expires_in: number };
+export type ExternalEmailEnrollmentContinuation = { kind: "email_verification_required"; provider: "microsoft" | "facebook" | "linkedin"; enrollment: string };
+export type ExternalEmailEnrollmentStart = { enrollment: string; email: string; code_verifier: string; delivery?: "code" | "link" | "both" };
+export type ExternalEmailEnrollmentChallenge = { challenge_id: string; provider: "microsoft" | "facebook" | "linkedin"; expires_in: number };
+export type ExternalEmailEnrollmentCredential =
+  | { code: string; link_token?: never }
+  | { link_token: string; code?: never };
+export type ExternalEmailEnrollmentVerify = { enrollment: string } & ExternalEmailEnrollmentCredential;
 export type LocalCheckoutInput = { price_id: string; subject_type?: "user" | "workspace"; subject_id?: string; address_id?: string; external_reference?: string };
 export type CheckoutInput = { price_id: string; provider_id?: string; subject_type?: "user" | "workspace"; subject_id?: string; payment_methods?: Array<"card" | "twint">; success_uri: string; cancel_uri: string; external_reference?: string };
 export type CheckoutSession = { id: string; status: string; checkout_uri: string; provider_session_id: string; external_reference?: string | null };
@@ -194,8 +210,9 @@ export type WorkspaceOwnershipTransferResult = { workspace_id: string; owner_use
 export type BillingAddress = { id: string; name: string; line1: string; line2: string; city: string; region: string; postal_code: string; country_code: string; tax_id?: string | null; active: boolean; version: number };
 export type PublishCustomEvent<T extends Record<string, unknown> = Record<string, unknown>> = { type: string; subject: string; data: T; correlation_id?: string; causation_id?: string };
 export type PublishedEvent<T extends Record<string, unknown> = Record<string, unknown>> = PublishCustomEvent<T> & { specversion: "1.0"; id: string; source: string; schema_version: string };
-export type CreateInvitation = { email: string; workspace_id?: string; application_role_keys?: string[]; workspace_role_keys?: string[]; expires_in?: number };
-export type Invitation = { id: string; email: string; workspace_id?: string | null; application_role_keys: string[]; workspace_role_keys: string[]; status?: "pending" | "accepted" | "revoked" | "expired"; expires_at: string; last_sent_at: string; resend_available_at: string };
+export type InvitationOnboardingMethod = "email" | ExternalAuthProvider;
+export type CreateInvitation = { email: string; workspace_id?: string; application_role_keys?: string[]; workspace_role_keys?: string[]; onboarding_method?: InvitationOnboardingMethod; expires_in?: number };
+export type Invitation = { id: string; application_id: string; email: string; workspace_id?: string | null; application_role_keys: string[]; workspace_role_keys: string[]; onboarding_method: InvitationOnboardingMethod; status: "pending" | "accepted" | "revoked" | "expired"; expires_at: string; last_sent_at: string; resend_available_at: string };
 export type InvitationCredential = { email: string; code: string; invitation_id?: never; link_token?: never } | { invitation_id: string; link_token: string; email?: never; code?: never };
 export type InvitationExchange = InvitationCredential & { code_challenge: string };
 export type InvitationAuthorizationCode = { authorization_code: string; expires_in: number };

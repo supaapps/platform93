@@ -32,7 +32,7 @@ class PermissionGrantLifecycleData(TypedDict):
 
 class ControlUserIdentityData(TypedDict):
     control_user_id: str
-    provider: Literal["google", "apple"]
+    provider: Literal["google", "apple", "microsoft", "facebook", "linkedin"]
 
 
 class ControlInvitationData(TypedDict, total=False):
@@ -40,7 +40,7 @@ class ControlInvitationData(TypedDict, total=False):
     organization_id: str | None
     control_user_id: str
     role: Literal["owner", "admin", "member", "auditor"]
-    onboarding_method: Literal["email", "google", "apple"]
+    onboarding_method: Literal["email", "google", "apple", "microsoft", "facebook", "linkedin"]
     status: Literal["pending", "accepted", "revoked"]
 
 

@@ -78,6 +78,10 @@ func TestInstallationAuthProviderInheritanceCanBeChangedWithoutCredentials(t *te
 	if provider, loadErr := server.loadEffectiveAuthProvider(context.Background(), applicationID.String(), "google"); loadErr != nil || provider.Scope != "installation" {
 		t.Fatalf("application did not resolve the re-enabled installation provider: %#v %v", provider, loadErr)
 	}
+	providers := server.loadEffectiveAuthProviders(context.Background(), applicationID.String())
+	if provider, configured := providers["google"]; !configured || provider.Scope != "installation" {
+		t.Fatalf("batched provider resolution did not include the inherited provider: %#v", providers)
+	}
 	if response := update(nil); response.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("missing inheritance value returned %d: %s", response.Code, response.Body.String())
 	}

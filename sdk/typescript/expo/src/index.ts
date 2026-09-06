@@ -6,6 +6,7 @@ import {
 } from "@supaapps/platform93-auth";
 import type {
   AuthenticationResult,
+  ExternalEmailEnrollmentContinuation,
   ExternalAuthFlow,
   ExternalAuthProvider,
   PasswordSignIn,
@@ -87,10 +88,30 @@ export class Platform93ExpoAuth {
     return this.openProviderSession("apple", options);
   }
 
+  signInWithMicrosoft(options: Omit<ExternalAuthStartOptions, "redirectUri"> = {}) {
+    return this.openProviderSession("microsoft", options);
+  }
+
+  signInWithFacebook(options: Omit<ExternalAuthStartOptions, "redirectUri"> = {}) {
+    return this.openProviderSession("facebook", options);
+  }
+
+  signInWithLinkedIn(options: Omit<ExternalAuthStartOptions, "redirectUri"> = {}) {
+    return this.openProviderSession("linkedin", options);
+  }
+
+  async openProviderSession(
+    provider: "google" | "apple",
+    options?: { flow?: ExternalAuthFlow; loginHint?: string },
+  ): Promise<AuthenticationResult>;
+  async openProviderSession(
+    provider: ExternalEmailEnrollmentContinuation["provider"],
+    options?: { flow?: ExternalAuthFlow; loginHint?: string },
+  ): Promise<AuthenticationResult | ExternalEmailEnrollmentContinuation>;
   async openProviderSession(
     provider: ExternalAuthProvider,
     options: { flow?: ExternalAuthFlow; loginHint?: string } = {},
-  ): Promise<AuthenticationResult> {
+  ): Promise<AuthenticationResult | ExternalEmailEnrollmentContinuation> {
     const authorization = await this.auth.startExternalAuth(provider, {
       redirectUri: this.redirectUri,
       flow: options.flow,
@@ -100,6 +121,6 @@ export class Platform93ExpoAuth {
     if (result.type !== "success" || !result.url) {
       throw new Platform93NativeAuthSessionError(result.type);
     }
-    return this.auth.completeExternalAuthRedirect(provider, result.url);
+    return await this.auth.completeExternalAuthRedirect(provider, result.url);
   }
 }

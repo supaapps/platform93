@@ -227,7 +227,7 @@ func (s *Server) resendOrganizationInvitation(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if request.OnboardingMethod != "" && !validControlOnboardingMethod(request.OnboardingMethod) {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_onboarding_method", "Onboarding method must be email, google, or apple.")
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_onboarding_method", "Platform user onboarding must use email or a supported external authentication provider.")
 		return
 	}
 	if request.OnboardingMethod != "" && request.OnboardingMethod != "email" {
@@ -427,5 +427,5 @@ func validOrganizationRole(value string) bool {
 }
 
 func validControlOnboardingMethod(value string) bool {
-	return value == "email" || value == "google" || value == "apple"
+	return value == "email" || validExternalAuthProvider(value)
 }

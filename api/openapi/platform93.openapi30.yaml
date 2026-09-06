@@ -350,6 +350,9 @@ paths:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
     post:
       operationId: startControlExternalLogin
       tags:
@@ -372,6 +375,9 @@ paths:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
     post:
       operationId: linkControlExternalIdentity
       tags:
@@ -436,6 +442,9 @@ paths:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
     post:
       operationId: startControlInvitationExternalLogin
       tags:
@@ -616,6 +625,9 @@ paths:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
     put:
       operationId: configureInstallationAuthProvider
       tags:
@@ -1442,6 +1454,9 @@ paths:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
     put:
       operationId: configureOrganizationAuthProvider
       tags:
@@ -1885,6 +1900,29 @@ paths:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
+    put:
+      operationId: configureApplicationAuthProvider
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigureAuthProvider'
+      responses:
+        '200':
+          description: Application authentication provider configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthProvider'
     delete:
       operationId: disableApplicationAuthProvider
       tags:
@@ -3663,6 +3701,116 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Tokens'
+  /v1/applications/{application_id}/auth/providers/{provider}/start:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: provider
+        in: path
+        required: true
+        schema:
+          enum:
+            - microsoft
+            - facebook
+            - linkedin
+    post:
+      operationId: startSocialAuth
+      tags:
+        - Identity
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalAuthStartRequest'
+      responses:
+        '201':
+          description: External provider authorization started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalAuthStart'
+  /v1/applications/{application_id}/auth/providers/{provider}/exchange:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: provider
+        in: path
+        required: true
+        schema:
+          enum:
+            - microsoft
+            - facebook
+            - linkedin
+    post:
+      operationId: exchangeSocialAuth
+      tags:
+        - Identity
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalAuthExchange'
+      responses:
+        '200':
+          $ref: '#/components/responses/Tokens'
+  /v1/auth/providers/{provider}/callback:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema:
+          enum:
+            - microsoft
+            - facebook
+            - linkedin
+    get:
+      operationId: socialAuthCallback
+      tags:
+        - Identity
+      security: []
+      responses:
+        '302':
+          description: Installation-wide provider callback
+  /v1/applications/{application_id}/auth/external-email/start:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    post:
+      operationId: startExternalEmailEnrollment
+      tags:
+        - Identity
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalEmailEnrollmentStart'
+      responses:
+        '202':
+          description: External identity email verification queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalEmailEnrollmentChallenge'
+  /v1/applications/{application_id}/auth/external-email/verify:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    post:
+      operationId: verifyExternalEmailEnrollment
+      tags:
+        - Identity
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalEmailEnrollmentVerify'
+      responses:
+        '200':
+          $ref: '#/components/responses/Tokens'
   /v1/applications/{application_id}/auth/mfa/verify:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3743,6 +3891,39 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InvitationExchangeResult'
+        '401':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/auth/invitations/providers/{provider}/start:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: provider
+        in: path
+        required: true
+        schema:
+          enum:
+            - google
+            - apple
+            - microsoft
+            - facebook
+            - linkedin
+    post:
+      operationId: startApplicationInvitationProvider
+      tags:
+        - Identity
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExchangeInvitation'
+      responses:
+        '201':
+          description: Provider-backed application invitation acceptance started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalAuthStart'
         '401':
           $ref: '#/components/responses/Problem'
   /v1/applications/{application_id}/auth/invitations/token:
@@ -5173,6 +5354,34 @@ paths:
       responses:
         '201':
           description: Authenticated Apple account-link authorization URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalAuthStart'
+  /v1/applications/{application_id}/me/auth/providers/{provider}/link:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: provider
+        in: path
+        required: true
+        schema:
+          enum:
+            - microsoft
+            - facebook
+            - linkedin
+    post:
+      operationId: startSocialLink
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalAuthStartRequest'
+      responses:
+        '201':
+          description: Authenticated external account-link authorization URL
           content:
             application/json:
               schema:
@@ -8841,6 +9050,9 @@ components:
                     enum:
                       - google
                       - apple
+                      - microsoft
+                      - facebook
+                      - linkedin
                   metadata:
                     type: object
                     additionalProperties: true
@@ -8977,6 +9189,9 @@ components:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
         scope:
           enum:
             - installation
@@ -8997,6 +9212,10 @@ components:
           nullable: true
         key_id:
           type: string
+          nullable: true
+        tenant:
+          type: string
+          description: Microsoft tenant mode or tenant UUID. Null for other providers.
           nullable: true
         inheritable:
           type: boolean
@@ -9146,6 +9365,9 @@ components:
             - email
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
         status:
           enum:
             - pending
@@ -9592,6 +9814,7 @@ components:
         - id
         - application_id
         - email
+        - onboarding_method
         - status
         - expires_at
       properties:
@@ -9614,6 +9837,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RoleKey'
+        onboarding_method:
+          enum:
+            - email
+            - google
+            - apple
+            - microsoft
+            - facebook
+            - linkedin
+          default: email
         status:
           enum:
             - pending
@@ -9665,6 +9897,9 @@ components:
               - magic_link
               - google
               - apple
+              - microsoft
+              - facebook
+              - linkedin
               - totp
               - webauthn
         registration_enabled:
@@ -10615,6 +10850,9 @@ components:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
         email:
           type: string
           format: email
@@ -12166,6 +12404,9 @@ components:
             - email
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
       additionalProperties: false
     UpdateManagementAPI:
       type: object
@@ -12210,6 +12451,10 @@ components:
           type: string
           minLength: 1
           writeOnly: true
+        tenant:
+          type: string
+          description: Microsoft tenant mode (common, organizations, consumers) or a tenant UUID.
+          pattern: ^(common|organizations|consumers|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$
         inheritable:
           type: boolean
           default: false
@@ -12573,6 +12818,12 @@ components:
         login_hint:
           type: string
           format: email
+        code_challenge:
+          type: string
+          minLength: 43
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]{43}$
+          writeOnly: true
       additionalProperties: false
     ExternalAuthExchange:
       type: object
@@ -12583,6 +12834,81 @@ components:
           type: string
           minLength: 1
           writeOnly: true
+        code_verifier:
+          type: string
+          minLength: 43
+          maxLength: 128
+          pattern: ^[A-Za-z0-9._~-]{43,128}$
+          writeOnly: true
+      additionalProperties: false
+    ExternalEmailEnrollmentStart:
+      type: object
+      required:
+        - enrollment
+        - email
+        - code_verifier
+      properties:
+        enrollment:
+          type: string
+          minLength: 1
+          writeOnly: true
+        email:
+          type: string
+          format: email
+        delivery:
+          enum:
+            - code
+            - link
+            - both
+          default: both
+        code_verifier:
+          type: string
+          minLength: 43
+          maxLength: 128
+          pattern: ^[A-Za-z0-9._~-]{43,128}$
+          writeOnly: true
+      additionalProperties: false
+    ExternalEmailEnrollmentVerify:
+      type: object
+      required:
+        - enrollment
+      oneOf:
+        - required:
+            - code
+        - required:
+            - link_token
+      properties:
+        enrollment:
+          type: string
+          minLength: 1
+          writeOnly: true
+        code:
+          type: string
+          minLength: 8
+          maxLength: 8
+          writeOnly: true
+        link_token:
+          type: string
+          minLength: 1
+          writeOnly: true
+      additionalProperties: false
+    ExternalEmailEnrollmentChallenge:
+      type: object
+      required:
+        - challenge_id
+        - provider
+        - expires_in
+      properties:
+        challenge_id:
+          $ref: '#/components/schemas/UUID'
+        provider:
+          enum:
+            - microsoft
+            - facebook
+            - linkedin
+        expires_in:
+          type: integer
+          minimum: 1
       additionalProperties: false
     VerifyMFA:
       type: object
@@ -13590,6 +13916,9 @@ components:
             - email
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
           default: email
         expires_in:
           type: integer
@@ -13646,6 +13975,9 @@ components:
             enum:
               - google
               - apple
+              - microsoft
+              - facebook
+              - linkedin
       additionalProperties: false
     ExternalAuthStart:
       type: object
@@ -13658,6 +13990,9 @@ components:
           enum:
             - google
             - apple
+            - microsoft
+            - facebook
+            - linkedin
         authorize_url:
           type: string
           format: uri
@@ -14014,6 +14349,15 @@ components:
           items:
             type: string
           maxItems: 20
+        onboarding_method:
+          enum:
+            - email
+            - google
+            - apple
+            - microsoft
+            - facebook
+            - linkedin
+          default: email
         expires_in:
           type: integer
           format: int64

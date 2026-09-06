@@ -29,7 +29,8 @@ type OrganizationPolicy = {
 };
 type ManagementAPIStatus = { enabled: boolean; can_manage: boolean; active_clients: number; token_endpoint: string; api_base: string };
 type ControlAuthMethods = { email_code: boolean; magic_link: boolean; password: boolean; providers: string[] };
-type ControlExternalIdentity = { id: string; provider: "google" | "apple"; available: boolean; metadata?: { email?: string }; created_at: string; last_used_at?: string | null };
+type AuthProviderKind = "google" | "apple" | "microsoft" | "facebook" | "linkedin";
+type ControlExternalIdentity = { id: string; provider: AuthProviderKind; available: boolean; metadata?: { email?: string }; created_at: string; last_used_at?: string | null };
 type ControlUserAccount = {
   id: string;
   email: string;
@@ -80,16 +81,13 @@ function requestPath(input: RequestInfo | URL): string {
 }
 
 function canRefreshControlUserRequest(path: string): boolean {
+  if (/^\/v1\/control\/(?:auth|invitations)\/providers\/[^/]+\/(?:start)$/.test(path)) return false;
   return path.startsWith("/v1/control/") && ![
     "/v1/control/auth/email/start",
     "/v1/control/auth/email/verify",
     "/v1/control/auth/token/refresh",
     "/v1/control/auth/logout",
     "/v1/control/invitations/accept",
-    "/v1/control/auth/providers/google/start",
-    "/v1/control/auth/providers/apple/start",
-    "/v1/control/invitations/providers/google/start",
-    "/v1/control/invitations/providers/apple/start",
   ].includes(path);
 }
 
@@ -172,7 +170,7 @@ const resources: Record<string, Resource[]> = {
   ],
   Workspaces: [
     { label: "Workspaces", path: "workspaces", create: { label: "Create workspace", fields: [{ name: "owner_user_id", label: "Owner user ID", required: true }, { name: "key", label: "Key", required: true }, { name: "name", label: "Name", required: true }] } },
-    { label: "Invitations", path: "invitations", create: { label: "Create invitation", fields: [{ name: "email", label: "Email", type: "email", required: true }, { name: "workspace_id", label: "Workspace ID (optional)" }, { name: "application_role_keys", label: "Application role keys, comma separated" }, { name: "workspace_role_keys", label: "Workspace role keys, comma separated" }, { name: "expires_in", label: "Expires in seconds", type: "number", placeholder: "604800" }] } },
+    { label: "Invitations", path: "invitations", create: { label: "Create invitation", fields: [{ name: "email", label: "Email", type: "email", required: true }, { name: "workspace_id", label: "Workspace ID (optional)" }, { name: "application_role_keys", label: "Application role keys, comma separated" }, { name: "workspace_role_keys", label: "Workspace role keys, comma separated" }, { name: "onboarding_method", label: "Onboarding method", required: true, options: [{ label: "Email credential", value: "email" }, { label: "Google", value: "google" }, { label: "Apple", value: "apple" }, { label: "Microsoft", value: "microsoft" }, { label: "Facebook", value: "facebook" }, { label: "LinkedIn", value: "linkedin" }] }, { name: "expires_in", label: "Expires in seconds", type: "number", placeholder: "604800" }] } },
     { label: "Delegations", path: "delegations" },
   ],
   Catalog: [
@@ -246,10 +244,10 @@ function PlatformAdmin() {
             params.delete("error");
             history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}${location.hash}`);
             if (providerError) {
-              setMessage(`${errorMessagePrefix}${titleCase(provider)} sign-in could not be completed (${providerError.replaceAll("_", " ")}).`);
+              setMessage(`${errorMessagePrefix}${authProviderLabel(provider)} sign-in could not be completed (${providerError.replaceAll("_", " ")}).`);
               setNeedsLogin(true);
             } else {
-              setMessage(`${titleCase(provider)} authentication completed.`);
+              setMessage(`${authProviderLabel(provider)} authentication completed.`);
               void loadOrganizationsRef.current();
             }
           } else if (params.get("control_user_challenge") === "true" || params.get("control_invitation") === "true") setNeedsLogin(true);
@@ -606,6 +604,8 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
   const [busy, setBusy] = useState(false);
   const [magicLinkProcessing, setMagicLinkProcessing] = useState(false);
   const [message, setMessage] = useState("");
+  const invitationRequiresProvider = invitationMethod !== "" && invitationMethod !== "email";
+  const invitationProviderAvailable = invitationRequiresProvider && methods.providers.includes(invitationMethod);
   const magicLinkStarted = useRef(false);
   const invitationLinkStarted = useRef(false);
   const onCompleteRef = useRef(onComplete);
@@ -773,7 +773,7 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
           <label>Password<input required name="password" type="password" minLength={12} autoComplete="current-password" /></label>
           <button disabled={busy}>{busy ? "Working..." : "Sign in with password"}</button>
         </form>}
-        {methods.providers.length > 0 && <div className="external-login-options"><span>Or continue with</span>{methods.providers.map((provider) => <button type="button" disabled={busy} key={provider} onClick={() => void startProvider(provider)}>{titleCase(provider)}</button>)}</div>}
+        {methods.providers.length > 0 && <div className="external-login-options"><span>Or continue with</span>{methods.providers.map((provider) => <button type="button" disabled={busy} key={provider} onClick={() => void startProvider(provider)}>{authProviderLabel(provider)}</button>)}</div>}
         <div className="login-alternatives">
           {emailAvailable && methods.password && <button type="button" disabled={busy} onClick={() => setMethod(method === "email" ? "password" : "email")}>{method === "email" ? "Use password instead" : "Use an email code or link"}</button>}
           {emailAvailable && methods.password && <span aria-hidden="true">·</span>}
@@ -784,13 +784,13 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
             Invitation credential
             <input required name="invitation_token" type="password" autoComplete="off" value={invitationToken} onChange={(event) => setInvitationToken(event.target.value)} />
           </label>
-          {!invitationMethod && <label>Required onboarding method<select value={invitationMethod} onChange={(event) => setInvitationMethod(event.currentTarget.value)}><option value="">Choose method</option><option value="email">Email credential</option>{methods.providers.map((provider) => <option value={provider} key={provider}>{titleCase(provider)}</option>)}</select></label>}
+          {!invitationMethod && <label>Required onboarding method<select value={invitationMethod} onChange={(event) => setInvitationMethod(event.currentTarget.value)}><option value="">Choose method</option><option value="email">Email credential</option>{methods.providers.map((provider) => <option value={provider} key={provider}>{authProviderLabel(provider)}</option>)}</select></label>}
           {(invitationMethod === "email") && <form onSubmit={(event) => void acceptInvitation(event)}>
             <input type="hidden" name="invitation_token" value={invitationToken} />
             <label>Display name<input name="display_name" autoComplete="name" /></label>
             <button disabled={busy || !invitationToken}>{busy ? "Working..." : "Accept with email"}</button>
           </form>}
-          {(invitationMethod === "google" || invitationMethod === "apple") && <div className="external-login-options"><span>Provider invitation</span><button type="button" disabled={busy || !invitationToken || !methods.providers.includes(invitationMethod)} onClick={() => void startProvider(invitationMethod, true)}>Accept with {titleCase(invitationMethod)}</button></div>}
+          {invitationRequiresProvider && <div className="external-login-options"><span>Provider invitation</span><button type="button" disabled={busy || !invitationToken || !invitationProviderAvailable} onClick={() => void startProvider(invitationMethod, true)}>Accept with {authProviderLabel(invitationMethod)}</button>{!invitationProviderAvailable && <p className="error">This invitation requires {authProviderLabel(invitationMethod)}, but that sign-in provider is currently unavailable. Ask an administrator to enable it or resend the invitation with another onboarding method.</p>}</div>}
           <div className="login-alternatives"><button type="button" disabled={busy} onClick={() => selectAccessPath("sign-in")}>Back to Platform user sign-in</button></div>
         </div>}
         </>}
@@ -852,12 +852,12 @@ function ControlUserAccountPanel({ onClose, onLogout, onOpenSessions, setMessage
     } catch (error) { setMessage(readError(error)); setBusy(""); }
   }
   async function unlinkIdentity(identity: ControlExternalIdentity) {
-    if (!globalThis.confirm(`Unlink ${titleCase(identity.provider)} from this Platform user?`)) return;
+    if (!globalThis.confirm(`Unlink ${authProviderLabel(identity.provider)} from this Platform user?`)) return;
     setBusy(`unlink-${identity.id}`);
     try {
       await api.request("DELETE", `/v1/control/auth/identities/${identity.id}`);
       setAccount(account ? { ...account, sign_in_methods: { ...account.sign_in_methods, external_identities: account.sign_in_methods.external_identities.filter((item) => item.id !== identity.id) } } : null);
-      setMessage(`${titleCase(identity.provider)} identity unlinked.`);
+      setMessage(`${authProviderLabel(identity.provider)} identity unlinked.`);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
   }
@@ -873,9 +873,9 @@ function ControlUserAccountPanel({ onClose, onLogout, onOpenSessions, setMessage
           <button disabled={busy !== ""}>{busy === "profile" ? "Saving..." : "Save profile"}</button>
         </form>
         <section className="sign-in-method-list"><h3>Sign-in methods</h3><div><strong>Email code</strong><span>{account.sign_in_methods.email_code ? "Available" : "Unavailable"}</span></div><div><strong>Magic link</strong><span>{account.sign_in_methods.magic_link ? "Available" : "Unavailable"}</span></div><div><strong>Password</strong><span>{account.sign_in_methods.password ? "Configured" : methods.password ? "Not configured" : "Disabled"}</span></div>
-          {account.sign_in_methods.external_identities.map((identity) => <div key={identity.id}><strong>{titleCase(identity.provider)}</strong><span>{identity.available ? identity.metadata?.email ?? "Linked" : "Linked, provider disabled"}</span><IconButton label={`Unlink ${identity.provider}`} icon="remove" tone="danger" loading={busy === `unlink-${identity.id}`} disabled={busy !== ""} onClick={() => void unlinkIdentity(identity)} /></div>)}
-          {methods.providers.filter((provider) => !account.sign_in_methods.external_identities.some((identity) => identity.provider === provider)).map((provider) => <div key={provider}><strong>{titleCase(provider)}</strong><button type="button" disabled={busy !== ""} onClick={() => void linkIdentity(provider)}>{busy === `link-${provider}` ? "Opening..." : "Link account"}</button></div>)}
-          <p>Installation Google and Apple identities are linked explicitly. Matching email addresses never link accounts automatically.</p>
+          {account.sign_in_methods.external_identities.map((identity) => <div key={identity.id}><strong>{authProviderLabel(identity.provider)}</strong><span>{identity.available ? identity.metadata?.email ?? "Linked" : "Linked, provider disabled"}</span><IconButton label={`Unlink ${authProviderLabel(identity.provider)}`} icon="remove" tone="danger" loading={busy === `unlink-${identity.id}`} disabled={busy !== ""} onClick={() => void unlinkIdentity(identity)} /></div>)}
+          {methods.providers.filter((provider) => !account.sign_in_methods.external_identities.some((identity) => identity.provider === provider)).map((provider) => <div key={provider}><strong>{authProviderLabel(provider)}</strong><button type="button" disabled={busy !== ""} onClick={() => void linkIdentity(provider)}>{busy === `link-${provider}` ? "Opening..." : "Link account"}</button></div>)}
+          <p>Installation provider identities are linked explicitly. Matching email addresses never link Platform accounts automatically.</p>
         </section>
         <form className="account-form" onSubmit={(event) => void updatePassword(event)}>
           <h3>{account.sign_in_methods.password ? "Change password" : "Add password"}</h3>
@@ -2462,7 +2462,7 @@ function InstallationIdentitySettings({ setMessage }: { setMessage: (value: stri
         if (field !== "control_login_enabled" || value || !(error instanceof Platform93Error) || error.problem.code !== "control_auth_confirmation_required" || !globalThis.confirm(`${error.problem.detail} Affected users: ${error.problem.affected_users ?? "unknown"}. Continue?`)) throw error;
         await api.request("PATCH", `/v1/control/installation/auth/providers/${key}`, { ...body, confirm_affected_users: true });
       }
-      setMessage(`${titleCase(key)} ${field === "inheritable" ? "inheritance" : "Platform login"} updated.`);
+      setMessage(`${authProviderLabel(key)} ${field === "inheritable" ? "inheritance" : "Platform login"} updated.`);
       setRefresh((current) => current + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
@@ -2476,9 +2476,9 @@ function InstallationIdentitySettings({ setMessage }: { setMessage: (value: stri
       <label><input name="password_enabled" type="checkbox" defaultChecked={policy.password_enabled} /><span><strong>Password</strong><small>Available only to Platform users who configured a password.</small></span></label>
       <button disabled={busy !== ""}>{busy === "policy" ? "Saving..." : "Save sign-in policy"}</button>
     </form>
-    <div className="provider-cards">{providers.length === 0 ? <div className="provider-empty">Configure Google or Apple under Providers to enable external Platform sign-in.</div> : providers.map((provider) => {
+    <div className="provider-cards">{providers.length === 0 ? <div className="provider-empty">Configure an installation authentication provider to enable external Platform sign-in.</div> : providers.map((provider) => {
       const key = String(provider.provider);
-      return <article key={key}><div><strong>{titleCase(key)}</strong><span className="provider-source local">Installation provider</span></div><code>{String(provider.client_id)}</code>
+      return <article key={key}><div><strong>{authProviderLabel(key)}</strong><span className="provider-source local">Installation provider</span></div><code>{String(provider.client_id)}</code>
         <label className="provider-global-toggle"><input type="checkbox" checked={Boolean(provider.control_login_enabled)} disabled={busy !== ""} onChange={(event) => void updateProvider(provider, "control_login_enabled", event.currentTarget.checked)} /><span>Authenticate linked Platform users</span></label>
         <label className="provider-global-toggle"><input type="checkbox" checked={Boolean(provider.inheritable)} disabled={busy !== ""} onChange={(event) => void updateProvider(provider, "inheritable", event.currentTarget.checked)} /><span>Available to organizations and applications</span></label>
       </article>;
@@ -2577,13 +2577,13 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
     <PageSummary summary={organization ? `Control access to ${organization.name}` : "Installation control access"} help={organization ? "Organization Platform users can govern its applications without becoming application users." : "Platform users govern the installation. Their control-plane identities remain separate from every application user."} />
     {!organization && (installationAccess === "loading" ? <LoadingState label="Loading Platform users" /> : installationAccess === "unavailable" ? <div className="empty">Platform users are visible only to installation owners and administrators.</div> : <section className="control-scope">
       <div className="scope-heading"><p className="eyebrow">WHOLE INSTALLATION</p><h3>Platform users</h3><p>Invite a Platform user with an explicit onboarding method. Accounts become active only after acceptance.</p></div>
-      <section className="create-panel open"><form onSubmit={(event) => void inviteInstallationControlUser(event)}><div className="create-fields"><label>Email<input required name="email" type="email" /></label><label>Role<select name="role" defaultValue="auditor"><option>auditor</option><option>admin</option><option>owner</option></select></label><label>Onboarding method<select name="onboarding_method" defaultValue="email"><option value="email">Email credential</option>{authMethods.providers.map((provider) => <option value={provider} key={provider}>{titleCase(provider)}</option>)}</select></label></div><button>Invite Platform user</button></form></section>
+      <section className="create-panel open"><form onSubmit={(event) => void inviteInstallationControlUser(event)}><div className="create-fields"><label>Email<input required name="email" type="email" /></label><label>Role<select name="role" defaultValue="auditor"><option>auditor</option><option>admin</option><option>owner</option></select></label><label>Onboarding method<select name="onboarding_method" defaultValue="email"><option value="email">Email credential</option>{authMethods.providers.map((provider) => <option value={provider} key={provider}>{authProviderLabel(provider)}</option>)}</select></label></div><button>Invite Platform user</button></form></section>
       <ControlTable title="Platform users" items={installationControlUsers} renderActions={(item) => <>{["auditor", "admin", "owner"].filter((role) => role !== item.role).map((role) => <button key={role} onClick={() => void action("PATCH", `/v1/control/installation/users/${String(item.id)}`, { role })}>Make {role}</button>)}<IconButton label="Remove installation role" icon="remove" tone="danger" onClick={() => void action("DELETE", `/v1/control/installation/users/${String(item.id)}`)} /></>} />
       <ControlTable title="Platform user invitations" items={installationInvitations} renderActions={(item) => item.status === "pending" ? <><IconButton label="Resend invitation" icon="send" onClick={() => void action("POST", `/v1/control/installation/invitations/${String(item.id)}/resend`, {})} /><IconButton label="Revoke invitation" icon="revoke" tone="danger" onClick={() => void action("DELETE", `/v1/control/installation/invitations/${String(item.id)}`)} /></> : null} />
     </section>)}
     {organization && <section className="control-scope">
       <div className="scope-heading"><p className="eyebrow">ONE ORGANIZATION</p><h3>Organization Platform users</h3><p>Invite owners, admins, auditors, or members. They do not become application users.</p></div>
-      <section className="create-panel open"><form onSubmit={(event) => void invite(event)}><strong>Invite to {organization.name}</strong><div className="create-fields"><label>Email<input required name="email" type="email" /></label><label>Role<select name="role" defaultValue="member"><option>member</option><option>auditor</option><option>admin</option><option>owner</option></select></label><label>Onboarding method<select name="onboarding_method" defaultValue="email"><option value="email">Email credential</option>{authMethods.providers.map((provider) => <option value={provider} key={provider}>{titleCase(provider)}</option>)}</select></label></div><button>Invite Platform user</button></form></section>
+      <section className="create-panel open"><form onSubmit={(event) => void invite(event)}><strong>Invite to {organization.name}</strong><div className="create-fields"><label>Email<input required name="email" type="email" /></label><label>Role<select name="role" defaultValue="member"><option>member</option><option>auditor</option><option>admin</option><option>owner</option></select></label><label>Onboarding method<select name="onboarding_method" defaultValue="email"><option value="email">Email credential</option>{authMethods.providers.map((provider) => <option value={provider} key={provider}>{authProviderLabel(provider)}</option>)}</select></label></div><button>Invite Platform user</button></form></section>
       <ControlTable title={`${organization.name} Platform users`} items={members} renderActions={(item) => <>{["member", "auditor", "admin", "owner"].filter((role) => role !== item.role).map((role) => <button key={role} onClick={() => void action("PATCH", `/v1/control/organizations/${organization.id}/members/${String(item.id)}`, { role })}>Make {role}</button>)}<IconButton label="Remove organization member" icon="remove" tone="danger" onClick={() => void action("DELETE", `/v1/control/organizations/${organization.id}/members/${String(item.id)}`)} /></>} />
       <ControlTable title="Organization invitations" items={invitations} renderActions={(item) => item.status === "pending" ? <><IconButton label="Resend invitation" icon="send" onClick={() => void action("POST", `/v1/control/organizations/${organization.id}/invitations/${String(item.id)}/resend`, {})} /><IconButton label="Revoke invitation" icon="revoke" tone="danger" onClick={() => void action("DELETE", `/v1/control/organizations/${organization.id}/invitations/${String(item.id)}`)} /></> : null} />
     </section>}
@@ -2605,7 +2605,7 @@ const organizationPolicySettings: { key: string; label: string; detail: string }
   { key: "passwordless_authentication", label: "Passwordless authentication", detail: "Applications may send email codes and magic links." },
   { key: "personal_api_keys", label: "Personal API keys", detail: "Application users may create personal access keys." },
   { key: "delegation", label: "Platform user delegation", detail: "Organization administrators may create short-lived delegated sessions." },
-  { key: "organization_provider_overrides", label: "Organization provider overrides", detail: "This organization may override installation SMTP, Stripe, Google, and Apple providers." },
+  { key: "organization_provider_overrides", label: "Organization provider overrides", detail: "This organization may override installation email, billing, storage, and authentication providers." },
   { key: "application_provider_overrides", label: "Application provider overrides", detail: "Applications may override inherited organization or installation providers." },
   { key: "custom_events", label: "Custom events", detail: "Applications may register and publish their own event contracts." },
   { key: "webhooks", label: "Outgoing webhooks", detail: "Applications may create outbound webhook endpoints." },
@@ -2804,7 +2804,7 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
   const [busy, setBusy] = useState("");
   const [publicBaseURL, setPublicBaseURL] = useState(api.baseUrl);
   const canInherit = scope !== "application";
-  const providerCallbackURI = (provider: "google" | "apple") =>
+  const providerCallbackURI = (provider: AuthProviderKind) =>
     `${publicBaseURL}/v1/auth/providers/${provider}/callback`;
   useEffect(() => {
     api.request<{ issuer: string }>("GET", "/oidc/.well-known/openid-configuration")
@@ -2822,7 +2822,7 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
       setStorageProviders(storage.items);
     }).catch((error) => setMessage(readError(error)));
   }, [basePath, refresh, setMessage]);
-  async function submitProvider(event: FormEvent<HTMLFormElement>, kind: "google" | "apple" | "smtp" | "stripe" | "storage") {
+  async function submitProvider(event: FormEvent<HTMLFormElement>, kind: AuthProviderKind | "smtp" | "stripe" | "storage") {
     event.preventDefault();
     const target = event.currentTarget;
     const form = new FormData(target);
@@ -2830,13 +2830,15 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
     try {
       if (kind === "google") await api.request("PUT", `${basePath}/auth/providers/google`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
       if (kind === "apple") await api.request("PUT", `${basePath}/auth/providers/apple`, { client_id: form.get("client_id"), team_id: form.get("team_id"), key_id: form.get("key_id"), private_key_pem: form.get("private_key_pem"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
+      if (kind === "microsoft") await api.request("PUT", `${basePath}/auth/providers/microsoft`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), tenant: form.get("tenant"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
+      if (kind === "facebook" || kind === "linkedin") await api.request("PUT", `${basePath}/auth/providers/${kind}`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
       if (kind === "smtp") await api.request("POST", `${basePath}/notification-providers`, { ...smtpProviderInput(form), inheritable: form.get("inheritable") === "on" });
       if (kind === "stripe") await api.request("POST", `${basePath}/billing/providers`, { provider: "stripe", secret: form.get("secret"), api_version: "2026-04-22.dahlia", inheritable: form.get("inheritable") === "on" });
       if (kind === "storage") await api.request("POST", `${basePath}/storage/providers`, storageProviderInput(form, scope));
       target.reset();
       setMessage(kind === "stripe"
         ? "Stripe provider saved. Copy the webhook endpoint below into Stripe, then save the signing secret Stripe returns."
-        : `${kind === "smtp" ? "SMTP" : kind === "storage" ? "S3-compatible storage" : `${titleCase(kind)} login`} provider saved at the ${scope} scope.`);
+        : `${kind === "smtp" ? "SMTP" : kind === "storage" ? "S3-compatible storage" : `${authProviderLabel(kind)} login`} provider saved at the ${scope} scope.`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
@@ -2921,7 +2923,7 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
         if (enabled || !(error instanceof Platform93Error) || error.problem.code !== "control_auth_confirmation_required" || !globalThis.confirm(`${error.problem.detail} Affected users: ${error.problem.affected_users ?? "unknown"}. Continue?`)) throw error;
         await api.request("PATCH", `${basePath}/auth/providers/${identity}`, { control_login_enabled: false, confirm_affected_users: true });
       }
-      setMessage(`${titleCase(identity)} ${enabled ? "can now" : "can no longer"} authenticate Platform users.`);
+      setMessage(`${authProviderLabel(identity)} ${enabled ? "can now" : "can no longer"} authenticate Platform users.`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
@@ -2935,6 +2937,9 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
       <section><header><span>01</span><div><h4>Authentication</h4><p>Social identity and account linking.</p></div></header><ProviderCards items={authProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("auth", item, value)} onToggleControlLogin={scope === "installation" ? (item, value) => void toggleControlLogin(item, value) : undefined} onDisable={(item) => void disable("auth", item)} />
         <details><summary>Configure Google</summary><ProviderCallbackBox provider="google" uri={providerCallbackURI("google")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "google")}><label>OAuth client ID<input required name="client_id" /></label><label>OAuth client secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "google" ? "Saving..." : "Save Google"}</button></form></details>
         <details><summary>Configure Apple</summary><ProviderCallbackBox provider="apple" uri={providerCallbackURI("apple")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "apple")}><label>Services ID / client ID<input required name="client_id" /></label><label>Team ID<input required name="team_id" /></label><label>Key ID<input required name="key_id" /></label><label>Sign in with Apple private key<textarea required name="private_key_pem" placeholder="-----BEGIN PRIVATE KEY-----" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "apple" ? "Saving..." : "Save Apple"}</button></form></details>
+        <details><summary>Configure Microsoft</summary><ProviderCallbackBox provider="microsoft" uri={providerCallbackURI("microsoft")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "microsoft")}><label>Application (client) ID<input required name="client_id" /></label><label>Client secret<input required name="client_secret" type="password" /></label><label>Tenant<input required name="tenant" list="microsoft-tenant-options" defaultValue="common" placeholder="common or tenant UUID" /><datalist id="microsoft-tenant-options"><option value="common" /><option value="organizations" /><option value="consumers" /></datalist><small>Use common, organizations, consumers, or an exact Microsoft Entra tenant UUID.</small></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "microsoft" ? "Saving..." : "Save Microsoft"}</button></form></details>
+        <details><summary>Configure Facebook</summary><ProviderCallbackBox provider="facebook" uri={providerCallbackURI("facebook")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "facebook")}><label>Facebook App ID<input required name="client_id" /></label><label>Facebook App secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "facebook" ? "Saving..." : "Save Facebook"}</button></form></details>
+        <details><summary>Configure LinkedIn</summary><ProviderCallbackBox provider="linkedin" uri={providerCallbackURI("linkedin")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "linkedin")}><label>LinkedIn client ID<input required name="client_id" /></label><label>LinkedIn client secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "linkedin" ? "Saving..." : "Save LinkedIn"}</button></form></details>
       </section>
       <section><header><span>02</span><div><h4>Email</h4><p>Transactional and security delivery.</p></div></header><ProviderCards items={smtpProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("notification", item, value)} onVerify={(item) => void verify("notification", item)} onDisable={(item) => void disable("notification", item)} />
         <details><summary>Configure SMTP</summary><form onSubmit={(event) => void submitProvider(event, "smtp")}><label>Name<input required name="name" defaultValue={`${scope} SMTP`} /></label><label>Host<input required name="host" /></label><div className="provider-form-row"><label>Port<input required name="port" type="number" defaultValue="587" /></label><label>TLS<select name="tls_mode" defaultValue="starttls"><option value="starttls">STARTTLS</option><option value="implicit_tls">Implicit TLS</option></select></label></div><label>Username<input name="username" /></label><label>Password<input name="password" type="password" /></label><label>Sender email<input required name="sender_email" type="email" /></label><label>Sender name<input name="sender_name" defaultValue="Platform93" /></label>{inheritanceField()}<button disabled={busy !== ""}>{busy === "smtp" ? "Saving..." : "Save SMTP"}</button></form></details>
@@ -2951,15 +2956,23 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
   </section>;
 }
 
-function ProviderCallbackBox({ provider, uri, setMessage }: { provider: "google" | "apple"; uri: string; setMessage: (value: string) => void }) {
+function ProviderCallbackBox({ provider, uri, setMessage }: { provider: AuthProviderKind; uri: string; setMessage: (value: string) => void }) {
+  const labels: Record<AuthProviderKind, { eyebrow: string; title: string; destination: string }> = {
+    google: { eyebrow: "AUTHORIZED REDIRECT URI", title: "Google OAuth callback", destination: "Google Cloud OAuth client" },
+    apple: { eyebrow: "RETURN URL", title: "Sign in with Apple callback", destination: "Apple Services ID website configuration" },
+    microsoft: { eyebrow: "REDIRECT URI", title: "Microsoft identity callback", destination: "Microsoft Entra app registration" },
+    facebook: { eyebrow: "VALID OAUTH REDIRECT URI", title: "Facebook Login callback", destination: "Facebook Login settings" },
+    linkedin: { eyebrow: "AUTHORIZED REDIRECT URL", title: "LinkedIn OIDC callback", destination: "LinkedIn application Auth settings" },
+  };
+  const label = labels[provider];
   return <CopyableEndpointBox
-    eyebrow={provider === "google" ? "AUTHORIZED REDIRECT URI" : "RETURN URL"}
-    title={provider === "google" ? "Google OAuth callback" : "Sign in with Apple callback"}
+    eyebrow={label.eyebrow}
+    title={label.title}
     value={uri}
     copyLabel="Copy URI"
-    copiedMessage={`${provider === "google" ? "Google authorized redirect URI" : "Apple return URL"} copied.`}
+    copiedMessage={`${authProviderLabel(provider)} callback URI copied.`}
     setMessage={setMessage}
-    description={`Add this exact installation-wide URL once in the ${provider === "google" ? "Google Cloud OAuth client" : "Apple Services ID website configuration"}. Inherited applications are resolved securely from the sign-in state.`}
+    description={`Add this exact installation-wide URL once in the ${label.destination}. Inherited applications are resolved securely from one-time state validated by Platform93.`}
   />;
 }
 
@@ -3114,7 +3127,7 @@ function providerDisplayName(kind: "auth" | "notification" | "billing" | "storag
   if (kind === "notification") return "SMTP";
   if (kind === "billing") return "Stripe";
   if (kind === "storage") return "Storage";
-  return `${titleCase(String(provider.provider))} login`;
+  return `${authProviderLabel(String(provider.provider))} login`;
 }
 
 function ControlTable({ title, items, renderActions }: { title: string; items: Record<string, unknown>[]; renderActions: (item: Record<string, unknown>) => ReactNode }) {
@@ -3142,6 +3155,17 @@ function toastBody(message: string) {
 
 function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function authProviderLabel(value: string) {
+  const labels: Record<string, string> = {
+    google: "Google",
+    apple: "Apple",
+    microsoft: "Microsoft",
+    facebook: "Facebook",
+    linkedin: "LinkedIn",
+  };
+  return labels[value] ?? titleCase(value);
 }
 
 function readError(error: unknown) {
