@@ -30,13 +30,15 @@ jobs:
   artifacts:
     needs: [verify, security, tag, image]
     runs-on: ubuntu-latest
-    permissions: { contents: write }
+    permissions: { contents: write, packages: read }
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@v5
         with: { go-version: "1.25.13", cache: true }
       - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
       - name: Generate source SBOM
         run: docker run --rm -v "$PWD:/repo" anchore/syft:v1.42.3 dir:/repo -o spdx-json > "$RUNNER_TEMP/platform93-source.spdx.json"
       - id: build-assets
@@ -57,8 +59,20 @@ jobs:
           mv "$RUNNER_TEMP/platform93-source.spdx.json" dist/platform93-source.spdx.json
           IMAGE="ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
           DIGEST="$(docker buildx imagetools inspect "$IMAGE" --format '{{json .Manifest.Digest}}' | tr -d '"')"
-          docker buildx imagetools inspect "$IMAGE" --format '{{json .Provenance}}' > dist/platform93-image-provenance.json
-          docker buildx imagetools inspect "$IMAGE" --format '{{json .SBOM}}' > dist/platform93-image.spdx.json
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Unable to resolve a valid OCI image digest for $IMAGE: ${DIGEST:-empty}." >&2
+            exit 1
+          fi
+          docker buildx imagetools inspect "$IMAGE" --format '{{json .Provenance}}' > dist/platform93-image-provenance-attestations.json
+          docker buildx imagetools inspect "$IMAGE" --format '{{json .SBOM}}' > dist/platform93-image-sbom-attestations.json
+          jq -e 'type == "object" and length > 0' dist/platform93-image-provenance-attestations.json >/dev/null || {
+            echo "OCI provenance attestation metadata is missing for $IMAGE." >&2
+            exit 1
+          }
+          jq -e 'type == "object" and length > 0' dist/platform93-image-sbom-attestations.json >/dev/null || {
+            echo "OCI SBOM attestation metadata is missing for $IMAGE." >&2
+            exit 1
+          }
           jq -n \
             --arg image "$IMAGE" \
             --arg digest "$DIGEST" \
@@ -66,7 +80,7 @@ jobs:
             --arg revision "$GITHUB_SHA" \
             --arg signature_identity "https://github.com/supaapps/platform93/.github/workflows/release.yml@refs/tags/$GITHUB_REF_NAME" \
             --arg oidc_issuer "https://token.actions.githubusercontent.com" \
-            '{image: $image, digest: $digest, reference: $reference, revision: $revision, signature: {identity: $signature_identity, oidc_issuer: $oidc_issuer}, attestations: {sbom: "platform93-image.spdx.json", provenance: "platform93-image-provenance.json"}}' \
+            '{image: $image, digest: $digest, reference: $reference, revision: $revision, signature: {identity: $signature_identity, oidc_issuer: $oidc_issuer}, attestation_metadata: {sbom: "platform93-image-sbom-attestations.json", provenance: "platform93-image-provenance-attestations.json"}}' \
             > dist/platform93-oci.json
           (
             cd dist
@@ -153,7 +167,12 @@ jobs:
         run: |
           IMAGE="ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
           EXPECTED="Platform93 ${{ steps.build-info.outputs.version }} (${GITHUB_SHA}, ${{ steps.build-info.outputs.date }})"
-          test "$(docker run --rm "$IMAGE" version)" = "$EXPECTED"
+          ACTUAL="$(docker run --rm "$IMAGE" version)"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "Image build metadata does not match the tagged commit." >&2
+            printf 'Expected: %s\nActual:   %s\n' "$EXPECTED" "$ACTUAL" >&2
+            exit 1
+          fi
       - uses: sigstore/cosign-installer@v3
       - run: |
           IMAGE="ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
