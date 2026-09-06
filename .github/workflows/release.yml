@@ -40,7 +40,7 @@ jobs:
       - uses: docker/login-action@v3
         with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
       - name: Generate source SBOM
-        run: docker run --rm -v "$PWD:/repo" anchore/syft:v1.42.3 dir:/repo -o spdx-json > "$RUNNER_TEMP/platform93-source.spdx.json"
+        run: docker run --rm -v "$PWD:/repo" anchore/syft:v1.42.3@sha256:5999d209a342e55e9edf70bf8930fb5b86d8f2a783fa401178372c50e21b1d36 dir:/repo -o spdx-json > "$RUNNER_TEMP/platform93-source.spdx.json"
       - id: build-assets
         env:
           GH_TOKEN: ${{ github.token }}
