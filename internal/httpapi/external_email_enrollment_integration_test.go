@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -9,6 +11,8 @@ import (
 
 	"github.com/supaapps/platform93/internal/database"
 	"github.com/supaapps/platform93/internal/kernel"
+	"github.com/supaapps/platform93/internal/platform"
+	"github.com/supaapps/platform93/internal/secure"
 )
 
 func TestExternalEmailEnrollmentResendCooldownIsAtomic(t *testing.T) {
@@ -26,7 +30,12 @@ func TestExternalEmailEnrollmentResendCooldownIsAtomic(t *testing.T) {
 	defer db.Close()
 
 	organizationID, applicationID, providerID, enrollmentID := kernel.NewID(), kernel.NewID(), kernel.NewID(), kernel.NewID()
-	credentialDigest := []byte("external-email-enrollment-credential-" + enrollmentID.String())
+	vault, err := secure.NewVault(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential := "enrollment-credential-" + enrollmentID.String()
+	credentialDigest := vault.Digest(credential)
 	if _, err = db.Exec(context.Background(), `INSERT INTO organizations(id,name,slug) VALUES($1,'Enrollment cooldown',$2)`, organizationID, "enrollment-cooldown-"+enrollmentID.String()); err != nil {
 		t.Fatal(err)
 	}
@@ -90,5 +99,31 @@ VALUES($1,$2,$3,'microsoft',$4,'https://app.example/auth/callback',$5,$6,now()+i
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("concurrent reservation remained blocked after the first transaction committed")
+	}
+	if err = second.Rollback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = db.Exec(context.Background(), `UPDATE external_auth_email_enrollments
+	SET attempts=20,pkce_verified_at=now(),normalized_email='user@example.test',code_digest=$2
+	WHERE id=$1`, enrollmentID, vault.Digest("VALID123")); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{app: platform.New(db, vault, "https://platform93.test")}
+	request := requestWithRoute(t, http.MethodPost, "/", map[string]any{
+		"enrollment": enrollmentID.String() + ":" + credential,
+		"code":       "WRONG123",
+	}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{})
+	response := httptest.NewRecorder()
+	server.verifyExternalEmailEnrollment(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid verification returned %d: %s", response.Code, response.Body.String())
+	}
+	var attempts int
+	if err = db.QueryRow(context.Background(), `SELECT attempts FROM external_auth_email_enrollments WHERE id=$1`, enrollmentID).Scan(&attempts); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 20 {
+		t.Fatalf("attempts = %d, want the database maximum 20", attempts)
 	}
 }

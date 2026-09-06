@@ -176,7 +176,7 @@ FROM external_auth_email_enrollments WHERE id=$1 AND application_id=$2 AND crede
 		(request.LinkToken != "" && equalBytes(linkDigest, s.app.Vault.Digest(request.LinkToken))))
 	if !valid {
 		if err == nil {
-			_, _ = tx.Exec(r.Context(), `UPDATE external_auth_email_enrollments SET attempts=attempts+1 WHERE id=$1`, parts[0])
+			_, _ = tx.Exec(r.Context(), `UPDATE external_auth_email_enrollments SET attempts=LEAST(attempts+1,20) WHERE id=$1`, parts[0])
 			_ = tx.Commit(r.Context())
 		}
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_external_email_verification", "The email verification credential is invalid or expired.")
