@@ -57,6 +57,12 @@ jobs:
           cp schemas/events/*.schema.json dist/
           cp deploy/compose/compose.yaml dist/platform93-compose.yaml
           mv "$RUNNER_TEMP/platform93-source.spdx.json" dist/platform93-source.spdx.json
+          SPDX_CREATED="$(date --utc --date="@$(git show -s --format=%ct "$GITHUB_SHA")" '+%Y-%m-%dT%H:%M:%SZ')"
+          SPDX_NAMESPACE="https://github.com/supaapps/platform93/releases/tag/$GITHUB_REF_NAME/platform93-source.spdx.json"
+          jq --arg created "$SPDX_CREATED" --arg namespace "$SPDX_NAMESPACE" \
+            '.creationInfo.created = $created | .documentNamespace = $namespace' \
+            dist/platform93-source.spdx.json > "$RUNNER_TEMP/platform93-source-normalized.spdx.json"
+          mv "$RUNNER_TEMP/platform93-source-normalized.spdx.json" dist/platform93-source.spdx.json
           jq -e '(.spdxVersion | type == "string" and startswith("SPDX-")) and (.SPDXID == "SPDXRef-DOCUMENT") and (.packages | type == "array")' dist/platform93-source.spdx.json >/dev/null || {
             echo "The generated source SPDX document is missing or invalid." >&2
             exit 1
