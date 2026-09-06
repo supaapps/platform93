@@ -220,6 +220,14 @@ test("untrusted provider signup keeps email completion bound to the original PKC
   assert.equal(calls[2][1].code, "ABCD2345");
 });
 
+test("external email link verification requires an explicit URL outside browsers", () => {
+  const auth = new Platform93Auth({ baseUrl: "https://platform93.test", applicationId: "application", channelName: false });
+  assert.throws(
+    () => auth.verifyExternalEmailEnrollmentLink({ kind: "email_verification_required", provider: "microsoft", enrollment: "enrollment-id:credential" }),
+    /requires an explicit link URL outside a browser/,
+  );
+});
+
 test("access token retrieval refreshes only when the current token expires", async () => {
   let refreshes = 0;
   const store = new MemoryTokenStore();

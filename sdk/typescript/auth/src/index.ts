@@ -289,8 +289,10 @@ export class Platform93Auth extends EventTarget {
     this.removeAuthorizationVerifier("enrollment", continuation.enrollment);
     return result;
   }
-  verifyExternalEmailEnrollmentLink(continuation: ExternalEmailEnrollmentContinuation, input: string | URL = globalThis.location.href) {
-    const link = input instanceof URL ? input : new URL(input, globalThis.location?.origin);
+  verifyExternalEmailEnrollmentLink(continuation: ExternalEmailEnrollmentContinuation, input?: string | URL) {
+    const source = input ?? globalThis.location?.href;
+    if (!source) throw new Error("Platform93 external email verification requires an explicit link URL outside a browser");
+    const link = source instanceof URL ? source : new URL(source, globalThis.location?.origin);
     const enrollment = link.searchParams.get("external_auth_email_enrollment");
     const linkToken = link.searchParams.get("external_auth_email_link");
     if (enrollment !== continuation.enrollment || !linkToken) throw new Error("Platform93 external email link is missing or has the wrong enrollment context");

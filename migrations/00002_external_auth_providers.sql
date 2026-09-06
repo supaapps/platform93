@@ -103,6 +103,8 @@ DROP TABLE IF EXISTS external_auth_email_enrollments;
 ALTER TABLE external_auth_exchanges DROP CONSTRAINT IF EXISTS external_auth_exchanges_code_challenge_check;
 ALTER TABLE external_auth_exchanges DROP COLUMN IF EXISTS code_challenge;
 
+DELETE FROM external_auth_challenges
+WHERE provider IN ('microsoft', 'facebook', 'linkedin') OR flow = 'invitation';
 ALTER TABLE external_auth_challenges DROP CONSTRAINT IF EXISTS external_auth_challenges_code_challenge_check;
 ALTER TABLE external_auth_challenges DROP CONSTRAINT external_auth_challenges_flow_check;
 ALTER TABLE external_auth_challenges ADD CONSTRAINT external_auth_challenges_flow_check
@@ -111,8 +113,24 @@ ALTER TABLE external_auth_challenges DROP COLUMN IF EXISTS code_challenge;
 ALTER TABLE external_auth_challenges DROP COLUMN IF EXISTS invitation_id;
 ALTER TABLE external_auth_challenges DROP COLUMN IF EXISTS auth_provider_config_id;
 
+DELETE FROM application_invitations
+WHERE onboarding_method IN ('microsoft', 'facebook', 'linkedin');
 ALTER TABLE application_invitations DROP CONSTRAINT IF EXISTS application_invitations_method_check;
 ALTER TABLE application_invitations DROP COLUMN IF EXISTS onboarding_method;
+
+-- The previous schema cannot represent identities or invitations for these providers.
+DELETE FROM control_user_external_auth_challenges
+WHERE provider IN ('microsoft', 'facebook', 'linkedin')
+   OR auth_provider_config_id IN (SELECT id FROM auth_provider_configs WHERE provider IN ('microsoft', 'facebook', 'linkedin'));
+DELETE FROM control_user_identities
+WHERE provider IN ('microsoft', 'facebook', 'linkedin')
+   OR auth_provider_config_id IN (SELECT id FROM auth_provider_configs WHERE provider IN ('microsoft', 'facebook', 'linkedin'));
+DELETE FROM control_user_invitations
+WHERE onboarding_method IN ('microsoft', 'facebook', 'linkedin');
+DELETE FROM user_identities
+WHERE provider IN ('microsoft', 'facebook', 'linkedin');
+DELETE FROM auth_provider_configs
+WHERE provider IN ('microsoft', 'facebook', 'linkedin');
 
 ALTER TABLE control_user_invitations DROP CONSTRAINT control_user_invitations_method_check;
 ALTER TABLE control_user_invitations ADD CONSTRAINT control_user_invitations_method_check
