@@ -42,6 +42,8 @@ pass/fail outcome. Fix product defects on a normal branch and issue another RC t
 Infrastructure-only reruns reuse the same tag and verify existing artifact integrity.
 
 The stable tag may point to the accepted RC commit only after every artifact can be
-clean-installed and the real-provider checklist is complete. The workflow moves npm
-`latest` only after npm, PyPI, Composer source tags, GHCR image, Helm chart, checksums,
-SBOM/provenance, signatures, and GitHub release assets are all available.
+clean-installed and the real-provider checklist is complete. Stable npm packages publish
+directly to `latest` because npm trusted-publisher credentials authorize `npm publish` but
+not a later `npm dist-tag` command. The workflow publishes the GitHub release only after
+npm, PyPI, Composer source tags, GHCR image, Helm chart, checksums, SBOM/provenance,
+signatures, and GitHub release assets are all available.

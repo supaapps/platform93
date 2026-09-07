@@ -191,7 +191,7 @@ jobs:
       - run: docker run --rm aquasec/trivy:0.61.1 image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
 
   npm:
-    needs: [verify, security, tag]
+    needs: [artifacts, image, pypi, helm]
     runs-on: ubuntu-latest
     environment: npm
     permissions: { contents: read, id-token: write }
@@ -204,7 +204,7 @@ jobs:
       - run: pnpm install --frozen-lockfile && pnpm build:packages
       - run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          PUBLISH_TAG="next"
+          PUBLISH_TAG="latest"
           if [[ "$VERSION" == *-* ]]; then
             PUBLISH_TAG="${VERSION#*-}"
             PUBLISH_TAG="${PUBLISH_TAG%%.*}"
@@ -306,13 +306,6 @@ jobs:
           crane manifest "ghcr.io/supaapps/platform93:${VERSION}" >/dev/null
           gh release download "$GITHUB_REF_NAME" --dir /tmp/release
           (cd /tmp/release && sha256sum --check SHA256SUMS)
-          if [[ "$VERSION" != *-* ]]; then
-            for PACKAGE in sdk auth expo react server events; do
-              NAME="@supaapps/platform93-${PACKAGE}"
-              if [[ "$PACKAGE" = sdk ]]; then NAME="@supaapps/platform93-sdk"; fi
-              npm dist-tag add "${NAME}@${VERSION}" latest
-            done
-          fi
           if [[ "$VERSION" == *-* ]]; then
             gh release edit "$GITHUB_REF_NAME" --draft=false --prerelease
           else
