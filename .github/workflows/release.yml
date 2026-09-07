@@ -191,7 +191,7 @@ jobs:
       - run: docker run --rm aquasec/trivy:0.61.1 image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "ghcr.io/supaapps/platform93:${GITHUB_REF_NAME#v}"
 
   npm:
-    needs: [verify, security, tag]
+    needs: [artifacts, image, pypi, helm]
     runs-on: ubuntu-latest
     environment: npm
     permissions: { contents: read, id-token: write }
