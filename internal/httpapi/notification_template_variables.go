@@ -68,7 +68,7 @@ func effectiveNotificationTemplateProperties(schema map[string]any) map[string]a
 }
 
 func mergeNotificationTemplateVariables(supplied, resolved map[string]any) map[string]any {
-	variables := make(map[string]any, len(supplied)+len(resolved))
+	variables := make(map[string]any)
 	reserved := builtInNotificationTemplateProperties()
 	for key, value := range supplied {
 		if _, builtIn := reserved[key]; !builtIn {
@@ -158,7 +158,7 @@ func stringWithFallback(value, fallback string) string {
 }
 
 func sampleNotificationTemplateVariables(variables map[string]any) map[string]any {
-	preview := make(map[string]any, len(variables)+len(notificationTemplateVariableCatalog()))
+	preview := make(map[string]any)
 	for key, value := range variables {
 		preview[key] = value
 	}

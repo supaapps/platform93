@@ -99,6 +99,23 @@ func TestNotificationTemplateBuiltInsCannotBeRedeclaredOrSpoofed(t *testing.T) {
 	}
 }
 
+func TestNotificationTemplateVariableCopiesPreserveInput(t *testing.T) {
+	supplied := map[string]any{"order_number": "A-1", "first_name": "Ada"}
+	merged := mergeNotificationTemplateVariables(supplied, map[string]any{"first_name": "Grace"})
+	merged["order_number"] = "A-2"
+	preview := sampleNotificationTemplateVariables(supplied)
+	preview["order_number"] = "A-3"
+	if supplied["order_number"] != "A-1" || supplied["first_name"] != "Ada" {
+		t.Fatal("template variable helpers mutated the caller's variables")
+	}
+	if preview["first_name"] != "Ada" || preview["last_name"] == nil {
+		t.Fatal("preview did not preserve supplied values and fill absent user samples")
+	}
+	if len(mergeNotificationTemplateVariables(nil, nil)) != 0 {
+		t.Fatal("nil inputs must yield an empty render context")
+	}
+}
+
 func TestNotificationTemplateCatalogSamplesMatchDeclaredTypes(t *testing.T) {
 	variables := map[string]any{}
 	for _, definition := range notificationTemplateVariableCatalog() {
