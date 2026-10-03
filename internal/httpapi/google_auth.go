@@ -296,7 +296,7 @@ WHERE application_id=$1 AND provider=$2 AND provider_subject=$3`, chi.URLParam(r
 		}
 		userID = *requestedBy
 		_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata)
-VALUES ($1,$2,$3,$4,$5,jsonb_build_object('email',$6))`, kernel.NewID(), chi.URLParam(r, "application_id"), userID, provider, subject, normalized)
+VALUES ($1,$2,$3,$4,$5,jsonb_build_object('email',$6::text))`, kernel.NewID(), chi.URLParam(r, "application_id"), userID, provider, subject, normalized)
 	} else {
 		if !strings.Contains(normalized, "@") {
 			return "", fmt.Errorf("provider_email_verification_required")
@@ -319,7 +319,7 @@ VALUES ($1,$2,$3,$4,$5,jsonb_build_object('email',$6))`, kernel.NewID(), chi.URL
 			userID, chi.URLParam(r, "application_id"), email, normalized, firstName, lastName)
 		if err == nil {
 			_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata)
-VALUES ($1,$2,$3,$4,$5,jsonb_build_object('email',$6))`, kernel.NewID(), chi.URLParam(r, "application_id"), userID, provider, subject, normalized)
+VALUES ($1,$2,$3,$4,$5,jsonb_build_object('email',$6::text))`, kernel.NewID(), chi.URLParam(r, "application_id"), userID, provider, subject, normalized)
 		}
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
