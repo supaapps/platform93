@@ -3,6 +3,8 @@ import { startTransition, useEffect, useRef, useState, type FormEvent, type Reac
 import { Platform93Client, Platform93Error } from "@supaapps/platform93-sdk";
 import DOMPurify from "dompurify";
 import Papa from "papaparse";
+import { followRoute, navigate, rememberDestination, restoreDestination, routeHref, sectionKey, useAdminRoute } from "./navigation";
+import { ProviderIcon } from "./provider-icon";
 
 type Organization = { id: string; name: string; slug: string; role: string; version?: number; retired_at?: string | null };
 type Application = {
@@ -213,6 +215,7 @@ function NetworkActivity() {
 }
 
 function PlatformAdmin() {
+  const route = useAdminRoute();
   const [setup, setSetup] = useState<boolean | null>(null);
   const [controlAuthMethods, setControlAuthMethods] = useState<ControlAuthMethods>({ email_code: false, magic_link: false, password: true, providers: [] });
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -223,7 +226,31 @@ function PlatformAdmin() {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [application, setApplication] = useState<Application | null>(null);
   const [message, setMessage] = useState("");
-  const [accountOpen, setAccountOpen] = useState(false);
+  const accountOpen = route.panel === "account";
+  useEffect(() => {
+    if (needsLogin || setup !== false || installationRole === undefined) return;
+    const fallbackOrganization = installationRole ? null : organizations.find((item) => !item.retired_at) ?? null;
+    let selectedApplication = route.context === "application" ? applications.find((item) => item.id === route.application_id && !item.retired_at) ?? null : null;
+    let selectedOrganization = route.context === "organization"
+      ? organizations.find((item) => item.id === route.organization_id && !item.retired_at) ?? null
+      : selectedApplication ? organizations.find((item) => item.id === selectedApplication?.organization_id) ?? null : fallbackOrganization;
+    const unavailable = Boolean(route.context && !["application", "organization", "platform"].includes(route.context)) || (route.context === "application" && !selectedApplication) || (route.context === "organization" && !selectedOrganization) || (route.context === "platform" && !installationRole);
+    if (unavailable) {
+      selectedApplication = null;
+      selectedOrganization = fallbackOrganization;
+      setMessage(`${errorMessagePrefix}This destination is unavailable or you do not have access. Returned to your accessible overview.`);
+    }
+    const modules = selectedApplication ? applicationModules : selectedOrganization ? organizationModules : platformModules;
+    const sectionModule = modules.find((item) => sectionKey(item.label) === route.section);
+    const invalidSection = Boolean(route.section && !sectionModule);
+    if (invalidSection && !unavailable) setMessage(`${errorMessagePrefix}This section is unavailable in the selected context. Returned to its overview.`);
+    const selectedSection = unavailable ? "Overview" : sectionModule?.label ?? "Overview";
+    setApplication(selectedApplication);
+    setOrganization(selectedOrganization);
+    setSection(selectedSection);
+    const context = selectedApplication ? "application" : selectedOrganization ? "organization" : "platform";
+    navigate({ context, application_id: selectedApplication?.id, organization_id: selectedOrganization?.id, section: sectionKey(selectedSection), ...(unavailable || invalidSection ? { resource: undefined, id: undefined, panel: undefined } : {}) }, false, true);
+  }, [route.context, route.organization_id, route.application_id, route.section, route.panel, applications, organizations, installationRole, needsLogin, setup]);
   const loadOrganizationsRef = useRef<() => Promise<void>>(async () => undefined);
   useEffect(() => {
     loadOrganizationsRef.current = loadOrganizations;
@@ -280,6 +307,7 @@ function PlatformAdmin() {
         }),
       );
       const loadedApplications = applicationPages.flat();
+      restoreDestination();
       const inferredInstallationRole = value.items
         .find((item) => item.role.startsWith("installation:"))?.role.slice("installation:".length) as OrganizationPage["installation_role"];
       const effectiveInstallationRole = value.installation_role !== undefined
@@ -349,6 +377,8 @@ function PlatformAdmin() {
       setApplication(selected ?? null);
     }
     setSection("Overview");
+    const [context, id] = value.split(":");
+    navigate({ context, organization_id: context === "organization" ? id : applications.find((item) => item.id === id)?.organization_id, application_id: context === "application" ? id : undefined, section: "overview" }, true);
   }
   function goToHighestHome() {
     if (installationRole) {
@@ -361,12 +391,13 @@ function PlatformAdmin() {
   async function logout() {
     try {
       await api.request("POST", "/v1/control/auth/logout", {});
-      setAccountOpen(false);
       setOrganization(null);
       setApplication(null);
       setOrganizations([]);
       setApplications([]);
       setInstallationRole(undefined);
+      sessionStorage.removeItem("p93_admin_destination");
+      navigate({}, true, true);
       setNeedsLogin(true);
     } catch (error) {
       setMessage(readError(error));
@@ -399,14 +430,15 @@ function PlatformAdmin() {
             <div className="nav-group" key={group}>
               <span>{group}</span>
               {contextModules.filter((item) => item.group === group).map((item) => (
-                <button
+                <a
                   className={item.label === section ? "active" : ""}
                   key={item.label}
-                  onClick={() => setSection(item.label)}
+                  href={routeHref({ section: sectionKey(item.label), resource: undefined, id: undefined, panel: undefined })}
+                  onClick={(event) => followRoute(event, { section: sectionKey(item.label), resource: undefined, id: undefined, panel: undefined })}
                 >
                   <i />
                   {item.label}
-                </button>
+                </a>
               ))}
             </div>
           ))}
@@ -414,7 +446,7 @@ function PlatformAdmin() {
         <div className="aside-foot">
           <div><span className="status-dot" />System connected</div>
           <div className="account-actions">
-            <button onClick={() => setAccountOpen(true)}>Account</button>
+            <a href={routeHref({ panel: "account" })} onClick={(event) => followRoute(event, { panel: "account" })}>Account</a>
             <button onClick={() => void logout()}>Log out</button>
           </div>
         </div>
@@ -436,8 +468,8 @@ function PlatformAdmin() {
             applications={applications}
             organization={organization}
             application={application}
-            setOrganization={setOrganization}
-            setApplication={setApplication}
+            setOrganization={(value) => { setOrganization(value); if (value?.id !== organization?.id) selectContext(value ? `organization:${value.id}` : "platform"); }}
+            setApplication={(value) => { setApplication(value); if (value?.id !== application?.id) navigate({ context: value ? "application" : organization ? "organization" : "platform", application_id: value?.id, organization_id: value?.organization_id ?? organization?.id, section: "overview" }, true); }}
             setOrganizations={setOrganizations}
             setApplications={setApplications}
             reloadBoundaries={loadOrganizations}
@@ -446,13 +478,13 @@ function PlatformAdmin() {
         </div>
       </main>
       {accountOpen && <ControlUserAccountPanel
-        onClose={() => setAccountOpen(false)}
+        onClose={() => navigate({ panel: undefined })}
         onLogout={() => void logout()}
         onOpenSessions={() => {
-          setAccountOpen(false);
           setApplication(null);
           if (installationRole) setOrganization(null);
           setSection("Sessions");
+          navigate({ context: installationRole ? "platform" : "organization", organization_id: installationRole ? undefined : organization?.id, section: "sessions" }, true);
         }}
         setMessage={setMessage}
       />}
@@ -595,6 +627,7 @@ function Setup({ onComplete }: { onComplete: () => void }) {
 }
 
 function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods; onComplete: () => void }) {
+  useEffect(() => { rememberDestination(); }, []);
   const [challenge, setChallenge] = useState("");
   const emailAvailable = methods.email_code || methods.magic_link;
   const [method, setMethod] = useState<"email" | "password">(emailAvailable ? "email" : "password");
@@ -719,6 +752,7 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
   }
   async function startProvider(provider: string, invitation = false) {
     setBusy(true);
+    rememberDestination();
     try {
       const result = await api.request<{ authorize_url: string }>(
         "POST",
@@ -773,7 +807,7 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
           <label>Password<input required name="password" type="password" minLength={12} autoComplete="current-password" /></label>
           <button disabled={busy}>{busy ? "Working..." : "Sign in with password"}</button>
         </form>}
-        {methods.providers.length > 0 && <div className="external-login-options"><span>Or continue with</span>{methods.providers.map((provider) => <button type="button" disabled={busy} key={provider} onClick={() => void startProvider(provider)}>{authProviderLabel(provider)}</button>)}</div>}
+        {methods.providers.length > 0 && <div className="external-login-options"><span>Or continue with</span>{methods.providers.map((provider) => <button type="button" disabled={busy} key={provider} onClick={() => void startProvider(provider)}><ProviderIcon provider={provider} />{authProviderLabel(provider)}</button>)}</div>}
         <div className="login-alternatives">
           {emailAvailable && methods.password && <button type="button" disabled={busy} onClick={() => setMethod(method === "email" ? "password" : "email")}>{method === "email" ? "Use password instead" : "Use an email code or link"}</button>}
           {emailAvailable && methods.password && <span aria-hidden="true">·</span>}
@@ -790,7 +824,7 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
             <label>Display name<input name="display_name" autoComplete="name" /></label>
             <button disabled={busy || !invitationToken}>{busy ? "Working..." : "Accept with email"}</button>
           </form>}
-          {invitationRequiresProvider && <div className="external-login-options"><span>Provider invitation</span><button type="button" disabled={busy || !invitationToken || !invitationProviderAvailable} onClick={() => void startProvider(invitationMethod, true)}>Accept with {authProviderLabel(invitationMethod)}</button>{!invitationProviderAvailable && <p className="error">This invitation requires {authProviderLabel(invitationMethod)}, but that sign-in provider is currently unavailable. Ask an administrator to enable it or resend the invitation with another onboarding method.</p>}</div>}
+          {invitationRequiresProvider && <div className="external-login-options"><span>Provider invitation</span><button type="button" disabled={busy || !invitationToken || !invitationProviderAvailable} onClick={() => void startProvider(invitationMethod, true)}><ProviderIcon provider={invitationMethod} />Accept with {authProviderLabel(invitationMethod)}</button>{!invitationProviderAvailable && <p className="error">This invitation requires {authProviderLabel(invitationMethod)}, but that sign-in provider is currently unavailable. Ask an administrator to enable it or resend the invitation with another onboarding method.</p>}</div>}
           <div className="login-alternatives"><button type="button" disabled={busy} onClick={() => selectAccessPath("sign-in")}>Back to Platform user sign-in</button></div>
         </div>}
         </>}
@@ -846,6 +880,7 @@ function ControlUserAccountPanel({ onClose, onLogout, onOpenSessions, setMessage
   }
   async function linkIdentity(provider: string) {
     setBusy(`link-${provider}`);
+    rememberDestination();
     try {
       const result = await api.request<{ authorize_url: string }>("POST", `/v1/control/auth/providers/${provider}/link`, {});
       location.assign(result.authorize_url);
@@ -919,11 +954,34 @@ function Workspace({
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(false);
   const sectionResources = resources[section] ?? [];
-  const [resourcePath, setResourcePath] = useState("");
+  const route = useAdminRoute();
+  const resourcePath = route.resource ?? "";
   const [refresh, setRefresh] = useState(0);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [boundaryAction, setBoundaryAction] = useState("");
   const selectedResource = sectionResources.find((item) => item.path === resourcePath) ?? sectionResources[0];
+  useEffect(() => {
+    if (!application || !selectedResource) return;
+    if (route.resource !== selectedResource.path) {
+      if (route.resource) setMessage(`${errorMessagePrefix}This resource tab is unavailable. Returned to ${selectedResource.label.toLowerCase()}.`);
+      navigate({ resource: selectedResource.path, id: undefined }, false, true);
+    }
+  }, [application, selectedResource, route.resource, setMessage]);
+  useEffect(() => {
+    setDetail(null);
+    if (!application || !selectedResource || !route.id) return;
+    const path = resourceDetailPath(selectedResource.path, route.id);
+    if (!path) {
+      setMessage(`${errorMessagePrefix}This resource has no detail view.`);
+      navigate({ id: undefined }, false, true);
+      return;
+    }
+    let current = true;
+    api.request<Record<string, unknown>>("GET", `/v1/control/applications/${application.id}/${path}`)
+      .then((value) => { if (current) setDetail(value); })
+      .catch((error) => { if (current) { setMessage(readError(error)); navigate({ id: undefined }, false, true); } });
+    return () => { current = false; };
+  }, [application, selectedResource, route.id, refresh, setMessage]);
   useEffect(() => {
     if (!application) {
       setItems([]);
@@ -948,18 +1006,11 @@ function Workspace({
     const resourceID = selectedResource.path === "clients" ? String(item.client_id ?? "") : String(item.id ?? "");
     const path = resourceDetailPath(selectedResource.path, resourceID);
     if (!path) return;
-    try {
-      const value = await api.request<Record<string, unknown>>("GET", `/v1/control/applications/${application.id}/${path}`);
-      setDetail(value);
-      const query = new URLSearchParams(location.search);
-      query.set("resource", selectedResource.path);
-      query.set("id", String(item.id));
-      history.replaceState(null, "", `${location.pathname}?${query}`);
-    } catch (error) { setMessage(readError(error)); }
+    navigate({ resource: selectedResource.path, id: resourceID });
   }
   function closeDetail() {
     setDetail(null);
-    history.replaceState(null, "", location.pathname);
+    navigate({ id: undefined });
   }
   async function setOrganizationRetirement(org: Organization, restore: boolean) {
     const actionKey = `${restore ? "restore" : "archive"}-${org.id}`;
@@ -1026,7 +1077,7 @@ function Workspace({
                   <h3>{org.name}</h3>
                   <p>{org.slug}</p>
                   <ActionGroup label={`${org.name} organization actions`} className="card-actions">
-                    {!org.retired_at && <IconButton label={`Open ${org.name}`} icon="open" disabled={boundaryAction !== ""} onClick={() => setOrganization(org)} />}
+                    {!org.retired_at && <IconButton label={`Open ${org.name}`} icon="open" href={routeHref({ context: "organization", organization_id: org.id, section: "overview" }, true)} disabled={boundaryAction !== ""} onClick={() => setOrganization(org)} />}
                     {org.retired_at
                       ? <IconButton label={`Restore ${org.name}`} icon="restore" loading={boundaryAction === `restore-${org.id}`} disabled={boundaryAction !== ""} onClick={() => void setOrganizationRetirement(org, true)} />
                       : <IconButton label={`Retire ${org.name}`} icon="archive" tone="danger" loading={boundaryAction === `archive-${org.id}`} disabled={boundaryAction !== ""} onClick={() => void setOrganizationRetirement(org, false)} />}
@@ -1053,9 +1104,9 @@ function Workspace({
     <>
       <div className="resource-tabs">
         {sectionResources.map((resource) => (
-          <button className={resource.path === selectedResource.path ? "active" : ""} key={resource.path} onClick={() => setResourcePath(resource.path)}>
+          <a className={resource.path === selectedResource.path ? "active" : ""} key={resource.path} href={routeHref({ resource: resource.path, id: undefined })} onClick={(event) => followRoute(event, { resource: resource.path, id: undefined })}>
             {resource.label}
-          </button>
+          </a>
         ))}
       </div>
       <div className="resource-view" key={selectedResource.path}>
@@ -1071,7 +1122,7 @@ function Workspace({
             <ResourceRow key={String(item.id ?? index)} item={item} resource={selectedResource.path} application={application} setMessage={setMessage} onInspect={() => inspect(item)} onChanged={() => setRefresh((value) => value + 1)} />
           ))}
         </section>
-        {detail && <DetailPanel detail={detail} resource={selectedResource.path} application={application} setMessage={setMessage} onClose={closeDetail} onChanged={() => { setRefresh((value) => value + 1); void inspect(detail); }} />}
+        {detail && <DetailPanel detail={detail} resource={selectedResource.path} application={application} setMessage={setMessage} onClose={closeDetail} onChanged={() => setRefresh((value) => value + 1)} />}
       </div>
     </>
   );
@@ -1188,7 +1239,7 @@ function ResourceRow({ item, resource, application, setMessage, onInspect, onCha
   const detail = resource === "notification-templates"
     ? `${String(item.status ?? "")} · ${String(item.scope ?? "application")}${item.inherited ? " · inherited" : ""}`
     : String(item.status ?? item.scope ?? item.type ?? item.currency ?? "");
-  return <article><div><strong>{title}</strong><small>{detail}</small></div><div className="row-actions">{resourceDetailPath(resource, id) && <IconButton label="Details" icon="details" loading={pendingAction === "Details"} disabled={pendingAction !== ""} onClick={() => void inspect()} />}{actions.map((action) => action.icon
+  return <article><div><strong>{title}</strong><small>{detail}</small></div><div className="row-actions">{resourceDetailPath(resource, id) && <IconButton label="Details" icon="details" href={routeHref({ resource, id: resource === "clients" ? String(item.client_id) : id })} loading={pendingAction === "Details"} disabled={pendingAction !== ""} onClick={() => void inspect()} />}{actions.map((action) => action.icon
     ? <IconButton key={action.label} label={action.label} icon={action.icon} tone={action.tone} loading={pendingAction === action.label} disabled={pendingAction !== ""} onClick={() => void act(action)} />
     : <button disabled={pendingAction !== ""} key={action.label} onClick={() => void act(action)}>{pendingAction === action.label ? `${action.label}...` : action.label}</button>)}<code>{id}</code></div></article>;
 }
@@ -1223,14 +1274,21 @@ function AdminIcon({ name }: { name: AdminIconName }) {
   return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
-function IconButton({ label, icon, loading = false, tone = "default", disabled = false, onClick }: {
+function IconButton({ label, icon, loading = false, tone = "default", disabled = false, onClick, href }: {
   label: string;
   icon: AdminIconName;
   loading?: boolean;
   tone?: "default" | "danger" | "success";
   disabled?: boolean;
   onClick: () => void;
+  href?: string;
 }) {
+  if (href) return <a href={href} className={`icon-button ${tone === "default" ? "" : tone}`.trim()} aria-label={label} title={label} data-tooltip={label} aria-disabled={disabled || loading} onClick={(event) => {
+    if (disabled || loading) { event.preventDefault(); return; }
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    onClick();
+  }}><AdminIcon name={icon} /></a>;
   return <button
     type="button"
     className={`icon-button ${tone === "default" ? "" : tone}`.trim()}
@@ -1265,7 +1323,7 @@ function resourceDetailPath(resource: string, id: string) {
     "billing/subscriptions", "billing/invoices", "billing/payments", "billing/refunds",
     "billing/disputes", "billing/reconciliation-runs",
   ]);
-  return id && supported.has(resource) ? `${resource}/${id}` : null;
+  return id && supported.has(resource) ? `${resource}/${encodeURIComponent(id)}` : null;
 }
 
 function DetailPanel({ detail, resource, application, setMessage, onClose, onChanged }: {
@@ -2209,6 +2267,7 @@ function Dashboard({ application }: { application: Application }) {
 }
 
 function ApplicationSettings({ application, setMessage, onChanged }: { application: Application; setMessage: (value: string) => void; onChanged: (application: Application) => void }) {
+  const route = useAdminRoute();
   const [current, setCurrent] = useState<Application | null>(null);
   const [renaming, setRenaming] = useState(false);
   useEffect(() => {
@@ -2223,6 +2282,9 @@ function ApplicationSettings({ application, setMessage, onChanged }: { applicati
     setCurrent(updated);
     onChanged(updated);
   }
+  useEffect(() => {
+    if (current && route.panel?.startsWith("settings-")) document.getElementById(route.panel)?.scrollIntoView({ block: "start" });
+  }, [current, route.panel]);
   async function rename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!current?.organization_id) return;
@@ -2241,7 +2303,8 @@ function ApplicationSettings({ application, setMessage, onChanged }: { applicati
   if (!current) return <LoadingState label="Loading application settings" />;
   return <>
     <PageSummary summary="Runtime configuration and access policy" help="Rename the application, publish safe client-visible JSON, and control registration, passwordless access, personal API keys, and delegation. External services are configured under Providers." />
-    <section className="boundary-settings"><div><p className="eyebrow">IDENTITY</p><h3>Name and stable key</h3><p>The UUID and slug remain stable for integrations. Renaming changes only the display name.</p></div><form key={`${current.id}-${current.name}`} onSubmit={(event) => void rename(event)}><label>Application name<input required maxLength={255} name="name" defaultValue={current.name} /></label><label>Stable slug<input disabled value={current.slug} /></label><button disabled={renaming}>{renaming ? "Renaming..." : "Rename application"}</button></form></section>
+    <div className="resource-tabs">{[["name", "Name"], ["public", "Public config"], ["internal", "Access policy"]].map(([key, label]) => <a key={key} className={route.panel === `settings-${key}` ? "active" : ""} href={routeHref({ panel: `settings-${key}` })} onClick={(event) => followRoute(event, { panel: `settings-${key}` })}>{label}</a>)}</div>
+    <section id="settings-name" className="boundary-settings"><div><p className="eyebrow">IDENTITY</p><h3>Name and stable key</h3><p>The UUID and slug remain stable for integrations. Renaming changes only the display name.</p></div><form key={`${current.id}-${current.name}`} onSubmit={(event) => void rename(event)}><label>Application name<input required maxLength={255} name="name" defaultValue={current.name} /></label><label>Stable slug<input disabled value={current.slug} /></label><button disabled={renaming}>{renaming ? "Renaming..." : "Rename application"}</button></form></section>
     <ApplicationConfigurationSettings application={current} setMessage={setMessage} onChanged={changed} />
   </>;
 }
@@ -2318,7 +2381,7 @@ function ApplicationConfigurationSettings({ application, setMessage, onChanged }
   return <section className="application-configuration">
     <header><p className="eyebrow">APPLICATION CONFIGURATION</p><h3>Runtime and access policy</h3><p>Public configuration is safe runtime data for clients. Internal configuration is enforced by Platform93 and is never returned as a raw object to unauthenticated callers.</p></header>
     <div className="application-config-grid">
-      <form onSubmit={(event) => void savePublic(event)}>
+      <form id="settings-public" onSubmit={(event) => void savePublic(event)}>
         <div><span>PUBLIC CONFIG</span><h4>Client-visible JSON</h4></div>
         <div className="public-config-access">
           <span>UNAUTHENTICATED RUNTIME ENDPOINT</span>
@@ -2331,7 +2394,7 @@ function ApplicationConfigurationSettings({ application, setMessage, onChanged }
         {publicError && <small className="field-error">{publicError}</small>}
         <button disabled={busy !== "" || Boolean(publicError)}>{busy === "public" ? "Saving public config..." : "Save public config"}</button>
       </form>
-      <form onSubmit={(event) => void saveInternal(event)}>
+      <form id="settings-internal" onSubmit={(event) => void saveInternal(event)}>
         <div><span>INTERNAL CONFIG</span><h4>Authentication and access</h4></div>
         <label className="select-setting">Registration<select value={internal.registration_mode} onChange={(event) => setInternal((value) => ({ ...value, registration_mode: event.target.value as InternalApplicationConfig["registration_mode"] }))}><option value="public">Public registration</option><option value="invite_only">Invite or pre-provision only</option></select><small>Invite-only blocks all public account-creation paths. Existing and administrator-created users can still sign in.</small></label>
         <label className="toggle-setting"><input type="checkbox" checked={internal.password_enabled} onChange={() => toggle("password_enabled")} /><span><strong>Password authentication</strong><small>Allow users with a password identity to sign in.</small></span></label>
@@ -2413,7 +2476,7 @@ function ApplicationPicker({ organization, setApplication, setMessage, reloadBou
     <div className="picker-head"><div><p className="eyebrow">ORGANIZATION</p><h3>{organization.name}</h3></div></div>
     <section className="boundary-settings"><div><p className="eyebrow">ORGANIZATION SETTINGS</p><h3>Identity</h3><p>The slug remains stable for application configuration. Renaming changes only the display name.</p></div><form onSubmit={(event) => void renameOrganization(event)}><label>Organization name<input required maxLength={255} name="name" defaultValue={organization.name} /></label><label>Stable slug<input disabled value={organization.slug} /></label><button disabled={renaming}>{renaming ? "Renaming..." : "Rename organization"}</button></form></section>
     {loading ? <div className="empty">Loading applications...</div> : <div className="application-list">{applications.map((item) => <article className={item.retired_at ? "retired" : ""} key={item.id}><div><strong>{item.name}</strong><small>{item.retired_at ? "Retired application" : item.slug}</small></div><ActionGroup label={`${item.name} application actions`}>
-      {!item.retired_at && <IconButton label={`Open ${item.name}`} icon="open" disabled={applicationAction !== ""} onClick={() => setApplication(item)} />}
+      {!item.retired_at && <IconButton label={`Open ${item.name}`} icon="open" href={routeHref({ context: "application", application_id: item.id, organization_id: organization.id, section: "overview" }, true)} disabled={applicationAction !== ""} onClick={() => setApplication(item)} />}
       {item.retired_at
         ? <IconButton label={`Restore ${item.name}`} icon="restore" loading={applicationAction === `restore-${item.id}`} disabled={applicationAction !== ""} onClick={() => void setApplicationRetirement(item.id, true)} />
         : <IconButton label={`Retire ${item.name}`} icon="archive" tone="danger" loading={applicationAction === `archive-${item.id}`} disabled={applicationAction !== ""} onClick={() => void setApplicationRetirement(item.id, false)} />}
@@ -2715,12 +2778,22 @@ const installationTemplateContext: Application = {
 };
 
 function InstallationTemplateSettings({ setMessage }: { setMessage: (value: string) => void }) {
+  const route = useAdminRoute();
   const basePath = "/v1/control/installation";
   const [templates, setTemplates] = useState<Record<string, unknown>[]>([]);
   const [selected, setSelected] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    setSelected(null);
+    if (!route.id) return;
+    let current = true;
+    api.request<Record<string, unknown>>("GET", `${basePath}/notification-templates/${encodeURIComponent(route.id)}`)
+      .then((value) => { if (current) setSelected(value); })
+      .catch((error) => { if (current) { setMessage(readError(error)); navigate({ id: undefined }, false, true); } });
+    return () => { current = false; };
+  }, [route.id, setMessage, refresh]);
   useEffect(() => {
     setLoading(true);
     api.request<Page<Record<string, unknown>>>("GET", `${basePath}/notification-templates`)
@@ -2731,7 +2804,7 @@ function InstallationTemplateSettings({ setMessage }: { setMessage: (value: stri
   async function inspect(template: Record<string, unknown>) {
     setBusy(String(template.id));
     try {
-      setSelected(await api.request<Record<string, unknown>>("GET", `${basePath}/notification-templates/${String(template.id)}`));
+      navigate({ resource: "notification-templates", id: String(template.id) });
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
   }
@@ -2741,6 +2814,7 @@ function InstallationTemplateSettings({ setMessage }: { setMessage: (value: stri
       await api.request("POST", `${basePath}/notification-templates/${String(template.id)}/publish`, {});
       setMessage(`${String(template.key)} is now the installation default. Applications without an override inherit it immediately.`);
       setSelected(null);
+      navigate({ id: undefined });
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
@@ -2748,7 +2822,7 @@ function InstallationTemplateSettings({ setMessage }: { setMessage: (value: stri
   return <section className="installation-templates">
     <div className="scope-heading"><p className="eyebrow">DEFAULT EMAILS</p><h3>Installation email templates</h3><p>These published versions send Platform93 control-plane emails and are inherited by every application until that application publishes its own override.</p></div>
     {loading ? <LoadingState label="Loading installation email templates" /> : <section className="table"><div className="table-head"><span>Default templates</span><span>{templates.length} versions</span></div>{templates.map((template) => <article key={String(template.id)}><div><strong>{String(template.key)}</strong><small>{String(template.status)} · version {String(template.version)}{template.system_managed ? " · built in" : ""}</small></div><div className="row-actions"><IconButton label="Edit template" icon="edit" loading={busy === template.id} disabled={busy !== ""} onClick={() => void inspect(template)} />{template.status === "draft" && <IconButton label="Publish template" icon="publish" tone="success" disabled={busy !== ""} onClick={() => void publish(template)} />}</div></article>)}</section>}
-    {selected && <div className="detail-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}><section className="detail-panel template-detail-panel" role="dialog" aria-modal="true" aria-label="Installation email template"><header><div><p className="eyebrow">INSTALLATION DEFAULT</p><h2>{String(selected.key)}</h2></div><button className="outline" onClick={() => setSelected(null)}>Close</button></header><NotificationTemplateEditor template={selected} application={installationTemplateContext} basePath={basePath} setMessage={setMessage} onChanged={() => { setSelected(null); setRefresh((value) => value + 1); }} /></section></div>}
+    {selected && <div className="detail-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && navigate({ id: undefined })}><section className="detail-panel template-detail-panel" role="dialog" aria-modal="true" aria-label="Installation email template"><header><div><p className="eyebrow">INSTALLATION DEFAULT</p><h2>{String(selected.key)}</h2></div><button className="outline" onClick={() => navigate({ id: undefined })}>Close</button></header><NotificationTemplateEditor template={selected} application={installationTemplateContext} basePath={basePath} setMessage={setMessage} onChanged={() => { navigate({ id: undefined }); setRefresh((value) => value + 1); }} /></section></div>}
   </section>;
 }
 
@@ -2935,21 +3009,21 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
     {scope === "application" && <ApplicationFlowSettings basePath={basePath} setMessage={setMessage} />}
     <div className="provider-columns">
       <section><header><span>01</span><div><h4>Authentication</h4><p>Social identity and account linking.</p></div></header><ProviderCards items={authProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("auth", item, value)} onToggleControlLogin={scope === "installation" ? (item, value) => void toggleControlLogin(item, value) : undefined} onDisable={(item) => void disable("auth", item)} />
-        <details><summary>Configure Google</summary><ProviderCallbackBox provider="google" uri={providerCallbackURI("google")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "google")}><label>OAuth client ID<input required name="client_id" /></label><label>OAuth client secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "google" ? "Saving..." : "Save Google"}</button></form></details>
-        <details><summary>Configure Apple</summary><ProviderCallbackBox provider="apple" uri={providerCallbackURI("apple")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "apple")}><label>Services ID / client ID<input required name="client_id" /></label><label>Team ID<input required name="team_id" /></label><label>Key ID<input required name="key_id" /></label><label>Sign in with Apple private key<textarea required name="private_key_pem" placeholder="-----BEGIN PRIVATE KEY-----" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "apple" ? "Saving..." : "Save Apple"}</button></form></details>
-        <details><summary>Configure Microsoft</summary><ProviderCallbackBox provider="microsoft" uri={providerCallbackURI("microsoft")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "microsoft")}><label>Application (client) ID<input required name="client_id" /></label><label>Client secret<input required name="client_secret" type="password" /></label><label>Tenant<input required name="tenant" list="microsoft-tenant-options" defaultValue="common" placeholder="common or tenant UUID" /><datalist id="microsoft-tenant-options"><option value="common" /><option value="organizations" /><option value="consumers" /></datalist><small>Use common, organizations, consumers, or an exact Microsoft Entra tenant UUID.</small></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "microsoft" ? "Saving..." : "Save Microsoft"}</button></form></details>
-        <details><summary>Configure Facebook</summary><ProviderCallbackBox provider="facebook" uri={providerCallbackURI("facebook")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "facebook")}><label>Facebook App ID<input required name="client_id" /></label><label>Facebook App secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "facebook" ? "Saving..." : "Save Facebook"}</button></form></details>
-        <details><summary>Configure LinkedIn</summary><ProviderCallbackBox provider="linkedin" uri={providerCallbackURI("linkedin")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "linkedin")}><label>LinkedIn client ID<input required name="client_id" /></label><label>LinkedIn client secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "linkedin" ? "Saving..." : "Save LinkedIn"}</button></form></details>
+        <ProviderConfiguration name="google" label="Configure Google"><ProviderCallbackBox provider="google" uri={providerCallbackURI("google")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "google")}><label>OAuth client ID<input required name="client_id" /></label><label>OAuth client secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "google" ? "Saving..." : "Save Google"}</button></form></ProviderConfiguration>
+        <ProviderConfiguration name="apple" label="Configure Apple"><ProviderCallbackBox provider="apple" uri={providerCallbackURI("apple")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "apple")}><label>Services ID / client ID<input required name="client_id" /></label><label>Team ID<input required name="team_id" /></label><label>Key ID<input required name="key_id" /></label><label>Sign in with Apple private key<textarea required name="private_key_pem" placeholder="-----BEGIN PRIVATE KEY-----" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "apple" ? "Saving..." : "Save Apple"}</button></form></ProviderConfiguration>
+        <ProviderConfiguration name="microsoft" label="Configure Microsoft"><ProviderCallbackBox provider="microsoft" uri={providerCallbackURI("microsoft")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "microsoft")}><label>Application (client) ID<input required name="client_id" /></label><label>Client secret<input required name="client_secret" type="password" /></label><label>Tenant<input required name="tenant" list="microsoft-tenant-options" defaultValue="common" placeholder="common or tenant UUID" /><datalist id="microsoft-tenant-options"><option value="common" /><option value="organizations" /><option value="consumers" /></datalist><small>Use common, organizations, consumers, or an exact Microsoft Entra tenant UUID.</small></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "microsoft" ? "Saving..." : "Save Microsoft"}</button></form></ProviderConfiguration>
+        <ProviderConfiguration name="facebook" label="Configure Facebook"><ProviderCallbackBox provider="facebook" uri={providerCallbackURI("facebook")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "facebook")}><label>Facebook App ID<input required name="client_id" /></label><label>Facebook App secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "facebook" ? "Saving..." : "Save Facebook"}</button></form></ProviderConfiguration>
+        <ProviderConfiguration name="linkedin" label="Configure LinkedIn"><ProviderCallbackBox provider="linkedin" uri={providerCallbackURI("linkedin")} setMessage={setMessage} /><form onSubmit={(event) => void submitProvider(event, "linkedin")}><label>LinkedIn client ID<input required name="client_id" /></label><label>LinkedIn client secret<input required name="client_secret" type="password" /></label>{controlLoginField()}{inheritanceField()}<button disabled={busy !== ""}>{busy === "linkedin" ? "Saving..." : "Save LinkedIn"}</button></form></ProviderConfiguration>
       </section>
       <section><header><span>02</span><div><h4>Email</h4><p>Transactional and security delivery.</p></div></header><ProviderCards items={smtpProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("notification", item, value)} onVerify={(item) => void verify("notification", item)} onDisable={(item) => void disable("notification", item)} />
-        <details><summary>Configure SMTP</summary><form onSubmit={(event) => void submitProvider(event, "smtp")}><label>Name<input required name="name" defaultValue={`${scope} SMTP`} /></label><label>Host<input required name="host" /></label><div className="provider-form-row"><label>Port<input required name="port" type="number" defaultValue="587" /></label><label>TLS<select name="tls_mode" defaultValue="starttls"><option value="starttls">STARTTLS</option><option value="implicit_tls">Implicit TLS</option></select></label></div><label>Username<input name="username" /></label><label>Password<input name="password" type="password" /></label><label>Sender email<input required name="sender_email" type="email" /></label><label>Sender name<input name="sender_name" defaultValue="Platform93" /></label>{inheritanceField()}<button disabled={busy !== ""}>{busy === "smtp" ? "Saving..." : "Save SMTP"}</button></form></details>
+        <ProviderConfiguration name="smtp" label="Configure SMTP"><form onSubmit={(event) => void submitProvider(event, "smtp")}><label>Name<input required name="name" defaultValue={`${scope} SMTP`} /></label><label>Host<input required name="host" /></label><div className="provider-form-row"><label>Port<input required name="port" type="number" defaultValue="587" /></label><label>TLS<select name="tls_mode" defaultValue="starttls"><option value="starttls">STARTTLS</option><option value="implicit_tls">Implicit TLS</option></select></label></div><label>Username<input name="username" /></label><label>Password<input name="password" type="password" /></label><label>Sender email<input required name="sender_email" type="email" /></label><label>Sender name<input name="sender_name" defaultValue="Platform93" /></label>{inheritanceField()}<button disabled={busy !== ""}>{busy === "smtp" ? "Saving..." : "Save SMTP"}</button></form></ProviderConfiguration>
       </section>
       <section><header><span>03</span><div><h4>Billing</h4><p>Checkout, subscriptions, and tax.</p></div></header><ProviderCards items={billingProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("billing", item, value)} onVerify={(item) => void verify("billing", item)} onDisable={(item) => void disable("billing", item)} />
         <StripeWebhookSetups items={billingProviders} currentScope={scope} basePath={basePath} busy={busy} setBusy={setBusy} setMessage={setMessage} onSaved={() => setRefresh((value) => value + 1)} />
-        <details><summary>Configure Stripe</summary><form onSubmit={(event) => void submitProvider(event, "stripe")}><label>Secret key<input required name="secret" type="password" placeholder="sk_..." /></label><p className="provider-form-note">Save the Stripe connection first. Platform93 then generates its unique webhook endpoint, which appears above with a copy button and a field for the Stripe signing secret.</p>{inheritanceField()}<button disabled={busy !== ""}>{busy === "stripe" ? "Saving..." : "Save Stripe"}</button></form></details>
+        <ProviderConfiguration name="stripe" label="Configure Stripe"><form onSubmit={(event) => void submitProvider(event, "stripe")}><label>Secret key<input required name="secret" type="password" placeholder="sk_..." /></label><p className="provider-form-note">Save the Stripe connection first. Platform93 then generates its unique webhook endpoint, which appears above with a copy button and a field for the Stripe signing secret.</p>{inheritanceField()}<button disabled={busy !== ""}>{busy === "stripe" ? "Saving..." : "Save Stripe"}</button></form></ProviderConfiguration>
       </section>
       <section><header><span>04</span><div><h4>Object storage</h4><p>Light public and private S3-compatible files.</p></div></header><ProviderCards items={storageProviders} currentScope={scope} busy={busy} onToggleInheritance={(item, value) => void toggleInheritance("storage", item, value)} onVerify={(item) => void verify("storage", item)} onEnable={(item) => void enableStorage(item)} onDisable={(item) => void disable("storage", item)} />
-        <details><summary>Configure S3-compatible storage</summary><form onSubmit={(event) => void submitProvider(event, "storage")}><label>Name<input required name="name" defaultValue={`${titleCase(scope)} storage`} /></label><label>Endpoint<input required name="endpoint" type="url" placeholder="https://nbg1.your-objectstorage.com" /></label><label>Region<input required name="region" placeholder="nbg1" /></label><div className="provider-form-row"><label>Access key ID<input required name="access_key_id" /></label><label>Secret access key<input required name="secret_access_key" type="password" /></label></div><label>Public bucket<input name="public_bucket" placeholder="platform93-public" /><small>Required for managed email images and permanent public URLs.</small></label><label>Private bucket<input name="private_bucket" placeholder="platform93-private" /></label><label>Public base URL<input name="public_base_url" type="url" placeholder="https://assets.example.com" /><small>Optional proxy or custom-domain base URL.</small></label><div className="provider-form-row"><label>Max object bytes<input name="max_object_bytes" type="number" min="1" defaultValue="26214400" /></label><label>Application quota bytes<input name="max_application_bytes" type="number" min="1" defaultValue="10737418240" /></label></div><div className="provider-form-row"><label>Email image bytes<input name="max_email_image_bytes" type="number" min="1" defaultValue="2097152" /></label><label>Application object count<input name="max_application_objects" type="number" min="1" defaultValue="100000" /></label></div><label className="provider-inheritance"><input name="force_path_style" type="checkbox" /><span>Use path-style bucket URLs (commonly required by MinIO)</span></label>{scope === "installation" && <label className="provider-inheritance"><input name="allow_private_endpoint" type="checkbox" /><span>Explicitly allow an HTTP or private-network endpoint</span></label>}{inheritanceField()}<p className="provider-warning">Use existing dedicated buckets. Verification writes and removes a probe, confirms public anonymous reads, and rejects anonymous private reads. Browser uploads also require bucket CORS.</p><button disabled={busy !== ""}>{busy === "storage" ? "Saving..." : "Save storage"}</button></form></details>
+        <ProviderConfiguration name="storage" label="Configure S3-compatible storage"><form onSubmit={(event) => void submitProvider(event, "storage")}><label>Name<input required name="name" defaultValue={`${titleCase(scope)} storage`} /></label><label>Endpoint<input required name="endpoint" type="url" placeholder="https://nbg1.your-objectstorage.com" /></label><label>Region<input required name="region" placeholder="nbg1" /></label><div className="provider-form-row"><label>Access key ID<input required name="access_key_id" /></label><label>Secret access key<input required name="secret_access_key" type="password" /></label></div><label>Public bucket<input name="public_bucket" placeholder="platform93-public" /><small>Required for managed email images and permanent public URLs.</small></label><label>Private bucket<input name="private_bucket" placeholder="platform93-private" /></label><label>Public base URL<input name="public_base_url" type="url" placeholder="https://assets.example.com" /><small>Optional proxy or custom-domain base URL.</small></label><div className="provider-form-row"><label>Max object bytes<input name="max_object_bytes" type="number" min="1" defaultValue="26214400" /></label><label>Application quota bytes<input name="max_application_bytes" type="number" min="1" defaultValue="10737418240" /></label></div><div className="provider-form-row"><label>Email image bytes<input name="max_email_image_bytes" type="number" min="1" defaultValue="2097152" /></label><label>Application object count<input name="max_application_objects" type="number" min="1" defaultValue="100000" /></label></div><label className="provider-inheritance"><input name="force_path_style" type="checkbox" /><span>Use path-style bucket URLs (commonly required by MinIO)</span></label>{scope === "installation" && <label className="provider-inheritance"><input name="allow_private_endpoint" type="checkbox" /><span>Explicitly allow an HTTP or private-network endpoint</span></label>}{inheritanceField()}<p className="provider-warning">Use existing dedicated buckets. Verification writes and removes a probe, confirms public anonymous reads, and rejects anonymous private reads. Browser uploads also require bucket CORS.</p><button disabled={busy !== ""}>{busy === "storage" ? "Saving..." : "Save storage"}</button></form></ProviderConfiguration>
       </section>
     </div>
     <StorageObjectManager basePath={basePath} allowUploads={scope !== "organization"} compact setMessage={setMessage} />
@@ -3121,6 +3195,14 @@ function formatBytes(value: number) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
   if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MiB`;
   return `${(value / 1024 / 1024 / 1024).toFixed(1)} GiB`;
+}
+
+function ProviderConfiguration({ name, label, children }: { name: string; label: string; children: ReactNode }) {
+  const route = useAdminRoute();
+  const panel = `provider-${name}`;
+  const open = route.panel === panel;
+  const patch = { panel: open ? undefined : panel };
+  return <section className="provider-configuration"><a aria-expanded={open} href={routeHref(patch)} onClick={(event) => followRoute(event, patch)}>{label}</a>{open && children}</section>;
 }
 
 function providerDisplayName(kind: "auth" | "notification" | "billing" | "storage", provider: Record<string, unknown>) {
