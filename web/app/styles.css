@@ -147,6 +147,7 @@ button:disabled {
   gap: 8px;
 }
 .icon-button {
+  text-decoration: none;
   position: relative;
   display: inline-grid;
   flex: 0 0 40px;
@@ -160,6 +161,7 @@ button:disabled {
   color: var(--ink);
   border-radius: 5px;
 }
+.icon-button[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 .icon-button svg {
   width: 19px;
   height: 19px;
@@ -358,7 +360,18 @@ nav {
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-nav button {
+nav a, .resource-tabs a, .account-actions a {
+  text-decoration: none;
+}
+nav a:focus-visible, .resource-tabs a:focus-visible, .account-actions a:focus-visible {
+  outline: 2px solid var(--acid);
+  outline-offset: 2px;
+}
+.external-login-options { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.external-login-options > span { flex-basis: 100%; }
+.external-login-options button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; }
+.provider-icon { width: 20px; height: 20px; flex: 0 0 20px; }
+nav button, nav a {
   border: 0;
   background: transparent;
   color: var(--p93-dark-text-secondary);
@@ -369,17 +382,17 @@ nav button {
   align-items: center;
   border-radius: 4px;
 }
-nav button i {
+nav button i, nav a i {
   width: 5px;
   height: 5px;
   border: 1px solid currentColor;
   transform: rotate(45deg);
 }
-nav button.active {
+nav button.active, nav a.active {
   background: var(--p93-dark-raised);
   color: var(--acid);
 }
-nav button.active i {
+nav button.active i, nav a.active i {
   background: var(--acid);
 }
 .aside-foot {
@@ -396,13 +409,13 @@ nav button.active i {
   gap: 7px;
   margin-top: 14px;
 }
-.account-actions button {
+.account-actions button, .account-actions a {
   border: 1px solid var(--p93-dark-border-strong);
   background: var(--p93-dark-raised);
   color: var(--paper);
   padding: 8px;
 }
-.account-actions button:hover {
+.account-actions button:hover, .account-actions a:hover {
   border-color: var(--acid);
   color: var(--acid);
 }
@@ -860,16 +873,19 @@ select,
   text-align: center;
   font-size: 12px;
 }
-.provider-columns details {
+.provider-columns details, .provider-configuration {
   margin: 10px;
   border-top: 1px solid var(--line);
 }
-.provider-columns summary {
+.provider-columns summary, .provider-configuration > a {
+  display: block;
+  color: inherit;
+  text-decoration: none;
   cursor: pointer;
   padding: 13px 3px;
   font-weight: 700;
 }
-.provider-columns details form {
+.provider-columns details form, .provider-configuration form {
   display: grid;
   gap: 9px;
   padding: 4px 0 12px;
@@ -985,7 +1001,7 @@ select,
   font-size: 11px;
   line-height: 1.5;
 }
-.provider-columns details label {
+.provider-columns details label, .provider-configuration label {
   display: grid;
   gap: 5px;
   color: var(--muted);
@@ -2279,14 +2295,14 @@ select,
   overflow-x: auto;
   padding: 28px 0 4px;
 }
-.resource-tabs button {
+.resource-tabs button, .resource-tabs a {
   white-space: nowrap;
   border: 1px solid var(--line);
   background: transparent;
   padding: 9px 13px;
   color: var(--muted);
 }
-.resource-tabs button.active {
+.resource-tabs button.active, .resource-tabs a.active {
   border-color: var(--ink);
   background: var(--ink);
   color: var(--acid);
