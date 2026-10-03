@@ -3204,7 +3204,7 @@ function ProviderConfiguration({ name, label, children }: { name: string; label:
   const panel = `provider-${name}`;
   const open = route.panel === panel;
   const patch = { panel: open ? undefined : panel };
-  return <section className="provider-configuration"><a aria-expanded={open} href={routeHref(patch)} onClick={(event) => followRoute(event, patch)}>{label}</a>{open && children}</section>;
+  return <section className="provider-configuration"><a aria-expanded={open} href={routeHref(patch)} onClick={(event) => followRoute(event, patch)}>{label}</a><div hidden={!open}>{children}</div></section>;
 }
 
 function providerDisplayName(kind: "auth" | "notification" | "billing" | "storage", provider: Record<string, unknown>) {

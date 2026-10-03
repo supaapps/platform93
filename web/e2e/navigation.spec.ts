@@ -124,6 +124,39 @@ test("restores provider configuration and settings selections", async ({ page })
   await expect(page.getByRole("link", { name: "Access policy", exact: true })).toHaveClass(/active/);
 });
 
+test("preserves unsaved provider values while panels are hidden", async ({ page }) => {
+  await mockAdmin(page);
+  await page.goto(`/?context=application&application_id=${app.id}&section=providers&panel=provider-google`);
+  const clientID = page.getByLabel("OAuth client ID", { exact: true });
+  const clientSecret = page.getByLabel("OAuth client secret", { exact: true });
+  await clientID.fill("draft-client-id");
+  await clientSecret.fill("draft-client-secret");
+  await page.getByRole("link", { name: "Configure Google", exact: true }).click();
+  await expect(clientID).toBeHidden();
+  await expect(clientID).toHaveValue("draft-client-id");
+  await page.getByRole("link", { name: "Configure Google", exact: true }).click();
+  await expect(clientID).toBeVisible();
+  await expect(clientSecret).toHaveValue("draft-client-secret");
+  await page.getByRole("link", { name: "Configure Apple", exact: true }).click();
+  await page.getByLabel("Team ID", { exact: true }).fill("draft-team-id");
+  await expect(clientID).toBeHidden();
+  await page.goBack();
+  await expect(clientID).toBeVisible();
+  await expect(clientID).toHaveValue("draft-client-id");
+  await page.getByRole("link", { name: "Account", exact: true }).click();
+  const account = page.getByRole("dialog", { name: "Platform user account" });
+  await expect(account).toBeVisible();
+  await expect(clientID).toBeHidden();
+  await account.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("link", { name: "Configure Google", exact: true }).click();
+  await expect(clientID).toHaveValue("draft-client-id");
+  await expect(clientSecret).toHaveValue("draft-client-secret");
+  await page.getByRole("link", { name: "Configure Apple", exact: true }).click();
+  await expect(page.getByLabel("Team ID", { exact: true })).toHaveValue("draft-team-id");
+  expect(page.url()).not.toContain("draft-");
+  expect(await page.evaluate(() => JSON.stringify({ ...sessionStorage, ...localStorage }))).not.toContain("draft-");
+});
+
 test("restores a destination after an external provider returns to the root", async ({ page }) => {
   await mockAdmin(page);
   let authenticated = false;
