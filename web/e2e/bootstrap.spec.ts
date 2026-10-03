@@ -86,6 +86,11 @@ test("creates and renames organization and application boundaries", async ({ pag
   await page.getByRole("button", { name: "Create organization" }).click();
   await expect.poll(() => createdOrganization).toEqual({ name: "Second Organization", slug: "second-organization" });
   await expect(page.getByRole("heading", { name: "Second Organization" })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`context=organization&organization_id=${createdOrganizationID}`));
+  await expect(page.locator(".context-header")).toContainText("Second Organization");
+  await expect(page.getByLabel("Access context")).toHaveValue(`organization:${createdOrganizationID}`);
+  await page.reload();
+  await expect(page.locator(".context-header")).toContainText("Second Organization");
 
   await page.getByLabel("Access context").selectOption(`organization:${organizationID}`);
   await page.getByLabel("Organization name").fill("Renamed Organization");
@@ -749,6 +754,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByRole("button", { name: "Create organization and application" }).click();
 
   await expect(page.locator(".context-header").getByText("Development", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/context=application.*application_id=/);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByText("Active users")).toBeVisible();
   await expect(page.getByText("Events / 24h")).toBeVisible();

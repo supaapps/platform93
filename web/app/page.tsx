@@ -1055,10 +1055,11 @@ function Workspace({
         ) : organizations.length === 0 ? (
           <Onboarding
             onCreated={(org, env) => {
-              setOrganizations([org]);
-              setApplications([{ ...env, organization_id: org.id }]);
-              setOrganization(org);
-              setApplication({ ...env, organization_id: org.id });
+              flushSync(() => {
+                setOrganizations([org]);
+                setApplications([{ ...env, organization_id: org.id }]);
+              });
+              navigate({ context: "application", organization_id: org.id, application_id: env.id, section: "overview" }, true);
               void reloadBoundaries();
             }}
             setMessage={setMessage}
@@ -1067,9 +1068,8 @@ function Workspace({
           <>
             <OrganizationCreator setMessage={setMessage} onCreated={(created) => {
               const owned = { ...created, role: created.role || "owner" };
-              setOrganizations([...organizations, owned]);
-              setOrganization(owned);
-              setApplication(null);
+              flushSync(() => setOrganizations([...organizations, owned]));
+              navigate({ context: "organization", organization_id: owned.id, section: "overview" }, true);
               void reloadBoundaries();
             }} />
             <section className="cards">
