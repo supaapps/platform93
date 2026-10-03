@@ -26,3 +26,19 @@ reviewed on every dependency update. Any reachable finding fails the release.
 Provider smoke-test results are recorded separately using the redacted checklist in
 [Release Process](releasing.md). No credentials, account identifiers, tokens, email
 addresses, or provider payloads belong in this repository or a GitHub release.
+
+## Dependency review follow-up
+
+The October 2026 dependency review updates Next.js to `15.5.24`, sharp to `0.35.4`,
+js-yaml to `4.3.2`, fast-uri to `3.1.8`, gRPC to `1.83.2`, and the Zipkin exporter
+to `1.45.0`. Additional audit findings are patched with DOMPurify `3.4.16` and
+brace-expansion `1.1.21` / `5.0.12`. Template-variable map merges no longer
+compute allocation capacity from the sum of input lengths.
+
+An unresolved high-severity build-tool dependency remains:
+[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) in
+`braces`, reached through the Next.js ESLint configuration, fast-glob, and
+micromatch. The advisory currently lists no patched version. These tooling
+dependencies are not shipped in the runtime image. This is not an accepted
+exception: do not suppress the pnpm audit finding or claim a clean dependency
+audit until an upstream fix or verified replacement is available.
