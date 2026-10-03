@@ -192,6 +192,10 @@ FROM external_auth_email_enrollments WHERE id=$1 AND application_id=$2 AND crede
 		kernel.WriteProblem(w, r, http.StatusConflict, "account_link_required", "An account already uses this email. Sign in to that account and link the provider.")
 		return
 	}
+	if !s.registrationEnabled(r) {
+		kernel.WriteProblem(w, r, http.StatusForbidden, "registration_disabled", "Public registration is disabled for this application.")
+		return
+	}
 	if limitErr := enforceUserLimit(r.Context(), tx, applicationID); limitErr != nil {
 		kernel.WriteProblem(w, r, http.StatusConflict, "user_limit_reached", "The application user limit has been reached.")
 		return

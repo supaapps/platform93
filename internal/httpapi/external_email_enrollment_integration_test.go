@@ -51,13 +51,23 @@ VALUES($1,$2,$3,'microsoft',$4,'https://app.example/auth/callback',$5,$6,now()+i
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = db.Exec(context.Background(), `DELETE FROM user_sessions WHERE application_id=$1`, applicationID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM user_identities WHERE application_id=$1`, applicationID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM users WHERE application_id=$1`, applicationID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM external_auth_email_enrollments WHERE id=$1`, enrollmentID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM auth_provider_configs WHERE id=$1`, providerID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM applications WHERE id=$1`, applicationID)
-		_, _ = db.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, organizationID)
+		for _, statement := range []string{
+			`DELETE FROM user_sessions WHERE application_id=$1`,
+			`DELETE FROM user_identities WHERE application_id=$1`,
+			`DELETE FROM users WHERE application_id=$1`,
+			`DELETE FROM external_auth_email_enrollments WHERE application_id=$1`,
+			`DELETE FROM auth_provider_configs WHERE application_id=$1`,
+			`DELETE FROM outbox WHERE event_id IN (SELECT id FROM domain_events WHERE application_id=$1)`,
+			`DELETE FROM domain_events WHERE application_id=$1`,
+			`DELETE FROM applications WHERE id=$1`,
+		} {
+			if _, cleanupErr := db.Exec(context.Background(), statement, applicationID); cleanupErr != nil {
+				t.Errorf("fixture cleanup failed: %v", cleanupErr)
+			}
+		}
+		if _, cleanupErr := db.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, organizationID); cleanupErr != nil {
+			t.Errorf("organization cleanup failed: %v", cleanupErr)
+		}
 	}()
 
 	first, err := db.Begin(context.Background())
@@ -160,6 +170,31 @@ VALUES($1,$2,$3,'microsoft',$4,'https://app.example/auth/callback',$5,$6,now()+i
 			response := httptest.NewRecorder()
 			server.verifyExternalEmailEnrollment(response, request)
 			return response
+		}
+		for _, policy := range []struct {
+			name, disable, restore string
+			id                     any
+		}{
+			{"application", `UPDATE applications SET internal_config=jsonb_set(internal_config,'{registration_mode}','"invite_only"') WHERE id=$1`, `UPDATE applications SET internal_config=jsonb_set(internal_config,'{registration_mode}','"public"') WHERE id=$1`, applicationID},
+			{"organization", `UPDATE organization_policies SET enabled_settings=jsonb_set(enabled_settings,'{public_registration}','false') WHERE organization_id=$1`, `UPDATE organization_policies SET enabled_settings=jsonb_set(enabled_settings,'{public_registration}','true') WHERE organization_id=$1`, organizationID},
+		} {
+			if _, err = db.Exec(context.Background(), policy.disable, policy.id); err != nil {
+				t.Fatal(err)
+			}
+			if response := verify(); response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "registration_disabled") {
+				t.Fatalf("outstanding enrollment after %s policy change returned %d: %s", policy.name, response.Code, response.Body.String())
+			}
+			var users, identities int
+			var consumed bool
+			if err = db.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM users WHERE application_id=$1),(SELECT count(*) FROM user_identities WHERE application_id=$1),(SELECT consumed_at IS NOT NULL FROM external_auth_email_enrollments WHERE id=$2)`, applicationID, enrollmentID).Scan(&users, &identities, &consumed); err != nil {
+				t.Fatal(err)
+			}
+			if users != 0 || identities != 0 || consumed {
+				t.Fatalf("blocked enrollment changed state: users=%d identities=%d consumed=%t", users, identities, consumed)
+			}
+			if _, err = db.Exec(context.Background(), policy.restore, policy.id); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if response := verify(); response.Code != http.StatusOK {
 			t.Fatalf("successful enrollment returned %d: %s", response.Code, response.Body.String())
