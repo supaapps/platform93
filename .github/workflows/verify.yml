@@ -48,6 +48,8 @@ jobs:
         run: |
           go test -json -count=1 ./internal/httpapi ./internal/objectstorage | tee /tmp/integration-tests.json
           jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceOwnershipAndClientScopeInvariants")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestExternalIdentityRegistrationPolicyAndLinking")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestExternalEmailEnrollmentResendCooldownIsAtomic/successful_enrollment_persists_email_metadata_and_rejects_replay")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestMinIODirectTransferAndVisibility")' /tmp/integration-tests.json >/dev/null
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - run: go run ./cmd/platform93 migrate

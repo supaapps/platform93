@@ -201,7 +201,7 @@ FROM external_auth_email_enrollments WHERE id=$1 AND application_id=$2 AND crede
 VALUES($1,$2,$3,$3,$4,$5,now())`, userID, applicationID, email, firstName, lastName)
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata)
-VALUES($1,$2,$3,$4,$5,jsonb_build_object('email',$6))`, kernel.NewID(), applicationID, userID, provider, subject, email)
+VALUES($1,$2,$3,$4,$5,jsonb_build_object('email',$6::text))`, kernel.NewID(), applicationID, userID, provider, subject, email)
 	}
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `UPDATE external_auth_email_enrollments SET consumed_at=now() WHERE id=$1`, parts[0])

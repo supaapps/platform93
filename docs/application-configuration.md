@@ -77,6 +77,17 @@ authentication enabled, and personal API keys and delegation disabled. Provider
 credentials and inheritance remain separate from both configuration objects.
 User-managed invitations are disabled and the custom-claim allowlist is empty.
 
+In the admin, choose **Application > Settings > Access policy > Registration**.
+Public registration is the default and applies to email and social authentication.
+For social authentication, `automatic` creates a new user when no provider identity
+exists and registration is public. Invite-only blocks this creation, but existing
+linked identities can still sign in. Organization policy can additionally prohibit
+public registration. The `sign_in` flow never creates an account.
+
+An existing account with the same email is not silently linked to a social provider.
+The user must sign in to that account and explicitly link the provider. Provider
+identities and account registration remain isolated to the selected application.
+
 All configuration writes use the application ETag through `If-Match`. Public
 configuration writes replace the complete public object. Internal writes are
 strict partial updates and reject unknown keys.
