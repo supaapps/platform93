@@ -1,5 +1,6 @@
 "use client";
-import { startTransition, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { Platform93Client, Platform93Error } from "@supaapps/platform93-sdk";
 import DOMPurify from "dompurify";
 import Papa from "papaparse";
@@ -314,7 +315,8 @@ function PlatformAdmin() {
         ? value.installation_role
         : inferredInstallationRole ?? (value.items.length === 0 ? "owner" : null);
       const shouldEnterOrganizationRoot = !effectiveInstallationRole && (installationRole === undefined || Boolean(installationRole));
-      startTransition(() => {
+      // URL navigation reads this list synchronously when the caller resumes.
+      flushSync(() => {
         setOrganizations(value.items);
         setApplications(loadedApplications);
         setInstallationRole(effectiveInstallationRole ?? null);

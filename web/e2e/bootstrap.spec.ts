@@ -815,6 +815,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByRole("button", { name: "Create application", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Application created.");
   await expect(page.locator(".context-header").getByText("Testing", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/context=application.*application_id=/);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await page.getByLabel("Access context").selectOption({ label: "Platform93 Test" });
   const developmentCard = page.locator(".application-list > article").filter({ hasText: "Development" });
@@ -835,6 +836,8 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByLabel("Required onboarding method").selectOption("email");
   await page.getByLabel("Display name").fill("Organization Admin");
   await page.getByRole("button", { name: "Accept with email" }).click();
-  await expect(page.locator(".context-header").getByText("Platform93 Test", { exact: true })).toBeVisible();
+  // Invitation authentication preserves the accessible application destination.
+  await expect(page.locator(".context-header").getByText("Development", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/context=application.*application_id=/);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 });
