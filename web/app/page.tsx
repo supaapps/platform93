@@ -2902,12 +2902,13 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
     event.preventDefault();
     const target = event.currentTarget;
     const form = new FormData(target);
+    const controlLogin = scope === "installation" ? { control_login_enabled: form.get("control_login_enabled") === "on" } : {};
     setBusy(kind);
     try {
-      if (kind === "google") await api.request("PUT", `${basePath}/auth/providers/google`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
-      if (kind === "apple") await api.request("PUT", `${basePath}/auth/providers/apple`, { client_id: form.get("client_id"), team_id: form.get("team_id"), key_id: form.get("key_id"), private_key_pem: form.get("private_key_pem"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
-      if (kind === "microsoft") await api.request("PUT", `${basePath}/auth/providers/microsoft`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), tenant: form.get("tenant"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
-      if (kind === "facebook" || kind === "linkedin") await api.request("PUT", `${basePath}/auth/providers/${kind}`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), inheritable: form.get("inheritable") === "on", control_login_enabled: form.get("control_login_enabled") === "on" });
+      if (kind === "google") await api.request("PUT", `${basePath}/auth/providers/google`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), inheritable: form.get("inheritable") === "on", ...controlLogin });
+      if (kind === "apple") await api.request("PUT", `${basePath}/auth/providers/apple`, { client_id: form.get("client_id"), team_id: form.get("team_id"), key_id: form.get("key_id"), private_key_pem: form.get("private_key_pem"), inheritable: form.get("inheritable") === "on", ...controlLogin });
+      if (kind === "microsoft") await api.request("PUT", `${basePath}/auth/providers/microsoft`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), tenant: form.get("tenant"), inheritable: form.get("inheritable") === "on", ...controlLogin });
+      if (kind === "facebook" || kind === "linkedin") await api.request("PUT", `${basePath}/auth/providers/${kind}`, { client_id: form.get("client_id"), client_secret: form.get("client_secret"), inheritable: form.get("inheritable") === "on", ...controlLogin });
       if (kind === "smtp") await api.request("POST", `${basePath}/notification-providers`, { ...smtpProviderInput(form), inheritable: form.get("inheritable") === "on" });
       if (kind === "stripe") await api.request("POST", `${basePath}/billing/providers`, { provider: "stripe", secret: form.get("secret"), api_version: "2026-04-22.dahlia", inheritable: form.get("inheritable") === "on" });
       if (kind === "storage") await api.request("POST", `${basePath}/storage/providers`, storageProviderInput(form, scope));
