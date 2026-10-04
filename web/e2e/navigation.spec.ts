@@ -4,6 +4,44 @@ const org = { id: "01900000-0000-7000-8000-000000000101", name: "Navigation Org"
 const app = { id: "01900000-0000-7000-8000-000000000102", organization_id: org.id, name: "Navigation App", slug: "nav-app", issuer: "http://localhost:8093/oidc" };
 const product = { id: "01900000-0000-7000-8000-000000000103", key: "standard", name: "Standard", version: 1 };
 
+for (const scope of ["installation", "organization", "application"] as const) {
+  test(`social provider forms restrict Platform login fields to installation (${scope})`, async ({ page }) => {
+    await mockAdmin(page);
+    const context = scope === "installation" ? "platform" : scope;
+    const contextID = scope === "application" ? `&application_id=${app.id}` : scope === "organization" ? `&organization_id=${org.id}` : "";
+    const basePath = scope === "installation" ? "/v1/control/installation" : scope === "organization" ? `/v1/control/organizations/${org.id}` : `/v1/control/applications/${app.id}`;
+    await page.route("**/auth/providers/*", async (route) => {
+      expect(route.request().method()).toBe("PUT");
+      const provider = new URL(route.request().url()).pathname.split("/").at(-1);
+      const payload = route.request().postDataJSON();
+      expect(new URL(route.request().url()).pathname).toBe(`${basePath}/auth/providers/${provider}`);
+      if (scope === "installation") expect(payload.control_login_enabled).toBe(provider !== "google");
+      else expect(payload).not.toHaveProperty("control_login_enabled");
+      await route.fulfill({ contentType: "application/json", body: "{}" });
+    });
+    await page.goto(`/?context=${context}${contextID}&section=providers`);
+    for (const provider of ["Google", "Apple", "Microsoft", "Facebook", "LinkedIn"]) {
+      await page.getByRole("link", { name: `Configure ${provider}`, exact: true }).click();
+      const form = page.locator("form").filter({ has: page.getByRole("button", { name: `Save ${provider}`, exact: true }) });
+      await form.locator('[name="client_id"]').fill("test-client-id");
+      if (provider === "Apple") {
+        await form.locator('[name="team_id"]').fill("test-team-id");
+        await form.locator('[name="key_id"]').fill("test-key-id");
+        await form.locator('[name="private_key_pem"]').fill("test-only-private-key-placeholder");
+      } else await form.locator('[name="client_secret"]').fill("test-client-secret");
+      const controlLogin = form.locator('[name="control_login_enabled"]');
+      if (scope === "installation") {
+        await expect(controlLogin).toBeVisible();
+        if (provider !== "Google") await controlLogin.check();
+      } else await expect(controlLogin).toHaveCount(0);
+      const response = page.waitForResponse((response) => response.request().method() === "PUT" && response.url().endsWith(`/auth/providers/${provider.toLowerCase()}`));
+      await form.getByRole("button", { name: `Save ${provider}`, exact: true }).click();
+      await response;
+      await expect(page.locator(".toast-success")).toContainText(`${provider} login provider saved`);
+    }
+  });
+}
+
 async function mockAdmin(page: Page) {
   await page.route("**/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
