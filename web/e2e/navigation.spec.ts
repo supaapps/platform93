@@ -4,6 +4,43 @@ const org = { id: "01900000-0000-7000-8000-000000000101", name: "Navigation Org"
 const app = { id: "01900000-0000-7000-8000-000000000102", organization_id: org.id, name: "Navigation App", slug: "nav-app", issuer: "http://localhost:8093/oidc" };
 const product = { id: "01900000-0000-7000-8000-000000000103", key: "standard", name: "Standard", version: 1 };
 
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 700 }]) {
+  test(`drawers cover the viewport outside animated containers (${viewport.width}px)`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mockAdmin(page);
+    const templateID = "01900000-0000-7000-8000-000000000104";
+    await page.route(`**/v1/control/installation/notification-templates/${templateID}`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: templateID, key: "platform93.login", status: "draft", version: 1 }) }));
+    for (const destination of [
+      `/?context=application&application_id=${app.id}&section=identity&resource=clients&id=public-client`,
+      "/?context=platform&section=overview&panel=account",
+      `/?context=platform&section=email&resource=notification-templates&id=${templateID}`,
+    ]) {
+      await page.goto(destination);
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      const backdrop = page.locator(".detail-backdrop, .account-backdrop");
+      await expect.poll(() => backdrop.evaluate((element) => element.parentElement === document.body)).toBe(true);
+      await expect.poll(async () => Math.round((await backdrop.boundingBox())!.height)).toBe(viewport.height);
+      expect(await backdrop.boundingBox()).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height });
+      await expect.poll(async () => {
+        const bounds = (await dialog.boundingBox())!;
+        return Math.round(bounds.x + bounds.width);
+      }).toBeLessThanOrEqual(viewport.width);
+      const bounds = (await dialog.boundingBox())!;
+      expect(bounds.y).toBe(0);
+      expect(Math.round(bounds.height)).toBe(viewport.height);
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(Math.round(bounds.x + bounds.width)).toBeLessThanOrEqual(viewport.width);
+      await dialog.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+      await expect.poll(() => dialog.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      await dialog.evaluate((element) => { element.scrollTop = 0; });
+      await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeInViewport();
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+    }
+  });
+}
+
 for (const scope of ["installation", "organization", "application"] as const) {
   test(`social provider forms restrict Platform login fields to installation (${scope})`, async ({ page }) => {
     await mockAdmin(page);
@@ -43,6 +80,8 @@ for (const scope of ["installation", "organization", "application"] as const) {
 }
 
 async function mockAdmin(page: Page) {
+  await page.route("**/version", (route) => route.fulfill({ json: { version: "0.2.1" } }));
+  await page.route("https://api.github.com/repos/supaapps/platform93/releases/latest", (route) => route.fulfill({ json: { tag_name: "v0.2.1", draft: false, prerelease: false } }));
   await page.route("**/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     let body: unknown = { items: [], next_cursor: null };
@@ -57,6 +96,34 @@ async function mockAdmin(page: Page) {
     if (path === "/v1/control/auth/me") body = { id: "control-id", email: "owner@example.test", display_name: "Owner", status: "active", installation_role: "owner", organizations: [], sign_in_methods: { email_code: true, magic_link: true, password: true, external_identities: [] } };
     if (path === "/v1/control/auth/methods") body = { email_code: true, magic_link: true, password: true, providers: [] };
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+  });
+}
+
+for (const scenario of [
+  { running: "0.2.1", latest: "v0.2.1", label: "Latest version" },
+  { running: "0.2.1", latest: "v0.3.0", label: "Update available" },
+  { running: "0.2.9", latest: "v0.2.10", label: "Update available" },
+  { running: "0.3.0-rc.1", latest: "v0.3.0", label: "Update available" },
+  { running: "0.4.0", latest: "v0.3.0", label: "Ahead of latest release" },
+  { running: "dev", latest: "v0.3.0", label: "Development build" },
+  { running: "invalid", latest: "v0.3.0", label: "Version check unavailable" },
+  { running: "0.2.1", latest: "v0.3.0", label: "Version check unavailable", status: 403 },
+]) {
+  test(`release status: ${scenario.running} against ${scenario.latest} (${scenario.label})`, async ({ page }) => {
+    await mockAdmin(page);
+    await page.route("**/version", (route) => route.fulfill({ json: { version: scenario.running } }));
+    await page.route("https://api.github.com/repos/supaapps/platform93/releases/latest", async (route) => {
+      expect(route.request().headers()).not.toHaveProperty("authorization");
+      expect(route.request().headers()).not.toHaveProperty("cookie");
+      await route.fulfill({ status: scenario.status ?? 200, json: { tag_name: scenario.latest, draft: false, prerelease: false, html_url: "https://untrusted.example/" } });
+    });
+    await page.goto("/?context=platform&section=overview");
+    const status = page.locator(".release-status");
+    await expect(status).toHaveText(scenario.label);
+    const href = scenario.label === "Development build" || scenario.label === "Version check unavailable"
+      ? "https://github.com/supaapps/platform93/releases"
+      : `https://github.com/supaapps/platform93/releases/tag/${scenario.latest}`;
+    await expect(status.getByRole("link")).toHaveAttribute("href", href);
   });
 }
 
