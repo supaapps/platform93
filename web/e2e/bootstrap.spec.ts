@@ -95,14 +95,14 @@ test("creates and renames organization and application boundaries", async ({ pag
   await page.getByLabel("Access context").selectOption(`organization:${organizationID}`);
   await page.getByLabel("Organization name").fill("Renamed Organization");
   await page.getByRole("button", { name: "Rename organization" }).click();
-  await expect(page.getByRole("status")).toContainText("Organization renamed.");
+  await expect(page.locator(".toast-success")).toContainText("Organization renamed.");
   await expect(page.getByLabel("Access context").locator(`option[value="organization:${organizationID}"]`)).toHaveText("Renamed Organization");
 
   await page.getByLabel("Access context").selectOption(`application:${applicationID}`);
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByLabel("Application name").fill("Renamed Application");
   await page.getByRole("button", { name: "Rename application" }).click();
-  await expect(page.getByRole("status")).toContainText("Application renamed.");
+  await expect(page.locator(".toast-success")).toContainText("Application renamed.");
   await expect(page.locator(".context-header")).toContainText("Renamed Application");
 });
 
@@ -185,16 +185,16 @@ test("toggles installation provider inheritance after creation", async ({ page }
   const cards = page.locator(".provider-cards article");
   await cards.filter({ hasText: "google" }).getByRole("checkbox", { name: "Global default for organizations and applications" }).click();
   await expect(cards.filter({ hasText: "google" }).getByRole("checkbox", { name: "Global default for organizations and applications" })).not.toBeChecked();
-  await expect(page.getByRole("status")).toContainText("Google login is now limited to the installation scope.");
+  await expect(page.locator(".toast-success")).toContainText("Google login is now limited to the installation scope.");
   await cards.filter({ hasText: "Installation SMTP" }).getByRole("checkbox").click();
   await expect(cards.filter({ hasText: "Installation SMTP" }).getByRole("checkbox")).not.toBeChecked();
-  await expect(page.getByRole("status")).toContainText("SMTP is now limited to the installation scope.");
+  await expect(page.locator(".toast-success")).toContainText("SMTP is now limited to the installation scope.");
   await cards.filter({ hasText: "p93_stripe_test" }).getByRole("checkbox").click();
   await expect(cards.filter({ hasText: "p93_stripe_test" }).getByRole("checkbox")).not.toBeChecked();
-  await expect(page.getByRole("status")).toContainText("Stripe is now limited to the installation scope.");
+  await expect(page.locator(".toast-success")).toContainText("Stripe is now limited to the installation scope.");
   await cards.filter({ hasText: "Installation storage" }).getByRole("checkbox").click();
   await expect(cards.filter({ hasText: "Installation storage" }).getByRole("checkbox")).not.toBeChecked();
-  await expect(page.getByRole("status")).toContainText("Storage is now limited to the installation scope.");
+  await expect(page.locator(".toast-success")).toContainText("Storage is now limited to the installation scope.");
   await expect.poll(() => updates).toEqual([
     { path: "/v1/control/installation/auth/providers/google", body: { inheritable: false } },
     { path: `/v1/control/installation/notification-providers/${smtpID}`, body: { inheritable: false } },
@@ -257,12 +257,12 @@ test("activates provisioning and applies installation-owned organization governa
   await page.goto("/");
   await page.getByRole("link", { name: "Management API", exact: true }).click();
   await page.getByRole("button", { name: "Activate API" }).click();
-  await expect(page.getByRole("status")).toContainText("Organization management API activated.");
+  await expect(page.locator(".toast-success")).toContainText("Organization management API activated.");
   await page.getByPlaceholder("provisioning-production").fill("external-provisioner");
   await page.getByPlaceholder("Provisioning service").fill("External provisioning");
   await page.getByRole("button", { name: "Create client" }).click();
   await expect.poll(() => createdClient).toEqual({ client_id: "external-provisioner", name: "External provisioning" });
-  await expect(page.getByRole("status")).toContainText("p93_mgmt_once");
+  await expect(page.locator(".toast-success")).toContainText("p93_mgmt_once");
 
   await page.getByLabel("Access context").selectOption(`organization:${organizationID}`);
   await expect(page.locator(".context-picker small")).toHaveText("Organization");
@@ -274,7 +274,7 @@ test("activates provisioning and applies installation-owned organization governa
   await page.getByRole("button", { name: "Save installation policy" }).click();
   await expect.poll(() => policyUpdate).toMatchObject({ max_applications: 3, max_users: 100, enabled_settings: { webhooks: false } });
   expect(policyIfMatch).toBe('"v1"');
-  await expect(page.getByRole("status")).toContainText("Governance policy for Governed Organization updated.");
+  await expect(page.locator(".toast-success")).toContainText("Governance policy for Governed Organization updated.");
 });
 
 test("brand returns to the highest accessible context", async ({ page }) => {
@@ -403,7 +403,7 @@ test("validates public configuration and applies internal application policy", a
   await page.getByRole("button", { name: "Save public config" }).click();
   await expect.poll(() => publicUpdate).toEqual({ support_url: "https://example.test/help", brand_name: "Example" });
   expect(publicIfMatch).toBe('"v1"');
-  await expect(page.getByRole("status")).toContainText("Public application configuration saved.");
+  await expect(page.locator(".toast-success")).toContainText("Public application configuration saved.");
 
   await page.getByLabel("Registration").selectOption("invite_only");
   await page.getByLabel("Personal API keys").check();
@@ -419,7 +419,7 @@ test("validates public configuration and applies internal application policy", a
     custom_token_claim_keys: [],
   });
   expect(internalIfMatch).toBe('"v2"');
-  await expect(page.getByRole("status")).toContainText("Application access policy saved and enforced.");
+  await expect(page.locator(".toast-success")).toContainText("Application access policy saved and enforced.");
   await expectNoSeriousAccessibilityViolations(page);
 });
 
@@ -704,7 +704,7 @@ test("manages user locale and creates a template localization draft", async ({ p
   await page.getByLabel("Preferred locale").fill("de-CH");
   await page.getByRole("button", { name: "Save locale" }).click();
   await expect.poll(() => userUpdate).toEqual({ locale: "de-CH" });
-  await expect(page.getByRole("status")).toContainText("User locale set to de-CH");
+  await expect(page.locator(".toast-success")).toContainText("User locale set to de-CH");
   await page.getByRole("button", { name: "Close", exact: true }).click();
 
   await page.getByRole("link", { name: "Notifications", exact: true }).click();
@@ -716,7 +716,7 @@ test("manages user locale and creates a template localization draft", async ({ p
   await page.getByLabel("New locale").fill("fr-CH");
   await page.getByRole("button", { name: "Create translation draft" }).click();
   await expect.poll(() => localizationDraft).toMatchObject({ key: "welcome_email", locale: "fr-CH", category: "transactional" });
-  await expect(page.getByRole("status")).toContainText("Localization fr-CH created as a draft");
+  await expect(page.locator(".toast-success")).toContainText("Localization fr-CH created as a draft");
 });
 
 test("bootstraps a clean installation and creates its first application", async ({ context, page }) => {
@@ -743,7 +743,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await installationAccess.getByLabel("Email", { exact: true }).fill("installation-admin@platform93.test");
   await installationAccess.locator('select[name="role"]').selectOption("admin");
   await installationAccess.getByRole("button", { name: "Invite Platform user" }).click();
-  await expect(page.getByRole("status")).toContainText("Platform user invitation created.");
+  await expect(page.locator(".toast-success")).toContainText("Platform user invitation created.");
   await expect(installationAccess.getByText("installation-admin@platform93.test", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Overview", exact: true }).click();
 
@@ -768,8 +768,8 @@ test("bootstraps a clean installation and creates its first application", async 
   await organizationAccess.getByLabel("Email", { exact: true }).fill("organization-admin@platform93.test");
   await organizationAccess.locator('select[name="role"]').selectOption("admin");
   await organizationAccess.getByRole("button", { name: "Invite Platform user" }).click();
-  await expect(page.getByRole("status")).toContainText("Invitation queued.");
-  const invitationResult = await page.getByRole("status").textContent();
+  await expect(page.locator(".toast-success")).toContainText("Invitation queued.");
+  const invitationResult = await page.locator(".toast-success").textContent();
   const invitationCredential = invitationResult?.match(/p93_org_invite_[A-Za-z0-9_-]{43}/)?.[0];
   expect(invitationCredential).toBeTruthy();
   await page.getByLabel("Access context").selectOption({ label: "Development" });
@@ -789,7 +789,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByLabel("Name").fill("Tokens");
   await page.getByLabel("Value type").selectOption("quantity");
   await page.getByRole("button", { name: "Create feature", exact: true }).click();
-  const featureSuccess = page.getByRole("status");
+  const featureSuccess = page.locator(".toast-success");
   await expect(featureSuccess).toContainText("Create feature completed.");
   await expect(featureSuccess).toHaveClass(/toast-success/);
   await expect(featureSuccess).toHaveCSS("background-color", "rgb(23, 107, 74)");
@@ -819,7 +819,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByPlaceholder("Application name").fill("Testing");
   await page.getByPlaceholder("application-slug").fill("testing");
   await page.getByRole("button", { name: "Create application", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Application created.");
+  await expect(page.locator(".toast-success")).toContainText("Application created.");
   await expect(page.locator(".context-header").getByText("Testing", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/context=application.*application_id=/);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();

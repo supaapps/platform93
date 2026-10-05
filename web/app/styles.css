@@ -409,6 +409,16 @@ nav button.active i, nav a.active i {
   gap: 7px;
   margin-top: 14px;
 }
+.release-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.release-status a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.release-status a:focus-visible { outline: 2px solid var(--acid); outline-offset: 4px; }
+.release-status-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+.release-status-current { color: var(--p93-mint); }
+.release-status-update { color: var(--acid); }
 .account-actions button, .account-actions a {
   border: 1px solid var(--p93-dark-border-strong);
   background: var(--p93-dark-raised);

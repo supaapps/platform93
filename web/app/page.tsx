@@ -6,6 +6,8 @@ import DOMPurify from "dompurify";
 import Papa from "papaparse";
 import { followRoute, navigate, rememberDestination, restoreDestination, routeHref, sectionKey, useAdminRoute } from "./navigation";
 import { ProviderIcon } from "./provider-icon";
+import { ViewportPortal } from "./viewport-portal";
+import { ReleaseStatus } from "./release-status";
 
 type Organization = { id: string; name: string; slug: string; role: string; version?: number; retired_at?: string | null };
 type Application = {
@@ -446,7 +448,7 @@ function PlatformAdmin() {
           ))}
         </nav>
         <div className="aside-foot">
-          <div><span className="status-dot" />System connected</div>
+          <ReleaseStatus baseUrl={api.baseUrl} />
           <div className="account-actions">
             <a href={routeHref({ panel: "account" })} onClick={(event) => followRoute(event, { panel: "account" })}>Account</a>
             <button onClick={() => void logout()}>Log out</button>
@@ -898,7 +900,7 @@ function ControlUserAccountPanel({ onClose, onLogout, onOpenSessions, setMessage
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
   }
-  return <div className="account-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  return <ViewportPortal><div className="account-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <aside className="account-panel" role="dialog" aria-modal="true" aria-labelledby="control_user-account-title">
       <header><div><p className="eyebrow">CONTROL IDENTITY</p><h2 id="control_user-account-title">Platform user account</h2></div><button className="outline" onClick={onClose}>Close</button></header>
       {loading ? <LoadingState label="Loading Platform user account" /> : account && <>
@@ -923,7 +925,7 @@ function ControlUserAccountPanel({ onClose, onLogout, onOpenSessions, setMessage
         <div className="account-panel-actions"><button onClick={onOpenSessions}>Manage sessions</button><button className="danger-action" onClick={onLogout}>Log out</button></div>
       </>}
     </aside>
-  </div>;
+  </div></ViewportPortal>;
 }
 
 function Workspace({
@@ -1337,7 +1339,7 @@ function DetailPanel({ detail, resource, application, setMessage, onClose, onCha
   onChanged: () => void;
 }) {
   const id = String(detail.id ?? "");
-  return <div className="detail-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className={`detail-panel ${resource === "notification-templates" ? "template-detail-panel" : ""}`} role="dialog" aria-modal="true" aria-label={`${resource} detail`}>
+  return <ViewportPortal><div className="detail-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className={`detail-panel ${resource === "notification-templates" ? "template-detail-panel" : ""}`} role="dialog" aria-modal="true" aria-label={`${resource} detail`}>
     <header><div><p className="eyebrow">RESOURCE DETAIL</p><h2>{String(detail.name ?? detail.email ?? detail.key ?? detail.type ?? id)}</h2></div><button className="outline" onClick={onClose}>Close</button></header>
     {resource === "products" && <ProductEntitlementEditor key={String(detail.version ?? 1)} product={detail} application={application} setMessage={setMessage} onChanged={onChanged} />}
     {resource === "products" && <PriceCreator productID={id} application={application} setMessage={setMessage} onChanged={onChanged} />}
@@ -1350,7 +1352,7 @@ function DetailPanel({ detail, resource, application, setMessage, onClose, onCha
     {resource === "webhooks" && <WebhookEditor webhook={detail} application={application} setMessage={setMessage} onChanged={onChanged} />}
     {resource === "event-types" && <EventTypeEditor definition={detail} application={application} setMessage={setMessage} onChanged={onChanged} />}
     {resource !== "notification-templates" && <pre>{JSON.stringify(detail, null, 2)}</pre>}
-  </section></div>;
+  </section></div></ViewportPortal>;
 }
 
 function OAuthClientEditor({ client, application, setMessage, onChanged }: { client: Record<string, unknown>; application: Application; setMessage: (value: string) => void; onChanged: () => void }) {
@@ -2824,7 +2826,7 @@ function InstallationTemplateSettings({ setMessage }: { setMessage: (value: stri
   return <section className="installation-templates">
     <div className="scope-heading"><p className="eyebrow">DEFAULT EMAILS</p><h3>Installation email templates</h3><p>These published versions send Platform93 control-plane emails and are inherited by every application until that application publishes its own override.</p></div>
     {loading ? <LoadingState label="Loading installation email templates" /> : <section className="table"><div className="table-head"><span>Default templates</span><span>{templates.length} versions</span></div>{templates.map((template) => <article key={String(template.id)}><div><strong>{String(template.key)}</strong><small>{String(template.status)} · version {String(template.version)}{template.system_managed ? " · built in" : ""}</small></div><div className="row-actions"><IconButton label="Edit template" icon="edit" loading={busy === template.id} disabled={busy !== ""} onClick={() => void inspect(template)} />{template.status === "draft" && <IconButton label="Publish template" icon="publish" tone="success" disabled={busy !== ""} onClick={() => void publish(template)} />}</div></article>)}</section>}
-    {selected && <div className="detail-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && navigate({ id: undefined })}><section className="detail-panel template-detail-panel" role="dialog" aria-modal="true" aria-label="Installation email template"><header><div><p className="eyebrow">INSTALLATION DEFAULT</p><h2>{String(selected.key)}</h2></div><button className="outline" onClick={() => navigate({ id: undefined })}>Close</button></header><NotificationTemplateEditor template={selected} application={installationTemplateContext} basePath={basePath} setMessage={setMessage} onChanged={() => { navigate({ id: undefined }); setRefresh((value) => value + 1); }} /></section></div>}
+    {selected && <ViewportPortal><div className="detail-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && navigate({ id: undefined })}><section className="detail-panel template-detail-panel" role="dialog" aria-modal="true" aria-label="Installation email template"><header><div><p className="eyebrow">INSTALLATION DEFAULT</p><h2>{String(selected.key)}</h2></div><button className="outline" onClick={() => navigate({ id: undefined })}>Close</button></header><NotificationTemplateEditor template={selected} application={installationTemplateContext} basePath={basePath} setMessage={setMessage} onChanged={() => { navigate({ id: undefined }); setRefresh((value) => value + 1); }} /></section></div></ViewportPortal>}
   </section>;
 }
 

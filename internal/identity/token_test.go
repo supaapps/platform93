@@ -3,7 +3,10 @@ package identity
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,5 +37,25 @@ func TestRS256ClaimsAreStrictlyBound(t *testing.T) {
 	}
 	if _, err := Verify(token, func(string) (*rsa.PublicKey, error) { return &key.PublicKey, nil }, claims.Issuer, "wrong-audience", now); err == nil {
 		t.Fatal("wrong audience accepted")
+	}
+	claims.Scope = ""
+	token, err = Sign(pair.PrivatePEM, pair.KID, claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.Split(token, ".")[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]any
+	if err := json.Unmarshal(payload, &values); err != nil {
+		t.Fatal(err)
+	}
+	if scope, present := values["scope"]; !present || scope != "" {
+		t.Fatal("zero-permission token must contain empty scope")
+	}
+	verified, err = Verify(token, func(string) (*rsa.PublicKey, error) { return &key.PublicKey, nil }, claims.Issuer, audience, now)
+	if err != nil || verified.Scope != "" {
+		t.Fatalf("zero-permission token rejected: %v", err)
 	}
 }

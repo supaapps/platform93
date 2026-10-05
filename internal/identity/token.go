@@ -36,7 +36,7 @@ type Claims struct {
 	ClientID      string         `json:"client_id,omitempty"`
 	TokenKind     string         `json:"token_kind"`
 	ActorType     string         `json:"actor_type"`
-	Scope         string         `json:"scope,omitempty"`
+	Scope         string         `json:"scope"`
 	Roles         RoleClaims     `json:"roles"`
 	Email         string         `json:"email,omitempty"`
 	Locale        string         `json:"locale,omitempty"`
