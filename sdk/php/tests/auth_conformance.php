@@ -33,6 +33,11 @@ final class TestCachePool implements CacheItemPoolInterface {
 }
 
 $fixture = json_decode(file_get_contents(__DIR__.'/../../../conformance/jwt.json'), true, 32, JSON_THROW_ON_ERROR);
+$fixture['cases'] = array_merge($fixture['cases'], [
+    ['name' => 'authenticated_without_permissions', 'mutation' => 'empty_scope', 'accept' => true],
+    ['name' => 'missing_scope_rejected', 'mutation' => 'missing_scope', 'accept' => false],
+    ['name' => 'relative_machine_scope_rejected', 'mutation' => 'relative_machine_scope', 'accept' => false],
+]);
 $primary = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
 $wrong = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
 if ($primary === false || $wrong === false) throw new RuntimeException('RSA fixture generation failed');
@@ -55,6 +60,9 @@ foreach ($fixture['cases'] as $case) {
     $kid = 'primary';
     $key = $primaryPEM;
     switch ($case['mutation']) {
+        case 'empty_scope': $claims['scope'] = ''; $claims['roles'] = ['application' => [], 'workspaces' => new stdClass()]; break;
+        case 'missing_scope': unset($claims['scope']); break;
+        case 'relative_machine_scope': $claims['token_kind'] = 'machine'; $claims['actor_type'] = 'client'; $claims['scope'] = 'workspaces/read'; break;
         case 'machine': $claims['token_kind'] = 'machine'; $claims['actor_type'] = 'client'; break;
         case 'delegated': $claims['act'] = ['sub' => 'control_user-1', 'type' => 'control_user']; $claims['roles'] = ['application' => [], 'workspaces' => new stdClass()]; break;
         case 'wrong_issuer': $claims['iss'] = 'https://wrong.example'; break;

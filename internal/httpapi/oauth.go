@@ -239,6 +239,7 @@ func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 		session.AccessClaims.Extra = map[string]any{
 			"application_id": chi.URLParam(r, "application_id"), "client_id": clientID,
 			"token_kind": "machine", "actor_type": "client", "amr": []string{"client_credentials"}, "roles": effective.Roles,
+			"scope": strings.Join(effective.Scopes, " "),
 		}
 		request.SetSession(session)
 	} else if request.GetGrantTypes().ExactOne("refresh_token") || request.GetGrantTypes().ExactOne("authorization_code") {
@@ -270,6 +271,7 @@ WHERE id=$1 AND application_id=$2 AND status='active')`, storedSession.Subject, 
 		}
 		storedSession.AccessClaims.Extra["custom_claims"] = customClaims
 		storedSession.AccessClaims.Extra["roles"] = effective.Roles
+		storedSession.AccessClaims.Extra["scope"] = strings.Join(effective.Scopes, " ")
 		if storedSession.IDClaims.Extra == nil {
 			storedSession.IDClaims.Extra = map[string]any{}
 		}
@@ -391,7 +393,7 @@ WHERE s.id=$1 AND s.user_id=$2 AND s.application_id=$3 AND s.revoked_at IS NULL 
 func replaceApplicationScopes(request fosite.Requester, effective []string) {
 	preserved := make([]string, 0, len(request.GetGrantedScopes()))
 	for _, scope := range request.GetGrantedScopes() {
-		if !strings.HasPrefix(scope, "/applications/") {
+		if scope == "openid" || scope == "email" || scope == "profile" || scope == "offline_access" {
 			preserved = append(preserved, scope)
 		}
 	}
