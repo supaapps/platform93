@@ -25,6 +25,9 @@ func TestAdminHTMLCSPAllowsOnlyExportedInlineScripts(t *testing.T) {
 	digest := sha256.Sum256([]byte("self.__next_f=[]"))
 	wanted := "'sha256-" + base64.StdEncoding.EncodeToString(digest[:]) + "'"
 	policy := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, "; connect-src 'self' https://api.github.com;") {
+		t.Fatalf("admin release check requires only same-origin and GitHub API connections: %q", policy)
+	}
 	if response.Code != 200 || !strings.Contains(policy, wanted) || strings.Contains(policy, "'unsafe-inline'") && strings.Contains(strings.Split(policy, ";")[1], "'unsafe-inline'") {
 		t.Fatalf("unexpected admin CSP: status=%d policy=%q", response.Code, policy)
 	}
@@ -35,6 +38,9 @@ func TestSecurityHeadersProtectHTTPSControlResponses(t *testing.T) {
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/v1/control/organizations", nil)
 	server.securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })).ServeHTTP(response, request)
+	if !strings.Contains(response.Header().Get("Content-Security-Policy"), "; connect-src 'self';") {
+		t.Fatal("API response connection policy must remain same-origin only")
+	}
 	if response.Header().Get("Strict-Transport-Security") != "max-age=31536000" || response.Header().Get("X-Frame-Options") != "DENY" || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("control response is missing hardened headers: %v", response.Header())
 	}

@@ -913,7 +913,7 @@ func (s *Server) serveAdminHTML(w http.ResponseWriter, r *http.Request, assets f
 		digest := sha256.Sum256(match[1])
 		hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(digest[:])+"'")
 	}
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' "+strings.Join(hashes, " ")+"; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' "+strings.Join(hashes, " ")+"; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com; frame-ancestors 'none'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
