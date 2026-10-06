@@ -11,6 +11,9 @@ import (
 // RunLifecycleSweep records time-driven transitions exactly once and emits their
 // events in the same transaction as the state marker.
 func RunLifecycleSweep(ctx context.Context, app *platform.App) error {
+	if err := runAppleRevocations(ctx, app); err != nil {
+		return err
+	}
 	for range 100 {
 		processed, err := expireInvitation(ctx, app)
 		if err != nil {

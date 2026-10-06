@@ -261,6 +261,19 @@ func (s *Server) anonymizeAccount(w http.ResponseWriter, r *http.Request, status
 	}
 	defer rollback(tx, r.Context())
 	anonymousEmail := fmt.Sprintf("anonymized+%s@invalid.platform93", actor(r).ID)
+	var lockedID string
+	if err = tx.QueryRow(r.Context(), `SELECT id FROM users WHERE id=$1 AND application_id=$2 FOR UPDATE`, actor(r).ID, chi.URLParam(r, "application_id")).Scan(&lockedID); err != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "account_update_failed", "The account could not be locked.")
+		return
+	}
+	if err = queueAppleRevocations(r.Context(), tx, actor(r).ID, chi.URLParam(r, "application_id")); err != nil {
+		if err.Error() == "apple_reauthentication_required" {
+			kernel.WriteProblem(w, r, http.StatusForbidden, "apple_reauthentication_required", "Sign in with Apple again, then retry account deletion.")
+		} else {
+			kernel.WriteProblem(w, r, http.StatusInternalServerError, "account_update_failed", "Apple revocation could not be scheduled.")
+		}
+		return
+	}
 	_, err = tx.Exec(r.Context(), `UPDATE users SET email=$1,normalized_email=$1,first_name='',last_name='',username=NULL,locale='',password_hash=NULL,
 email_verified_at=NULL,is_org_verified=false,status=$2,custom_attributes='{}',deleted_at=now(),version=version+1,updated_at=now() WHERE id=$3 AND application_id=$4`,
 		anonymousEmail, status, actor(r).ID, chi.URLParam(r, "application_id"))

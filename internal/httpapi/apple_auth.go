@@ -148,7 +148,8 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 	defer response.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	var tokenResponse struct {
-		IDToken string `json:"id_token"`
+		IDToken      string `json:"id_token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	if response.StatusCode/100 != 2 || json.Unmarshal(body, &tokenResponse) != nil || tokenResponse.IDToken == "" {
 		s.releaseExternalAuthChallenge(r, challengeID)
@@ -182,6 +183,11 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 			return
 		}
 		challenge := ""
+		if err := s.retainAppleToken(r.Context(), chi.URLParam(r, "application_id"), userID, claims.Subject, provider, tokenResponse.RefreshToken); err != nil {
+			s.releaseExternalAuthChallenge(r, challengeID)
+			s.redirectExternalAuth(w, r, appRedirect, "", "provider_token_retention_failed")
+			return
+		}
 		if codeChallenge != nil {
 			challenge = *codeChallenge
 		}
@@ -195,6 +201,11 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 		return
 	}
 	challenge := ""
+	if err := s.retainAppleToken(r.Context(), chi.URLParam(r, "application_id"), userID, claims.Subject, provider, tokenResponse.RefreshToken); err != nil {
+		s.releaseExternalAuthChallenge(r, challengeID)
+		s.redirectExternalAuth(w, r, appRedirect, "", "provider_token_retention_failed")
+		return
+	}
 	if codeChallenge != nil {
 		challenge = *codeChallenge
 	}
