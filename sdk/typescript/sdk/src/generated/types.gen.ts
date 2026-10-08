@@ -8611,6 +8611,15 @@ export type UnlinkMyIdentityData = {
     url: '/v1/applications/{application_id}/me/auth/identities/{identity_id}';
 };
 
+export type UnlinkMyIdentityErrors = {
+    /**
+     * Apple reauthentication is required before unlinking; the identity remains unchanged.
+     */
+    403: Problem;
+};
+
+export type UnlinkMyIdentityError = UnlinkMyIdentityErrors[keyof UnlinkMyIdentityErrors];
+
 export type UnlinkMyIdentityResponses = {
     /**
      * Linked identity removed while preserving a usable login method
