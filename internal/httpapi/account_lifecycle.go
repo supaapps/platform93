@@ -268,7 +268,7 @@ func (s *Server) anonymizeAccount(w http.ResponseWriter, r *http.Request, status
 	}
 	if err = queueAppleRevocations(r.Context(), tx, actor(r).ID, chi.URLParam(r, "application_id")); err != nil {
 		if err.Error() == "apple_reauthentication_required" {
-			kernel.WriteProblem(w, r, http.StatusForbidden, "apple_reauthentication_required", "Sign in with Apple again, then retry account deletion.")
+			kernel.WriteProblem(w, r, http.StatusForbidden, "apple_reauthentication_required", "Sign in with Apple again, then retry this account operation.")
 		} else {
 			kernel.WriteProblem(w, r, http.StatusInternalServerError, "account_update_failed", "Apple revocation could not be scheduled.")
 		}

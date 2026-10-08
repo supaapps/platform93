@@ -3983,6 +3983,12 @@ paths:
       responses:
         '204':
           description: Account deleted and credentials revoked
+        '403':
+          description: Apple reauthentication is required before account deletion; no account data is changed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /v1/applications/{application_id}/auth/logout:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -5190,6 +5196,12 @@ paths:
       responses:
         '204':
           description: Personal account data anonymized and credentials revoked
+        '403':
+          description: Apple reauthentication is required before account anonymization; no account data is changed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /v1/applications/{application_id}/me/mfa/methods:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'

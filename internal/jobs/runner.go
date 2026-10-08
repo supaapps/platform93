@@ -79,6 +79,7 @@ func (r *Runner) RunWorker(ctx context.Context) error {
 	river.AddWorker(workers, &billingReconciliationWorker{runner: r})
 	river.AddWorker(workers, &storageSweepWorker{runner: r})
 	river.AddWorker(workers, &lifecycleSweepWorker{runner: r})
+	river.AddWorker(workers, &appleRevocationWorker{runner: r})
 	client, err := river.NewClient(riverpgxv5.New(r.app.DB), &river.Config{
 		ID:              r.instanceID,
 		Workers:         workers,
@@ -96,6 +97,9 @@ func (r *Runner) RunWorker(ctx context.Context) error {
 			river.NewPeriodicJob(river.PeriodicInterval(30*time.Second), func() (river.JobArgs, *river.InsertOpts) {
 				return lifecycleSweepArgs{}, nil
 			}, &river.PeriodicJobOpts{ID: "platform93-lifecycle-sweep", RunOnStart: true}),
+			river.NewPeriodicJob(river.PeriodicInterval(30*time.Second), func() (river.JobArgs, *river.InsertOpts) {
+				return appleRevocationArgs{}, nil
+			}, &river.PeriodicJobOpts{ID: "platform93-apple-revocations", RunOnStart: true}),
 		},
 	})
 	if err != nil {
@@ -126,6 +130,19 @@ type storageSweepArgs struct{}
 func (storageSweepArgs) Kind() string { return "platform93_storage_sweep" }
 
 type lifecycleSweepArgs struct{}
+
+type appleRevocationArgs struct{}
+
+func (appleRevocationArgs) Kind() string { return "platform93_apple_revocations" }
+
+type appleRevocationWorker struct {
+	river.WorkerDefaults[appleRevocationArgs]
+	runner *Runner
+}
+
+func (w *appleRevocationWorker) Work(ctx context.Context, _ *river.Job[appleRevocationArgs]) error {
+	return httpapi.RunAppleRevocations(ctx, w.runner.app)
+}
 
 func (lifecycleSweepArgs) Kind() string { return "platform93_lifecycle_sweep" }
 

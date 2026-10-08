@@ -45,7 +45,15 @@ func (s *Server) retainAppleTokenTx(ctx context.Context, tx pgx.Tx, applicationI
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO apple_identity_tokens(identity_id,auth_provider_config_id,client_id,token_ciphertext) VALUES($1,$2,$3,$4) ON CONFLICT(identity_id) DO UPDATE SET auth_provider_config_id=EXCLUDED.auth_provider_config_id,client_id=EXCLUDED.client_id,token_ciphertext=EXCLUDED.token_ciphertext,updated_at=now()`, identityID, provider.ID, provider.ClientID, sealed)
+	credentials, err := json.Marshal(provider.Credentials)
+	if err != nil {
+		return err
+	}
+	signingCredentials, err := s.app.Vault.Encrypt(credentials, "apple-signing:"+identityID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO apple_identity_tokens(identity_id,auth_provider_config_id,client_id,token_ciphertext,signing_credentials_ciphertext) VALUES($1,$2,$3,$4,$5) ON CONFLICT(identity_id) DO UPDATE SET auth_provider_config_id=EXCLUDED.auth_provider_config_id,client_id=EXCLUDED.client_id,token_ciphertext=EXCLUDED.token_ciphertext,signing_credentials_ciphertext=EXCLUDED.signing_credentials_ciphertext,updated_at=now()`, identityID, provider.ID, provider.ClientID, sealed, signingCredentials)
 	if err != nil {
 		return err
 	}
@@ -66,7 +74,7 @@ func queueAppleRevocationsForIdentity(ctx context.Context, tx pgx.Tx, userID, ap
 	if missing {
 		return fmt.Errorf("apple_reauthentication_required")
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO apple_token_revocations(identity_id,auth_provider_config_id,client_id,token_ciphertext) SELECT t.identity_id,t.auth_provider_config_id,t.client_id,t.token_ciphertext FROM apple_identity_tokens t JOIN user_identities i ON i.id=t.identity_id WHERE i.user_id=$1 AND i.application_id=$2 AND i.provider='apple' AND ($3::uuid IS NULL OR i.id=$3) ON CONFLICT(identity_id) DO NOTHING`, userID, applicationID, identityID)
+	_, err = tx.Exec(ctx, `INSERT INTO apple_token_revocations(identity_id,auth_provider_config_id,client_id,token_ciphertext,signing_credentials_ciphertext) SELECT t.identity_id,t.auth_provider_config_id,t.client_id,t.token_ciphertext,t.signing_credentials_ciphertext FROM apple_identity_tokens t JOIN user_identities i ON i.id=t.identity_id WHERE i.user_id=$1 AND i.application_id=$2 AND i.provider='apple' AND ($3::uuid IS NULL OR i.id=$3) ON CONFLICT(identity_id) DO NOTHING`, userID, applicationID, identityID)
 	return err
 }
 
@@ -92,9 +100,10 @@ func revokeAppleToken(ctx context.Context, client *http.Client, endpoint string,
 	return nil
 }
 
-func runAppleRevocations(ctx context.Context, app *platform.App) error {
+// RunAppleRevocations is scheduled separately from local lifecycle transitions.
+func RunAppleRevocations(ctx context.Context, app *platform.App) error {
 	client := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	for range 20 {
+	for range 5 {
 		processed, err := revokeOneAppleIdentity(ctx, app, client, "https://appleid.apple.com/auth/revoke")
 		if err != nil {
 			return err
@@ -112,21 +121,17 @@ func revokeOneAppleIdentity(ctx context.Context, app *platform.App, client *http
 		return false, err
 	}
 	defer tx.Rollback(ctx)
-	var id, providerID, clientID, sealed string
-	err = tx.QueryRow(ctx, `SELECT identity_id,auth_provider_config_id,client_id,token_ciphertext FROM apple_token_revocations WHERE available_at<=now() ORDER BY available_at FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &providerID, &clientID, &sealed)
+	var id, providerID, clientID, sealed, configCiphertext string
+	err = tx.QueryRow(ctx, `SELECT identity_id,auth_provider_config_id,client_id,token_ciphertext,signing_credentials_ciphertext FROM apple_token_revocations WHERE available_at<=now() ORDER BY available_at FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&id, &providerID, &clientID, &sealed, &configCiphertext)
 	if err == pgx.ErrNoRows {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	var configCiphertext string
 	provider := externalAuthProviderConfig{ID: providerID, ClientID: clientID, Provider: "apple"}
-	err = tx.QueryRow(ctx, `SELECT config_ciphertext FROM auth_provider_configs WHERE id=$1 AND provider='apple'`, providerID).Scan(&configCiphertext)
 	var token, config []byte
-	if err == nil {
-		config, err = app.Vault.Decrypt(configCiphertext, "auth-provider:"+providerID)
-	}
+	config, err = app.Vault.Decrypt(configCiphertext, "apple-signing:"+id)
 	if err == nil {
 		err = json.Unmarshal(config, &provider.Credentials)
 	}

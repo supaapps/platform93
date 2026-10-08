@@ -4,6 +4,7 @@ CREATE TABLE apple_identity_tokens (
     auth_provider_config_id UUID NOT NULL REFERENCES auth_provider_configs(id),
     client_id TEXT NOT NULL,
     token_ciphertext TEXT NOT NULL,
+    signing_credentials_ciphertext TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE apple_token_revocations (
@@ -11,6 +12,7 @@ CREATE TABLE apple_token_revocations (
     auth_provider_config_id UUID NOT NULL REFERENCES auth_provider_configs(id),
     client_id TEXT NOT NULL,
     token_ciphertext TEXT NOT NULL,
+    signing_credentials_ciphertext TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
     available_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
