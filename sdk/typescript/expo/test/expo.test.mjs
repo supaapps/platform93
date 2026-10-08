@@ -55,3 +55,43 @@ test("cancelled native authentication is reported without exchanging credentials
   await assert.rejects(() => auth.signInWithApple(), (error) => error instanceof Platform93NativeAuthSessionError && error.resultType === "cancel");
   await assert.rejects(() => auth.signInWithApple(), (error) => error instanceof Platform93NativeAuthSessionError && error.resultType === "cancel");
 });
+
+test("a rejected native browser open preserves the error and allows a fresh sign-in", async () => {
+  const originalError = new Error("Native browser could not open");
+  let opens = 0;
+  let starts = 0;
+  let exchanges = 0;
+  const challenges = [];
+  const auth = new Platform93ExpoAuth({
+    baseUrl: "https://platform93.test",
+    applicationId: "application",
+    redirectUri: "sampleapp://auth/callback",
+    secureStore: { getItemAsync: async () => null, setItemAsync: async () => {}, deleteItemAsync: async () => {} },
+    webBrowser: { openAuthSessionAsync: async () => {
+      if (++opens === 1) throw originalError;
+      return { type: "success", url: "sampleapp://auth/callback?external_auth_exchange=new-exchange" };
+    } },
+    fetch: async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (String(url).endsWith("/google/start")) {
+        starts += 1;
+        challenges.push(body.code_challenge);
+        return Response.json({ provider: "google", authorize_url: "https://accounts.google.test/authorize", expires_in: 600 }, { status: 201 });
+      }
+      assert.ok(String(url).endsWith("/google/exchange"));
+      exchanges += 1;
+      assert.equal(body.exchange, "new-exchange");
+      assert.equal(createHash("sha256").update(body.code_verifier).digest("base64url"), challenges[1]);
+      return Response.json(tokens);
+    },
+  });
+  await assert.rejects(auth.signInWithGoogle(), (error) => error === originalError);
+  assert.equal(exchanges, 0);
+  assert.equal(auth.snapshot().status, "anonymous");
+  await auth.signInWithGoogle();
+  assert.equal(starts, 2);
+  assert.equal(opens, 2);
+  assert.equal(exchanges, 1);
+  assert.notEqual(challenges[0], challenges[1]);
+  assert.equal(auth.snapshot().status, "authenticated");
+});
