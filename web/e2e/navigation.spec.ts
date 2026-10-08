@@ -99,6 +99,66 @@ async function mockAdmin(page: Page) {
   });
 }
 
+test("sidebar transitions never canonicalize resources using the previous section", async ({ page }) => {
+  await mockAdmin(page);
+  await page.goto(`/?context=application&application_id=${app.id}&section=catalog&resource=features`);
+  await expect(page.getByRole("link", { name: "Features", exact: true })).toHaveClass(/active/);
+  for (const [label, section, resource] of [
+    ["Entitlements", "entitlements", "entitlements"],
+    ["Identity", "identity", "users"],
+    ["Billing", "billing", "billing/subscriptions"],
+    ["Notifications", "notifications", "notifications"],
+    ["Webhooks", "webhooks", "webhooks"],
+    ["Events", "events", "event-types"],
+    ["Audit", "audit", "audit-logs"],
+    ["Operations", "operations", "webhook-deliveries"],
+    ["Catalog", "catalog", "products"],
+    ["Requests", "requests", "local-entitlement-requests"],
+    ["Workspaces", "workspaces", "workspaces"],
+  ]) {
+    await page.getByRole("link", { name: label, exact: true }).click();
+    await expect(page.getByRole("heading", { name: label, exact: true })).toBeVisible();
+    await expect.poll(() => new URL(page.url()).searchParams.get("section")).toBe(section);
+    await expect.poll(() => new URL(page.url()).searchParams.get("resource")).toBe(resource);
+    await expect(page.locator(".toast-error")).toHaveCount(0);
+  }
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Requests", exact: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get("resource")).toBe("local-entitlement-requests");
+  await expect(page.locator(".toast-error")).toHaveCount(0);
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "Workspaces", exact: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get("resource")).toBe("workspaces");
+  await expect(page.locator(".toast-error")).toHaveCount(0);
+  await page.getByLabel("Access context").selectOption("platform");
+  await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
+  expect(new URL(page.url()).searchParams.has("resource")).toBe(false);
+  await expect(page.locator(".toast-error")).toHaveCount(0);
+});
+
+test("a late detail error cannot rewrite the newly selected section", async ({ page }) => {
+  await mockAdmin(page);
+  let releaseDetail!: () => void;
+  const detailPending = new Promise<void>((resolve) => { releaseDetail = resolve; });
+  let detailStarted!: () => void;
+  const detailRequested = new Promise<void>((resolve) => { detailStarted = resolve; });
+  await page.route(`**/v1/control/applications/${app.id}/products/${product.id}`, async (route) => {
+    detailStarted();
+    await detailPending;
+    await route.fulfill({ status: 404, contentType: "application/problem+json", body: JSON.stringify({ status: 404, title: "Old detail unavailable", code: "not_found" }) });
+  });
+  await page.goto(`/?context=application&application_id=${app.id}&section=catalog&resource=products&id=${product.id}`);
+  await detailRequested;
+  await page.getByRole("link", { name: "Entitlements", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Entitlements", exact: true })).toBeVisible();
+  const response = page.waitForResponse((response) => response.url().endsWith(`/products/${product.id}`));
+  releaseDetail();
+  await response;
+  await expect.poll(() => new URL(page.url()).searchParams.get("resource")).toBe("entitlements");
+  await expect(page.locator(".toast-error")).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.has("id")).toBe(false);
+});
+
 for (const scenario of [
   { running: "0.2.1", latest: "v0.2.1", label: "Latest version" },
   { running: "0.2.1", latest: "v0.3.0", label: "Update available" },
@@ -172,6 +232,7 @@ test("recovers malformed resource tabs and missing detail records", async ({ pag
   await mockAdmin(page);
   await page.goto(`/?context=application&application_id=${app.id}&section=catalog&resource=unknown&id=missing`);
   await expect(page).toHaveURL(/resource=products/);
+  await expect(page.locator(".toast-error")).toContainText("This resource tab is unavailable");
   await expect(page).not.toHaveURL(/&id=/);
   await page.route(`**/v1/control/applications/${app.id}/products/missing`, (route) => route.fulfill({ status: 404, contentType: "application/problem+json", body: JSON.stringify({ status: 404, title: "Product unavailable", code: "not_found" }) }));
   await page.goto(`/?context=application&application_id=${app.id}&section=catalog&resource=products&id=missing`);

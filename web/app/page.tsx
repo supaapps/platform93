@@ -963,16 +963,20 @@ function Workspace({
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [boundaryAction, setBoundaryAction] = useState("");
   const selectedResource = sectionResources.find((item) => item.path === resourcePath) ?? sectionResources[0];
+  // The URL changes before the parent effect applies the new context and section.
+  const routeMatchesWorkspace = route.context === "application"
+    && route.application_id === application?.id
+    && route.section === sectionKey(section);
   useEffect(() => {
-    if (!application || !selectedResource) return;
+    if (!routeMatchesWorkspace || !application || !selectedResource) return;
     if (route.resource !== selectedResource.path) {
       if (route.resource) setMessage(`${errorMessagePrefix}This resource tab is unavailable. Returned to ${selectedResource.label.toLowerCase()}.`);
       navigate({ resource: selectedResource.path, id: undefined }, false, true);
     }
-  }, [application, selectedResource, route.resource, setMessage]);
+  }, [routeMatchesWorkspace, application, selectedResource, route.resource, setMessage]);
   useEffect(() => {
     setDetail(null);
-    if (!application || !selectedResource || !route.id) return;
+    if (!routeMatchesWorkspace || !application || !selectedResource || !route.id) return;
     const path = resourceDetailPath(selectedResource.path, route.id);
     if (!path) {
       setMessage(`${errorMessagePrefix}This resource has no detail view.`);
@@ -984,8 +988,9 @@ function Workspace({
       .then((value) => { if (current) setDetail(value); })
       .catch((error) => { if (current) { setMessage(readError(error)); navigate({ id: undefined }, false, true); } });
     return () => { current = false; };
-  }, [application, selectedResource, route.id, refresh, setMessage]);
+  }, [routeMatchesWorkspace, application, selectedResource, route.id, refresh, setMessage]);
   useEffect(() => {
+    if (!routeMatchesWorkspace) return;
     if (!application) {
       setItems([]);
       return;
@@ -994,16 +999,18 @@ function Workspace({
       setItems([]);
       return;
     }
+    let current = true;
     setLoading(true);
     api
       .request<Page<Record<string, unknown>>>(
         "GET",
         `/v1/control/applications/${application.id}/${selectedResource.path}`,
       )
-      .then((value) => setItems(value.items))
-      .catch((error) => setMessage(readError(error)))
-      .finally(() => setLoading(false));
-  }, [application, selectedResource, refresh, setMessage]);
+      .then((value) => { if (current) setItems(value.items); })
+      .catch((error) => { if (current) setMessage(readError(error)); })
+      .finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
+  }, [routeMatchesWorkspace, application, selectedResource, refresh, setMessage]);
   async function inspect(item: Record<string, unknown>) {
     if (!selectedResource || !application) return;
     const resourceID = selectedResource.path === "clients" ? String(item.client_id ?? "") : String(item.id ?? "");
