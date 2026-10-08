@@ -501,9 +501,10 @@ export class Platform93Auth extends EventTarget {
       const record = JSON.parse(encoded) as { verifier?: unknown; expiresAt?: unknown; requestId?: unknown };
       if (typeof record.verifier === "string" && /^[A-Za-z0-9_-]{43}$/.test(record.verifier) &&
         typeof record.expiresAt === "number" && Number.isFinite(record.expiresAt) && record.expiresAt > Date.now() && record.expiresAt <= Date.now() + 600_000) {
-        const requestId = typeof record.requestId === "string" ? record.requestId : randomBase64URL(24);
+        const validRequestId = typeof record.requestId === "string" && /^[A-Za-z0-9_-]{32}$/.test(record.requestId);
+        const requestId = validRequestId ? record.requestId as string : randomBase64URL(24);
         const valid = { verifier: record.verifier, expiresAt: record.expiresAt, requestId };
-        if (record.requestId === undefined) this.authorizationStateStore.setItem(key, JSON.stringify(valid));
+        if (!validRequestId) this.authorizationStateStore.setItem(key, JSON.stringify(valid));
         return valid;
       }
     } catch { /* Invalid state is removed below. */ }
@@ -524,16 +525,16 @@ export class Platform93Auth extends EventTarget {
     }
     this.cancelExternalAuth(provider, requestId);
   }
-  private assertAuthorizationCurrent(kind: "provider" | "enrollment", identifier: string, verifier: string) {
+  private assertAuthorizationCurrent(kind: "provider" | "enrollment", identifier: string, verifier: string, cause?: unknown) {
     if (this.loadAuthorizationVerifier(kind, identifier) !== verifier) {
-      throw new ExternalAuthRecoveryError("Platform93 external authentication request was cancelled, expired or replaced", "cancelled");
+      throw new ExternalAuthRecoveryError("Platform93 external authentication request was cancelled, expired or replaced", "cancelled", cause);
     }
   }
   private async resolveAuthorizationExchange(kind: "provider" | "enrollment", identifier: string, verifier: string, response: Promise<AuthenticationResult>, correctableCodes: string[] = []) {
     let result: AuthenticationResult;
     try { result = await response; }
     catch (error) {
-      this.assertAuthorizationCurrent(kind, identifier, verifier);
+      this.assertAuthorizationCurrent(kind, identifier, verifier, error);
       const retry = retryableExchangeError(error) || error instanceof Platform93Error && correctableCodes.includes(error.problem.code);
       if (!retry) this.removeAuthorizationVerifier(kind, identifier, verifier);
       throw new ExternalAuthRecoveryError(error instanceof Error ? error.message : "Platform93 authentication exchange failed", retry ? "retry" : "restart", error);

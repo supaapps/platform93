@@ -71,7 +71,13 @@ for (const outcome of ["success", "terminal", "network"]) {
     const auth = recoveryAuth(async (url) => String(url).endsWith("/exchange") ? pending.promise : googleAuthorization());
     const first = await auth.startGoogleAuth({ redirectUri: "https://app.test/callback" });
     const exchange = auth.exchangeGoogleAuth("old-exchange");
-    const rejected = assert.rejects(exchange, (error) => error instanceof ExternalAuthRecoveryError && error.recovery === "cancelled");
+    const rejected = assert.rejects(exchange, (error) => {
+      assert.ok(error instanceof ExternalAuthRecoveryError);
+      assert.equal(error.recovery, "cancelled");
+      if (outcome === "network") assert.equal(error.cause.message, "offline");
+      if (outcome === "terminal") assert.equal(error.cause.problem.status, 401);
+      return true;
+    });
     const second = await auth.restartExternalAuth("google", { redirectUri: "https://app.test/callback" }, first.requestId);
     if (outcome === "success") pending.resolve(Response.json(tokens("old")));
     else if (outcome === "network") pending.reject(new TypeError("offline"));
@@ -219,6 +225,21 @@ test("legacy PKCE records can be cancelled without exposing or extending their v
   assert.equal(auth.cancelExternalAuth("google", pending.requestId), true);
   await auth.startGoogleAuth({ redirectUri: "https://app.test/callback" });
 });
+
+for (const requestId of [null, 42, {}, "", "malformed-id"]) {
+  test(`malformed stored request ID ${JSON.stringify(requestId)} is repaired once and remains cancellable`, () => {
+    const store = new MemoryAuthorizationStateStore();
+    const expiresAt = Date.now() + 60_000;
+    store.setItem("platform93.application.pkce.provider.google", JSON.stringify({ verifier: "a".repeat(43), expiresAt, requestId }));
+    const auth = recoveryAuth(async () => googleAuthorization(), store);
+    const pending = auth.pendingExternalAuth("google");
+    assert.match(pending.requestId, /^[A-Za-z0-9_-]{32}$/);
+    assert.deepEqual(auth.pendingExternalAuth("google"), pending);
+    assert.equal(pending.expiresAt, expiresAt);
+    assert.equal(auth.cancelExternalAuth("google", pending.requestId), true);
+    assert.equal(auth.pendingExternalAuth("google"), null);
+  });
+}
 
 test("MFA challenge remains anonymous until verification returns tokens", async () => {
   const calls = [];
