@@ -1,5 +1,6 @@
 import {
   Platform93Client,
+  Platform93Error,
   type AuthenticationResult,
   type ApplicationFlowConfig,
   type EmailStart,
@@ -44,6 +45,22 @@ export type ExternalAuthStartOptions = {
   loginHint?: string;
 };
 
+export type PendingExternalAuth = { provider: ExternalAuthProvider; requestId: string; expiresAt: number };
+export type ExternalAuthRequest = ExternalAuthAuthorization & { requestId: string };
+export class ExternalAuthRecoveryError extends Error {
+  constructor(message: string, readonly recovery: "retry" | "restart" | "cancelled", cause?: unknown) {
+    super(message, { cause });
+    this.name = "ExternalAuthRecoveryError";
+  }
+}
+type AuthorizationVerifier = { verifier: string; expiresAt: number; requestId: string };
+
+function retryableExchangeError(error: unknown) {
+  return error instanceof Platform93Error
+    ? error.problem.status === 408 || error.problem.status === 429 || error.problem.status >= 500
+    : error instanceof TypeError || error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+}
+
 export type InvitationLink = { applicationId: string; invitationId: string; linkToken: string };
 
 export interface TokenStore {
@@ -73,8 +90,8 @@ export class BrowserSessionAuthorizationStateStore implements AuthorizationState
     catch { return this.fallback.getItem(key); }
   }
   setItem(key: string, value: string) {
-    this.fallback.setItem(key, value);
-    try { this.storage.setItem(key, value); } catch { /* Use the in-memory fallback. */ }
+    try { this.storage.setItem(key, value); this.fallback.removeItem(key); }
+    catch { this.fallback.setItem(key, value); }
   }
   removeItem(key: string) {
     this.fallback.removeItem(key);
@@ -210,12 +227,34 @@ export class Platform93Auth extends EventTarget {
   signUp(input: PasswordSignUp) { return this.resolve(this.client.application().signUp(input)); }
   startEmail(input: EmailStart) { return this.client.application().startEmail(input); }
   verifyEmail(input: EmailVerify) { return this.resolve(this.client.application().verifyEmail(input)); }
-  async startExternalAuth(provider: ExternalAuthProvider, options: ExternalAuthStartOptions): Promise<ExternalAuthAuthorization> {
+  pendingExternalAuth(provider: ExternalAuthProvider): PendingExternalAuth | null {
+    const record = this.loadAuthorizationRecord("provider", provider);
+    return record ? { provider, requestId: record.requestId, expiresAt: record.expiresAt } : null;
+  }
+  /** Pass a request ID when cancelling from a delayed callback or component cleanup. */
+  cancelExternalAuth(provider: ExternalAuthProvider, requestId?: string): boolean {
+    const record = this.loadAuthorizationRecord("provider", provider);
+    if (!record || requestId !== undefined && record.requestId !== requestId) return false;
+    return this.removeAuthorizationVerifier("provider", provider, record.verifier);
+  }
+  restartExternalAuth(provider: ExternalAuthProvider, options: ExternalAuthStartOptions, requestId?: string) {
+    this.cancelForRestart(provider, requestId);
+    return this.startExternalAuth(provider, options);
+  }
+  restartApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationCredential, requestId?: string) {
+    this.cancelForRestart(provider, requestId);
+    return this.startApplicationInvitationProvider(provider, input);
+  }
+  cancelExternalEmailEnrollment(continuation: ExternalEmailEnrollmentContinuation): boolean {
+    const verifier = this.loadAuthorizationVerifier("enrollment", continuation.enrollment);
+    return !!verifier && this.removeAuthorizationVerifier("enrollment", continuation.enrollment, verifier);
+  }
+  async startExternalAuth(provider: ExternalAuthProvider, options: ExternalAuthStartOptions): Promise<ExternalAuthRequest> {
     if (this.loadAuthorizationVerifier("provider", provider)) {
       throw new Error(`Platform93 ${provider} authentication already has a request in progress`);
     }
     const codeVerifier = randomBase64URL(32);
-    this.saveAuthorizationVerifier("provider", provider, codeVerifier, 600);
+    const requestId = this.saveAuthorizationVerifier("provider", provider, codeVerifier, 600);
     try {
       const codeChallenge = await sha256Base64URL(codeVerifier);
       const authorization = await this.client.application().startExternalAuth(provider, {
@@ -224,10 +263,13 @@ export class Platform93Auth extends EventTarget {
         ...(options.loginHint ? { login_hint: options.loginHint } : {}),
         code_challenge: codeChallenge,
       });
-      this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in);
-      return authorization;
+      this.assertAuthorizationCurrent("provider", provider, codeVerifier);
+      this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in, requestId);
+      return { ...authorization, requestId };
     } catch (error) {
-      this.removeAuthorizationVerifier("provider", provider);
+      if (!this.removeAuthorizationVerifier("provider", provider, codeVerifier)) {
+        throw new ExternalAuthRecoveryError("Platform93 external authentication request was cancelled, expired or replaced", "cancelled", error);
+      }
       throw error;
     }
   }
@@ -237,44 +279,47 @@ export class Platform93Auth extends EventTarget {
   startFacebookAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("facebook", options); }
   startLinkedInAuth(options: ExternalAuthStartOptions) { return this.startExternalAuth("linkedin", options); }
   async exchangeExternalAuth(provider: ExternalAuthProvider, exchange: string, codeVerifier = this.loadAuthorizationVerifier("provider", provider)) {
-    if (!codeVerifier) throw new Error(`Platform93 ${provider} authentication is missing its PKCE verifier`);
-    const result = await this.resolve(this.client.application().exchangeExternalAuth(provider, exchange, codeVerifier));
-    this.removeAuthorizationVerifier("provider", provider);
-    return result;
+    if (!codeVerifier) throw new ExternalAuthRecoveryError(`Platform93 ${provider} authentication is missing its PKCE verifier`, "restart");
+    this.assertAuthorizationCurrent("provider", provider, codeVerifier);
+    return this.resolveAuthorizationExchange("provider", provider, codeVerifier,
+      this.client.application().exchangeExternalAuth(provider, exchange, codeVerifier));
   }
   exchangeGoogleAuth(exchange: string) { return this.exchangeExternalAuth("google", exchange); }
   exchangeAppleAuth(exchange: string) { return this.exchangeExternalAuth("apple", exchange); }
-  async completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL): Promise<AuthenticationResult | ExternalEmailEnrollmentContinuation> {
+  async completeExternalAuthRedirect(provider: ExternalAuthProvider, input: string | URL, requestId?: string): Promise<AuthenticationResult | ExternalEmailEnrollmentContinuation> {
+    const record = this.loadAuthorizationRecord("provider", provider);
+    if (requestId !== undefined && record?.requestId !== requestId) throw new ExternalAuthRecoveryError("Platform93 external authentication request was cancelled or replaced", "cancelled");
+    const clear = () => record && this.removeAuthorizationVerifier("provider", provider, record.verifier);
     let redirect: URL;
     try {
       redirect = input instanceof URL ? input : new URL(input);
     } catch {
-      this.removeAuthorizationVerifier("provider", provider);
-      throw new Error(`Platform93 ${provider} redirect is not a valid URL`);
+      clear();
+      throw new ExternalAuthRecoveryError(`Platform93 ${provider} redirect is not a valid URL`, "restart");
     }
     const providerError = redirect.searchParams.get("external_auth_error");
     if (providerError) {
-      this.removeAuthorizationVerifier("provider", provider);
-      throw new Error(`Platform93 ${provider} authentication failed: ${providerError}`);
+      clear();
+      throw new ExternalAuthRecoveryError(`Platform93 ${provider} authentication failed: ${providerError}`, "restart");
     }
     const enrollment = redirect.searchParams.get("external_auth_email_enrollment");
     if (enrollment) {
       if (provider === "google" || provider === "apple") {
-        this.removeAuthorizationVerifier("provider", provider);
-        throw new Error(`Platform93 ${provider} returned an unsupported email enrollment continuation`);
+        clear();
+        throw new ExternalAuthRecoveryError(`Platform93 ${provider} returned an unsupported email enrollment continuation`, "restart");
       }
-      const verifier = this.loadAuthorizationVerifier("provider", provider);
-      this.removeAuthorizationVerifier("provider", provider);
+      const verifier = record?.verifier;
+      clear();
       if (!verifier) throw new Error(`Platform93 ${provider} email enrollment is missing its PKCE verifier`);
       this.saveAuthorizationVerifier("enrollment", enrollment, verifier, 600);
       return { kind: "email_verification_required", provider, enrollment };
     }
     const exchange = redirect.searchParams.get("external_auth_exchange");
     if (!exchange) {
-      this.removeAuthorizationVerifier("provider", provider);
-      throw new Error(`Platform93 ${provider} redirect is missing its one-time exchange credential`);
+      clear();
+      throw new ExternalAuthRecoveryError(`Platform93 ${provider} redirect is missing its one-time exchange credential`, "restart");
     }
-    return this.exchangeExternalAuth(provider, exchange);
+    return this.exchangeExternalAuth(provider, exchange, record?.verifier);
   }
   startExternalEmailEnrollment(continuation: ExternalEmailEnrollmentContinuation, email: string, delivery: "code" | "link" | "both" = "both"): Promise<ExternalEmailEnrollmentChallenge> {
     const verifier = this.loadAuthorizationVerifier("enrollment", continuation.enrollment);
@@ -282,12 +327,12 @@ export class Platform93Auth extends EventTarget {
     return this.client.application().startExternalEmailEnrollment({ enrollment: continuation.enrollment, email, delivery, code_verifier: verifier });
   }
   async verifyExternalEmailEnrollment(continuation: ExternalEmailEnrollmentContinuation, credential: { code: string } | { linkToken: string }) {
-    const result = await this.resolve(this.client.application().verifyExternalEmailEnrollment({
+    const verifier = this.loadAuthorizationVerifier("enrollment", continuation.enrollment);
+    if (!verifier) throw new ExternalAuthRecoveryError("Platform93 external email enrollment is missing its PKCE verifier", "restart");
+    return this.resolveAuthorizationExchange("enrollment", continuation.enrollment, verifier, this.client.application().verifyExternalEmailEnrollment({
       enrollment: continuation.enrollment,
       ...( "code" in credential ? { code: credential.code.trim().toUpperCase() } : { link_token: credential.linkToken }),
-    }));
-    this.removeAuthorizationVerifier("enrollment", continuation.enrollment);
-    return result;
+    }), ["invalid_external_email_verification"]);
   }
   verifyExternalEmailEnrollmentLink(continuation: ExternalEmailEnrollmentContinuation, input?: string | URL) {
     const source = input ?? globalThis.location?.href;
@@ -304,19 +349,22 @@ export class Platform93Auth extends EventTarget {
     const authorization = await this.client.application().exchangeInvitation({ ...input, code_challenge: codeChallenge });
     return this.resolve(this.client.application().redeemInvitation({ authorization_code: authorization.authorization_code, code_verifier: codeVerifier }));
   }
-  async startApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationCredential) {
+  async startApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationCredential): Promise<ExternalAuthRequest> {
     if (this.loadAuthorizationVerifier("provider", provider)) {
       throw new Error(`Platform93 ${provider} authentication already has a request in progress`);
     }
     const codeVerifier = randomBase64URL(32);
-    this.saveAuthorizationVerifier("provider", provider, codeVerifier, 600);
+    const requestId = this.saveAuthorizationVerifier("provider", provider, codeVerifier, 600);
     try {
       const codeChallenge = await sha256Base64URL(codeVerifier);
       const authorization = await this.client.application().startApplicationInvitationProvider(provider, { ...input, code_challenge: codeChallenge });
-      this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in);
-      return authorization;
+      this.assertAuthorizationCurrent("provider", provider, codeVerifier);
+      this.saveAuthorizationVerifier("provider", provider, codeVerifier, authorization.expires_in, requestId);
+      return { ...authorization, requestId };
     } catch (error) {
-      this.removeAuthorizationVerifier("provider", provider);
+      if (!this.removeAuthorizationVerifier("provider", provider, codeVerifier)) {
+        throw new ExternalAuthRecoveryError("Platform93 external authentication request was cancelled, expired or replaced", "cancelled", error);
+      }
       throw error;
     }
   }
@@ -436,26 +484,68 @@ export class Platform93Auth extends EventTarget {
     return `platform93.${this.applicationId}.pkce.${kind}.${storageIdentifier}`;
   }
 
-  private saveAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string, verifier: string, expiresIn: number) {
-    const expiresAt = Date.now() + Math.max(1, expiresIn) * 1000;
-    this.authorizationStateStore.setItem(this.authorizationVerifierKey(kind, identifier), JSON.stringify({ verifier, expiresAt }));
+  private saveAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string, verifier: string, expiresIn: number, requestId = randomBase64URL(24)) {
+    const expiresAt = Date.now() + (Number.isFinite(expiresIn) ? Math.max(1, Math.min(600, expiresIn)) : 600) * 1000;
+    this.authorizationStateStore.setItem(this.authorizationVerifierKey(kind, identifier), JSON.stringify({ verifier, expiresAt, requestId }));
+    return requestId;
   }
 
   private loadAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string) {
+    return this.loadAuthorizationRecord(kind, identifier)?.verifier;
+  }
+  private loadAuthorizationRecord(kind: "provider" | "enrollment", identifier: string): AuthorizationVerifier | undefined {
     const key = this.authorizationVerifierKey(kind, identifier);
     const encoded = this.authorizationStateStore.getItem(key);
     if (!encoded) return undefined;
     try {
-      const record = JSON.parse(encoded) as { verifier?: unknown; expiresAt?: unknown };
+      const record = JSON.parse(encoded) as { verifier?: unknown; expiresAt?: unknown; requestId?: unknown };
       if (typeof record.verifier === "string" && /^[A-Za-z0-9_-]{43}$/.test(record.verifier) &&
-        typeof record.expiresAt === "number" && record.expiresAt > Date.now()) return record.verifier;
+        typeof record.expiresAt === "number" && Number.isFinite(record.expiresAt) && record.expiresAt > Date.now() && record.expiresAt <= Date.now() + 600_000) {
+        const validRequestId = typeof record.requestId === "string" && /^[A-Za-z0-9_-]{32}$/.test(record.requestId);
+        const requestId = validRequestId ? record.requestId as string : randomBase64URL(24);
+        const valid = { verifier: record.verifier, expiresAt: record.expiresAt, requestId };
+        if (!validRequestId) this.authorizationStateStore.setItem(key, JSON.stringify(valid));
+        return valid;
+      }
     } catch { /* Invalid state is removed below. */ }
     this.authorizationStateStore.removeItem(key);
     return undefined;
   }
 
-  private removeAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string) {
-    this.authorizationStateStore.removeItem(this.authorizationVerifierKey(kind, identifier));
+  private removeAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string, expectedVerifier: string) {
+    const key = this.authorizationVerifierKey(kind, identifier);
+    if (this.loadAuthorizationVerifier(kind, identifier) !== expectedVerifier) return false;
+    this.authorizationStateStore.removeItem(key);
+    return true;
+  }
+  private cancelForRestart(provider: ExternalAuthProvider, requestId?: string) {
+    const pending = this.pendingExternalAuth(provider);
+    if (pending && requestId !== undefined && pending.requestId !== requestId) {
+      throw new ExternalAuthRecoveryError("Platform93 external authentication request was replaced", "cancelled");
+    }
+    this.cancelExternalAuth(provider, requestId);
+  }
+  private assertAuthorizationCurrent(kind: "provider" | "enrollment", identifier: string, verifier: string, cause?: unknown) {
+    if (this.loadAuthorizationVerifier(kind, identifier) !== verifier) {
+      throw new ExternalAuthRecoveryError("Platform93 external authentication request was cancelled, expired or replaced", "cancelled", cause);
+    }
+  }
+  private async resolveAuthorizationExchange(kind: "provider" | "enrollment", identifier: string, verifier: string, response: Promise<AuthenticationResult>, correctableCodes: string[] = []) {
+    let result: AuthenticationResult;
+    try { result = await response; }
+    catch (error) {
+      this.assertAuthorizationCurrent(kind, identifier, verifier, error);
+      const retry = retryableExchangeError(error) || error instanceof Platform93Error && correctableCodes.includes(error.problem.code);
+      if (!retry) this.removeAuthorizationVerifier(kind, identifier, verifier);
+      throw new ExternalAuthRecoveryError(error instanceof Error ? error.message : "Platform93 authentication exchange failed", retry ? "retry" : "restart", error);
+    }
+    this.assertAuthorizationCurrent(kind, identifier, verifier);
+    this.removeAuthorizationVerifier(kind, identifier, verifier);
+    try { return await this.resolve(Promise.resolve(result)); }
+    catch (error) {
+      // The provider credential was consumed even when the local/BFF session failed.
+      throw new ExternalAuthRecoveryError("Platform93 session could not be saved; restart authentication", "restart", error);
+    }
   }
 
   private async withRefreshLock<T>(operation: () => Promise<T>): Promise<T> {
