@@ -1210,7 +1210,15 @@ return <ReferencePicker key={`${field.name}-${fieldValues._subject_type ?? "user
 function ResourceRow({ item, resource, application, setMessage, onInspect, onChanged }: { item: Record<string, unknown>; resource: string; application: Application; setMessage: (value: string) => void; onInspect: () => Promise<void>; onChanged: () => void }) {
   const [pendingAction, setPendingAction] = useState("");
   const id = String(item.id ?? "");
-  const actions: { label: string; icon?: AdminIconName; tone?: "default" | "danger" | "success"; method?: "POST" | "DELETE"; suffix: string; body?: unknown; headers?: Record<string, string> }[] = [];
+  const actions: { label: string; icon?: AdminIconName; tone?: "default" | "danger" | "success"; method?: "POST" | "PATCH" | "DELETE"; suffix: string; body?: unknown; headers?: Record<string, string> }[] = [];
+  if (resource === "products") {
+    const active = item.status === "active";
+    actions.push({
+      label: active ? "Archive product" : item.status === "archived" ? "Restore product" : "Activate product",
+      method: "PATCH", suffix: `products/${id}`, body: { status: active ? "archived" : "active" },
+      headers: { "If-Match": `"v${Number(item.version ?? 1).toString(16)}"` },
+    });
+  }
   if (resource === "users") actions.push(
     { label: "Verify organization", icon: "verify", tone: "success", suffix: `users/${id}/verify-organization`, body: {} },
     { label: item.status === "suspended" ? "Restore user" : "Suspend user", icon: item.status === "suspended" ? "restore" : "suspend", tone: item.status === "suspended" ? "default" : "danger", suffix: `users/${id}/${item.status === "suspended" ? "restore" : "suspend"}`, body: { reason: "control_user action" } },
@@ -1251,7 +1259,7 @@ function ResourceRow({ item, resource, application, setMessage, onInspect, onCha
     try {
       const result = await api.request<Record<string, unknown>>(action.method ?? "POST", `/v1/control/applications/${application.id}/${action.suffix}`, action.body ?? {}, { idempotencyKey: crypto.randomUUID(), headers: action.headers });
       const returnedSecret = result?.secret ?? result?.client_secret;
-      setMessage(returnedSecret ? `Store this one-time credential now: ${String(returnedSecret)}` : result ? JSON.stringify(result) : `${action.label} completed.`);
+      setMessage(returnedSecret ? `Store this one-time credential now: ${String(returnedSecret)}` : resource === "products" ? `${action.label} completed.` : result ? JSON.stringify(result) : `${action.label} completed.`);
       onChanged();
     } catch (error) { setMessage(readError(error)); }
     finally { setPendingAction(""); }

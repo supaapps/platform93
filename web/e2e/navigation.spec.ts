@@ -4,6 +4,27 @@ const org = { id: "01900000-0000-7000-8000-000000000101", name: "Navigation Org"
 const app = { id: "01900000-0000-7000-8000-000000000102", organization_id: org.id, name: "Navigation App", slug: "nav-app", issuer: "http://localhost:8093/oidc" };
 const product = { id: "01900000-0000-7000-8000-000000000103", key: "standard", name: "Standard", version: 1 };
 
+test("catalog products can be activated, archived and restored with version checks", async ({ page }) => {
+  await mockAdmin(page);
+  let status = "draft";
+  let version = 17;
+  await page.route(`**/v1/control/applications/${app.id}/products`, (route) => route.fulfill({ json: { items: [{ ...product, status, version }], next_cursor: null } }));
+  await page.route(`**/v1/control/applications/${app.id}/products/${product.id}`, async (route) => {
+    expect(route.request().method()).toBe("PATCH");
+    expect(route.request().headers()["if-match"]).toBe(`"v${version.toString(16)}"`);
+    status = route.request().postDataJSON().status;
+    version += 1;
+    await route.fulfill({ json: { ...product, status, version } });
+  });
+  await page.goto(`/?context=application&application_id=${app.id}&section=catalog&resource=products`);
+  for (const [action, nextStatus] of [["Activate product", "active"], ["Archive product", "archived"], ["Restore product", "active"]] as const) {
+    await page.getByRole("button", { name: action, exact: true }).click();
+    await expect.poll(() => status).toBe(nextStatus);
+    await expect(page.locator(".toast-success")).toContainText(`${action} completed.`);
+    await expect(page.locator(".table article").filter({ hasText: "Standard" }).locator("small")).toHaveText(nextStatus);
+  }
+});
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 700 }]) {
   test(`drawers cover the viewport outside animated containers (${viewport.width}px)`, async ({ page }) => {
     await page.setViewportSize(viewport);
