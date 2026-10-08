@@ -4,14 +4,22 @@ Apple authorization-code exchanges retain the returned refresh token encrypted
 with identity-bound authenticated encryption. Tokens never appear in user APIs,
 identity metadata, logs, or lifecycle webhook payloads.
 
+Identity creation/linking and invitation acceptance retain the token in the same
+transaction. Retention failure rolls back onboarding, including invitation
+membership, roles, and acceptance events.
+
 Account deletion and anonymization copy each Apple credential to a durable
 revocation outbox in the same database transaction as identity removal. The
 lifecycle worker sends revocation to Apple's fixed HTTPS endpoint with a fresh
 client secret, bounded timeout, and no redirects. Failures are retried with
 bounded exponential backoff; successful revocation erases the credential.
 
+Unlinking an application user's Apple identity also queues revocation before
+removing the identity. Deleting the account afterwards preserves this pending
+revocation. Unlinking other providers does not queue Apple revocations.
+
 Older Apple identities without a retained token must sign in with Apple again
-before deletion; the API returns `apple_reauthentication_required`. Never mark
+before deletion or unlinking; the API returns `apple_reauthentication_required`. Never mark
 these identities revoked merely because a Platform93 session was revoked.
 
 Deploy migration 00003 with both API and worker. Monitor:

@@ -22,13 +22,23 @@ func (s *Server) retainAppleToken(ctx context.Context, applicationID, userID, su
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err = s.retainAppleTokenTx(ctx, tx, applicationID, userID, subject, provider, token); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Server) retainAppleTokenTx(ctx context.Context, tx pgx.Tx, applicationID, userID, subject string, provider externalAuthProviderConfig, token string) error {
+	if token == "" {
+		return fmt.Errorf("Apple refresh token is missing")
+	}
 	// Serialize retention against deletion so a late callback cannot restore credentials.
 	var active bool
-	if err = tx.QueryRow(ctx, `SELECT status='active' AND deleted_at IS NULL FROM users WHERE id=$1 AND application_id=$2 FOR UPDATE`, userID, applicationID).Scan(&active); err != nil || !active {
+	if err := tx.QueryRow(ctx, `SELECT status='active' AND deleted_at IS NULL FROM users WHERE id=$1 AND application_id=$2 FOR UPDATE`, userID, applicationID).Scan(&active); err != nil || !active {
 		return fmt.Errorf("Apple identity unavailable")
 	}
 	var identityID string
-	if err = tx.QueryRow(ctx, `SELECT id FROM user_identities WHERE application_id=$1 AND user_id=$2 AND provider='apple' AND provider_subject=$3`, applicationID, userID, subject).Scan(&identityID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT id FROM user_identities WHERE application_id=$1 AND user_id=$2 AND provider='apple' AND provider_subject=$3`, applicationID, userID, subject).Scan(&identityID); err != nil {
 		return err
 	}
 	sealed, err := s.app.Vault.Encrypt([]byte(token), "apple-identity:"+identityID)
@@ -39,20 +49,24 @@ func (s *Server) retainAppleToken(ctx context.Context, applicationID, userID, su
 	if err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 // Credentials are copied into a durable outbox in the same transaction as deletion.
 func queueAppleRevocations(ctx context.Context, tx pgx.Tx, userID, applicationID string) error {
+	return queueAppleRevocationsForIdentity(ctx, tx, userID, applicationID, nil)
+}
+
+func queueAppleRevocationsForIdentity(ctx context.Context, tx pgx.Tx, userID, applicationID string, identityID *string) error {
 	var missing bool
-	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_identities i LEFT JOIN apple_identity_tokens t ON t.identity_id=i.id WHERE i.user_id=$1 AND i.application_id=$2 AND i.provider='apple' AND t.identity_id IS NULL)`, userID, applicationID).Scan(&missing)
+	err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_identities i LEFT JOIN apple_identity_tokens t ON t.identity_id=i.id WHERE i.user_id=$1 AND i.application_id=$2 AND i.provider='apple' AND ($3::uuid IS NULL OR i.id=$3) AND t.identity_id IS NULL)`, userID, applicationID, identityID).Scan(&missing)
 	if err != nil {
 		return err
 	}
 	if missing {
 		return fmt.Errorf("apple_reauthentication_required")
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO apple_token_revocations(identity_id,auth_provider_config_id,client_id,token_ciphertext) SELECT t.identity_id,t.auth_provider_config_id,t.client_id,t.token_ciphertext FROM apple_identity_tokens t JOIN user_identities i ON i.id=t.identity_id WHERE i.user_id=$1 AND i.application_id=$2 ON CONFLICT(identity_id) DO NOTHING`, userID, applicationID)
+	_, err = tx.Exec(ctx, `INSERT INTO apple_token_revocations(identity_id,auth_provider_config_id,client_id,token_ciphertext) SELECT t.identity_id,t.auth_provider_config_id,t.client_id,t.token_ciphertext FROM apple_identity_tokens t JOIN user_identities i ON i.id=t.identity_id WHERE i.user_id=$1 AND i.application_id=$2 AND i.provider='apple' AND ($3::uuid IS NULL OR i.id=$3) ON CONFLICT(identity_id) DO NOTHING`, userID, applicationID, identityID)
 	return err
 }
 

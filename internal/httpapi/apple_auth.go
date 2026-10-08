@@ -17,6 +17,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/kernel"
 	"github.com/supaapps/platform93/internal/secure"
 )
@@ -174,38 +175,31 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_identity_invalid")
 		return
 	}
+	retainToken := func(tx pgx.Tx, userID string) error {
+		return s.retainAppleTokenTx(r.Context(), tx, chi.URLParam(r, "application_id"), userID, claims.Subject, provider, tokenResponse.RefreshToken)
+	}
 	if flow == "invitation" && invitationID != nil {
 		external := externalProviderIdentity{Subject: claims.Subject, Email: claims.Email, FirstName: firstName, LastName: lastName, TrustedEmail: true}
-		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, provider, external)
+		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, provider, external, retainToken)
 		if completeErr != nil {
 			s.releaseExternalAuthChallenge(r, challengeID)
 			s.redirectExternalAuth(w, r, appRedirect, "", "invitation_identity_invalid")
 			return
 		}
 		challenge := ""
-		if err := s.retainAppleToken(r.Context(), chi.URLParam(r, "application_id"), userID, claims.Subject, provider, tokenResponse.RefreshToken); err != nil {
-			s.releaseExternalAuthChallenge(r, challengeID)
-			s.redirectExternalAuth(w, r, appRedirect, "", "provider_token_retention_failed")
-			return
-		}
 		if codeChallenge != nil {
 			challenge = *codeChallenge
 		}
 		s.completeExternalAuthCallback(w, r, challengeID, appRedirect, userID, challenge)
 		return
 	}
-	userID, completeErr := s.completeExternalIdentity(r, "apple", challengeID, flow, requestedBy, claims.Subject, claims.Email, firstName, lastName)
+	userID, completeErr := s.completeExternalIdentity(r, "apple", challengeID, flow, requestedBy, claims.Subject, claims.Email, firstName, lastName, retainToken)
 	if completeErr != nil {
 		s.releaseExternalAuthChallenge(r, challengeID)
 		s.redirectExternalAuth(w, r, appRedirect, "", completeErr.Error())
 		return
 	}
 	challenge := ""
-	if err := s.retainAppleToken(r.Context(), chi.URLParam(r, "application_id"), userID, claims.Subject, provider, tokenResponse.RefreshToken); err != nil {
-		s.releaseExternalAuthChallenge(r, challengeID)
-		s.redirectExternalAuth(w, r, appRedirect, "", "provider_token_retention_failed")
-		return
-	}
 	if codeChallenge != nil {
 		challenge = *codeChallenge
 	}
