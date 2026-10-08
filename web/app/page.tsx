@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Platform93Client, Platform93Error } from "@supaapps/platform93-sdk";
 import DOMPurify from "dompurify";
@@ -645,8 +645,7 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
   const invitationProviderAvailable = invitationRequiresProvider && methods.providers.includes(invitationMethod);
   const magicLinkStarted = useRef(false);
   const invitationLinkStarted = useRef(false);
-  const onCompleteRef = useRef(onComplete);
-  onCompleteRef.current = onComplete;
+  const completeSignIn = useEffectEvent(() => onComplete());
   useEffect(() => {
     if (magicLinkStarted.current) return;
     const params = new URLSearchParams(location.search);
@@ -668,7 +667,7 @@ function ControlUserLogin({ methods, onComplete }: { methods: ControlAuthMethods
     api.request("POST", "/v1/control/auth/email/verify", {
       challenge_id: challengeID,
       link_token: linkToken,
-    }).then(() => onCompleteRef.current()).catch((error) => {
+    }).then(() => completeSignIn()).catch((error) => {
       setMessage(readError(error));
     }).finally(() => {
       setBusy(false);
@@ -3223,11 +3222,10 @@ function ControlTable({ title, items, renderActions }: { title: string; items: R
 
 function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   const failed = message.startsWith(errorMessagePrefix);
-  const dismissRef = useRef(onDismiss);
-  dismissRef.current = onDismiss;
+  const dismissNotification = useEffectEvent(() => onDismiss());
   useEffect(() => {
     if (failed) return;
-    const timeout = window.setTimeout(() => dismissRef.current(), 4000);
+    const timeout = window.setTimeout(() => dismissNotification(), 4000);
     return () => window.clearTimeout(timeout);
   }, [failed, message]);
   return <div className={`toast ${failed ? "toast-error" : "toast-success"}`} role={failed ? "alert" : "status"} aria-live={failed ? "assertive" : "polite"}>

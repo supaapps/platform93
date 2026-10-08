@@ -6,6 +6,7 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const config: NextConfig = {
   output: "export",
   outputFileTracingRoot: repositoryRoot,
+  turbopack: { root: repositoryRoot },
   trailingSlash: true,
   images: { unoptimized: true },
 };
