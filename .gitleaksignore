@@ -1,3 +1,4 @@
 # Public, flate-compressed OpenAPI specification emitted by oapi-codegen.
 # Exact historical finding only; generated code and all other history remain scanned.
 39d27d922d3a994b39ace593ff53de4f52d459be:internal/generated/openapi.gen.go:generic-api-key:54739
+39b631578727bbcf1d29197616668d0fdc47dc96:internal/generated/openapi.gen.go:generic-api-key:54798
