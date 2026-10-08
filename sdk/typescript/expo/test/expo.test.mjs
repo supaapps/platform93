@@ -53,4 +53,5 @@ test("cancelled native authentication is reported without exchanging credentials
     fetch: async () => Response.json({ provider: "apple", authorize_url: "https://appleid.apple.com/auth/authorize", expires_in: 600 }, { status: 201 }),
   });
   await assert.rejects(() => auth.signInWithApple(), (error) => error instanceof Platform93NativeAuthSessionError && error.resultType === "cancel");
+  await assert.rejects(() => auth.signInWithApple(), (error) => error instanceof Platform93NativeAuthSessionError && error.resultType === "cancel");
 });

@@ -117,10 +117,14 @@ export class Platform93ExpoAuth {
       flow: options.flow,
       loginHint: options.loginHint,
     });
-    const result = await this.webBrowser.openAuthSessionAsync(authorization.authorize_url, this.redirectUri);
+    const result = await this.webBrowser.openAuthSessionAsync(authorization.authorize_url, this.redirectUri).catch((error: unknown) => {
+      this.auth.cancelExternalAuth(provider, authorization.requestId);
+      throw error;
+    });
     if (result.type !== "success" || !result.url) {
+      this.auth.cancelExternalAuth(provider, authorization.requestId);
       throw new Platform93NativeAuthSessionError(result.type);
     }
-    return await this.auth.completeExternalAuthRedirect(provider, result.url);
+    return await this.auth.completeExternalAuthRedirect(provider, result.url, authorization.requestId);
   }
 }
