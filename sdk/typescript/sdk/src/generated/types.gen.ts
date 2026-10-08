@@ -7124,6 +7124,15 @@ export type DeleteMyAccountData = {
     url: '/v1/applications/{application_id}/me';
 };
 
+export type DeleteMyAccountErrors = {
+    /**
+     * Apple reauthentication is required before account deletion; no account data is changed.
+     */
+    403: Problem;
+};
+
+export type DeleteMyAccountError = DeleteMyAccountErrors[keyof DeleteMyAccountErrors];
+
 export type DeleteMyAccountResponses = {
     /**
      * Account deleted and credentials revoked
@@ -8460,6 +8469,15 @@ export type AnonymizeMyAccountData = {
     url: '/v1/applications/{application_id}/me/anonymize';
 };
 
+export type AnonymizeMyAccountErrors = {
+    /**
+     * Apple reauthentication is required before account anonymization; no account data is changed.
+     */
+    403: Problem;
+};
+
+export type AnonymizeMyAccountError = AnonymizeMyAccountErrors[keyof AnonymizeMyAccountErrors];
+
 export type AnonymizeMyAccountResponses = {
     /**
      * Personal account data anonymized and credentials revoked
@@ -8679,6 +8697,15 @@ export type UnlinkMyIdentityData = {
     query?: never;
     url: '/v1/applications/{application_id}/me/auth/identities/{identity_id}';
 };
+
+export type UnlinkMyIdentityErrors = {
+    /**
+     * Apple reauthentication is required before unlinking; the identity remains unchanged.
+     */
+    403: Problem;
+};
+
+export type UnlinkMyIdentityError = UnlinkMyIdentityErrors[keyof UnlinkMyIdentityErrors];
 
 export type UnlinkMyIdentityResponses = {
     /**

@@ -10,6 +10,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/kernel"
 	"github.com/supaapps/platform93/internal/secure"
 	"golang.org/x/oauth2"
@@ -271,7 +272,9 @@ func (s *Server) completeGoogleIdentity(r *http.Request, challengeID, flow strin
 	return s.completeExternalIdentity(r, "google", challengeID, flow, requestedBy, subject, email, firstName, lastName)
 }
 
-func (s *Server) completeExternalIdentity(r *http.Request, provider, challengeID, flow string, requestedBy *string, subject, email, firstName, lastName string) (string, error) {
+type externalIdentityFinalizer func(pgx.Tx, string) error
+
+func (s *Server) completeExternalIdentity(r *http.Request, provider, challengeID, flow string, requestedBy *string, subject, email, firstName, lastName string, finalizers ...externalIdentityFinalizer) (string, error) {
 	normalized := kernel.NormalizeEmail(email)
 	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
@@ -320,6 +323,13 @@ VALUES ($1,$2,$3,$4,$5,jsonb_build_object('email',$6::text))`, kernel.NewID(), c
 		if err == nil {
 			_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata)
 VALUES ($1,$2,$3,$4,$5,jsonb_build_object('email',$6::text))`, kernel.NewID(), chi.URLParam(r, "application_id"), userID, provider, subject, normalized)
+		}
+	}
+	if err == nil {
+		for _, finalize := range finalizers {
+			if err = finalize(tx, userID); err != nil {
+				return "", fmt.Errorf("provider_token_retention_failed")
+			}
 		}
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {

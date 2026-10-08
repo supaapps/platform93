@@ -114,7 +114,7 @@ func (s *Server) applicationProviderAuthorizationURL(config externalAuthProvider
 	return providerAuthorizationURL(config, s.externalAuthCallbackURI(config.Provider), state, nonce, verifier, "")
 }
 
-func (s *Server) completeApplicationInvitationExternalIdentity(r *http.Request, invitationID string, config externalAuthProviderConfig, external externalProviderIdentity) (string, error) {
+func (s *Server) completeApplicationInvitationExternalIdentity(r *http.Request, invitationID string, config externalAuthProviderConfig, external externalProviderIdentity, finalizers ...externalIdentityFinalizer) (string, error) {
 	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
 		return "", err
@@ -152,10 +152,10 @@ VALUES($1,$2,$3,$3,$4,$5,now())`, userID, applicationID, email, external.FirstNa
 	}
 	metadata, _ := json.Marshal(map[string]any{"email": external.Email, "first_name": external.FirstName, "last_name": external.LastName})
 	if err == nil && identityErr == pgx.ErrNoRows {
-		_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata,last_used_at)
-VALUES($1,$2,$3,$4,$5,$6,now())`, kernel.NewID(), applicationID, userID, config.Provider, external.Subject, metadata)
+		_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata)
+VALUES($1,$2,$3,$4,$5,$6)`, kernel.NewID(), applicationID, userID, config.Provider, external.Subject, metadata)
 	} else if err == nil && identityErr == nil {
-		_, err = tx.Exec(r.Context(), `UPDATE user_identities SET last_used_at=now(),metadata=$1 WHERE application_id=$2 AND provider=$3 AND provider_subject=$4`,
+		_, err = tx.Exec(r.Context(), `UPDATE user_identities SET metadata=$1 WHERE application_id=$2 AND provider=$3 AND provider_subject=$4`,
 			metadata, applicationID, config.Provider, external.Subject)
 	}
 	roleWorkspaceID := workspaceID
@@ -186,6 +186,11 @@ VALUES($1,$2,$3,$4,$5,$6,now())`, kernel.NewID(), applicationID, userID, config.
 	}
 	if err != nil || parseErr != nil {
 		return "", err
+	}
+	for _, finalize := range finalizers {
+		if err = finalize(tx, userID); err != nil {
+			return "", fmt.Errorf("provider_token_retention_failed")
+		}
 	}
 	return userID, tx.Commit(r.Context())
 }
