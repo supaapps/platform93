@@ -4198,7 +4198,7 @@ paths:
     post:
       operationId: createEntitlement
       parameters:
-        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       tags:
         - Entitlements
       security:
@@ -10148,8 +10148,6 @@ components:
           type: string
         currency_exponent:
           type: integer
-          minimum: 0
-          maximum: 6
         tax_behavior:
           enum:
             - inclusive
