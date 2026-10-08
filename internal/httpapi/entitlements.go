@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/kernel"
 )
 
@@ -68,6 +70,10 @@ func (s *Server) createEntitlement(w http.ResponseWriter, r *http.Request) {
 	err = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT id FROM %s
 WHERE id=$1 AND application_id=$2 AND %s FOR SHARE`, subjectTable, activePredicate), request.SubjectID, applicationID).Scan(&subjectID)
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			kernel.WriteProblem(w, r, 500, "database_error", "The entitlement could not be created. Retry the request.")
+			return
+		}
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_subject", "The entitlement subject is not active in this application.")
 		return
 	}
@@ -75,6 +81,10 @@ WHERE id=$1 AND application_id=$2 AND %s FOR SHARE`, subjectTable, activePredica
 		// Catalog writers lock the product before updating its defaults and features.
 		var status string
 		if err = tx.QueryRow(r.Context(), `SELECT status FROM products WHERE id=$1 AND application_id=$2 FOR SHARE`, request.ProductID, applicationID).Scan(&status); err != nil || status != "active" {
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				kernel.WriteProblem(w, r, 500, "database_error", "The product could not be loaded. Retry the request.")
+				return
+			}
 			kernel.WriteProblem(w, r, 422, "invalid_catalog_reference", "The product must be active in this application.")
 			return
 		}
@@ -82,6 +92,10 @@ WHERE id=$1 AND application_id=$2 AND %s FOR SHARE`, subjectTable, activePredica
 			var active bool
 			err = tx.QueryRow(r.Context(), `SELECT active FROM prices WHERE id=$1 AND application_id=$2 AND product_id=$3 FOR SHARE`, request.PriceID, applicationID, request.ProductID).Scan(&active)
 			if err != nil || !active {
+				if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+					kernel.WriteProblem(w, r, 500, "database_error", "The price could not be loaded. Retry the request.")
+					return
+				}
 				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_catalog_reference", "The price must be active and belong to the selected product and application.")
 				return
 			}
@@ -95,7 +109,11 @@ WHERE id=$1 AND application_id=$2 AND %s FOR SHARE`, subjectTable, activePredica
 		return
 	}
 	if err = resolveManualGrant(r, tx, &request); err != nil {
-		kernel.WriteProblem(w, r, 422, "invalid_grant_values", err.Error())
+		if errors.Is(err, errInvalidGrantValues) {
+			kernel.WriteProblem(w, r, 422, "invalid_grant_values", err.Error())
+		} else {
+			kernel.WriteProblem(w, r, 500, "database_error", "The grant values could not be loaded. Retry the request.")
+		}
 		return
 	}
 	features, _ := json.Marshal(request.FeatureValues)
@@ -110,7 +128,7 @@ VALUES ($1,$2,$3,$4,$5,$6,'manual',$7,$8,$9,$10,$11,$12)`, id, applicationID, re
 		_, err = s.app.Emit(r.Context(), tx, &applicationID, "entitlement.effective_changed", request.SubjectType+"/"+request.SubjectID, actor(r), map[string]any{"subject_type": request.SubjectType, "subject_id": request.SubjectID, "grant_id": id, "external_reference": request.ExternalReference})
 	}
 	if err != nil || tx.Commit(r.Context()) != nil {
-		kernel.WriteProblem(w, r, 409, "entitlement_creation_failed", "The entitlement could not be granted.")
+		kernel.WriteProblem(w, r, 500, "entitlement_creation_failed", "The entitlement could not be granted. Retry the request.")
 		return
 	}
 	kernel.WriteJSON(w, 201, map[string]any{"id": id, "subject_type": request.SubjectType, "subject_id": request.SubjectID, "source_type": "manual", "feature_values": request.FeatureValues, "configuration": request.Configuration, "starts_at": starts, "expires_at": request.ExpiresAt, "external_reference": request.ExternalReference})

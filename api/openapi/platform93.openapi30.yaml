@@ -10099,9 +10099,9 @@ components:
           type: object
           additionalProperties: true
         features:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/FeatureValue'
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogFeatureSnapshot'
         version:
           type: integer
           format: int64
@@ -10128,6 +10128,7 @@ components:
         - checkout_config
         - entitlement_config
         - features
+        - active
       properties:
         id:
           $ref: '#/components/schemas/UUID'
@@ -10160,9 +10161,24 @@ components:
           type: object
           additionalProperties: true
         features:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/FeatureValue'
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogFeatureSnapshot'
+        active:
+          type: boolean
+        interval_unit:
+          type: string
+          nullable: true
+        interval_count:
+          type: integer
+          nullable: true
+        validity_seconds:
+          type: integer
+          format: int64
+          nullable: true
+        grace_seconds:
+          type: integer
+          format: int64
         status:
           enum:
             - active
@@ -15032,6 +15048,41 @@ components:
           minimum: 0
         free_form_value:
           description: A string for text or CSV features, or any valid JSON value for JSON features.
+      additionalProperties: false
+    CatalogFeatureSnapshot:
+      type: object
+      required:
+        - feature_id
+      properties:
+        feature_id:
+          $ref: '#/components/schemas/UUID'
+        key:
+          type: string
+        name:
+          type: string
+        value_type:
+          type: string
+          enum:
+            - boolean
+            - quantity
+            - free_form
+        free_form_format:
+          type: string
+          enum:
+            - text
+            - csv
+            - json
+            - null
+          nullable: true
+        boolean_value:
+          type: boolean
+        quantity_value:
+          type: integer
+          format: int64
+        free_form_value:
+          description: The stored JSON feature value.
+        value:
+          description: The effective typed feature value.
       additionalProperties: false
     CreateProduct:
       type: object

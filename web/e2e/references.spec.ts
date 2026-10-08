@@ -11,7 +11,7 @@ const appRole = { id: id(5), key: "reader", name: "Reader", scope: "application"
 const workspaceRole = { id: id(6), key: "editor", name: "Editor", scope: "workspace" };
 const client = { id: id(7), client_id: "service", name: "Service", client_type: "machine" };
 const feature = { id: id(8), key: "projects", name: "Projects", value_type: "quantity" };
-const price = { id: id(9), key: "monthly", active: true, mode: "recurring", amount_minor: 1000, currency: "EUR", currency_exponent: 2, entitlement_config: { support: "priority" }, features: [{ feature_id: feature.id, quantity_value: 10 }] };
+const price = { id: id(9), key: "monthly", active: true, mode: "recurring" as const, amount_minor: 1000, currency: "EUR", currency_exponent: 2, tax_behavior: "inclusive" as const, checkout_config: {}, entitlement_config: { support: "priority" }, features: [{ feature_id: feature.id, quantity_value: 10 }] };
 const product = { id: id(10), name: "Standard", key: "standard", status: "active", entitlement_config: { support: "basic" }, features: [{ feature_id: feature.id, quantity_value: 5 }], prices: [price] };
 
 async function setup(page: Page) {
@@ -219,6 +219,8 @@ test("workspace members and ownership recovery use user and role searches", asyn
 });
 
 test("price formatting rejects unsafe exponents without crashing", () => {
+  expect(priceLabel({ ...price, amount_minor: Number.MAX_SAFE_INTEGER + 1 })).toContain("Amount unavailable");
+  expect(priceLabel({ ...price, amount_minor: null })).toContain("Amount unavailable");
   expect(priceLabel({ ...price, currency_exponent: -1 })).toContain("1000 minor units");
   expect(priceLabel({ ...price, currency_exponent: 101 })).toContain("1000 minor units");
   expect(priceLabel({ ...price, currency_exponent: 0 })).toContain("1000 EUR");

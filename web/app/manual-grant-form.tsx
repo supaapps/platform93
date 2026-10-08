@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import type { generated } from "@supaapps/platform93-sdk";
 import { validateFreeFormInput } from "./free-form-validation";
 import { ReferencePicker, type ReferenceItem, type ReferenceRequest } from "./reference-picker";
 
 type Feature = { id: string; key: string; name: string; value_type: string; free_form_format?: string };
 type FeatureValue = { key?: string; feature_id: string; boolean_value?: boolean; quantity_value?: number; free_form_value?: unknown };
-type Price = ReferenceItem & { key: string; active: boolean; mode: string; amount_minor: number; currency: string; currency_exponent: number; features?: FeatureValue[]; entitlement_config?: Record<string, unknown> };
+type Price = generated.Price;
 
 export function calendarExpiry(now: Date, months: number): Date {
   const date = new Date(now);
@@ -21,6 +22,9 @@ function localDateTime(date: Date) {
 }
 
 export function priceLabel(price: Price): string {
+  if (price.amount_minor == null || !Number.isSafeInteger(price.amount_minor) || price.amount_minor < 0) {
+    return `${price.key} · Amount unavailable · ${price.currency} · ${price.mode}`;
+  }
   const exponent = price.currency_exponent;
   const amount = Number.isInteger(exponent) && exponent >= 0 && exponent <= 6
     ? (price.amount_minor / 10 ** exponent).toFixed(exponent)

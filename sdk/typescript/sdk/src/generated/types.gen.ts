@@ -408,9 +408,7 @@ export type Product = {
     entitlement_config: {
         [key: string]: unknown;
     };
-    features: {
-        [key: string]: FeatureValue;
-    };
+    features: Array<CatalogFeatureSnapshot>;
     version: number;
     prices?: Array<Price>;
     created_at?: string;
@@ -432,9 +430,12 @@ export type Price = {
     entitlement_config: {
         [key: string]: unknown;
     };
-    features: {
-        [key: string]: FeatureValue;
-    };
+    features: Array<CatalogFeatureSnapshot>;
+    active: boolean;
+    interval_unit?: string | null;
+    interval_count?: number | null;
+    validity_seconds?: number | null;
+    grace_seconds?: number;
     status?: 'active' | 'archived';
     version?: number;
     created_at?: string;
@@ -2157,6 +2158,24 @@ export type FeatureValue = {
      * A string for text or CSV features, or any valid JSON value for JSON features.
      */
     free_form_value?: unknown;
+};
+
+export type CatalogFeatureSnapshot = {
+    feature_id: Uuid;
+    key?: string;
+    name?: string;
+    value_type?: 'boolean' | 'quantity' | 'free_form';
+    free_form_format?: 'text' | 'csv' | 'json' | null;
+    boolean_value?: boolean;
+    quantity_value?: number;
+    /**
+     * The stored JSON feature value.
+     */
+    free_form_value?: unknown;
+    /**
+     * The effective typed feature value.
+     */
+    value?: unknown;
 };
 
 export type CreateProduct = {

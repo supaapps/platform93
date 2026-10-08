@@ -216,12 +216,11 @@ button:disabled {
   z-index: 1200;
   inset: 0 0 auto;
   height: 3px;
-  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  transition: opacity 120ms ease;
 }
 .network-activity.active {
-  opacity: 1;
+  visibility: visible;
 }
 .network-activity i {
   display: block;

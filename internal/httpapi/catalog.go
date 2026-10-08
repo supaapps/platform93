@@ -331,7 +331,7 @@ SELECT $1,feature_id,boolean_value,quantity_value,free_form_value FROM product_f
 		kernel.WriteProblem(w, r, 409, "price_creation_failed", "The immutable price could not be created.")
 		return
 	}
-	kernel.WriteJSON(w, 201, map[string]any{"id": id, "key": request.Key, "mode": request.Mode, "amount_minor": request.AmountMinor, "currency": request.Currency, "currency_exponent": exponent, "tax_behavior": request.TaxBehavior, "checkout_config": request.CheckoutConfig, "entitlement_config": decodeMap(entitlement), "features": catalogFeatureValues(r.Context(), s.app.DB, "price", id.String())})
+	kernel.WriteJSON(w, 201, map[string]any{"id": id, "key": request.Key, "mode": request.Mode, "amount_minor": request.AmountMinor, "currency": request.Currency, "currency_exponent": exponent, "tax_behavior": request.TaxBehavior, "checkout_config": request.CheckoutConfig, "entitlement_config": decodeMap(entitlement), "features": catalogFeatureValues(r.Context(), s.app.DB, "price", id.String()), "active": true})
 }
 
 func (s *Server) listPrices(w http.ResponseWriter, r *http.Request) {

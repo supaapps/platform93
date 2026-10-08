@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -11,11 +12,51 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/database"
 	"github.com/supaapps/platform93/internal/kernel"
 	"github.com/supaapps/platform93/internal/platform"
 	"github.com/supaapps/platform93/internal/secure"
 )
+
+type failedGrantRow struct{ err error }
+
+func (row failedGrantRow) Scan(...any) error { return row.err }
+
+type failedGrantTx struct {
+	pgx.Tx
+	err error
+}
+
+func (tx failedGrantTx) QueryRow(context.Context, string, ...any) pgx.Row {
+	return failedGrantRow{tx.err}
+}
+
+func TestManualGrantResolutionErrors(t *testing.T) {
+	operational := errors.New("database unavailable")
+	product := kernel.NewID().String()
+	for _, test := range []struct {
+		name    string
+		grant   grantRequest
+		err     error
+		invalid bool
+	}{
+		{"configuration lookup", grantRequest{ProductID: &product}, operational, false},
+		{"feature snapshot lookup", grantRequest{ProductID: &product, Configuration: map[string]any{}}, operational, false},
+		{"feature definition lookup", grantRequest{FeatureValues: map[string]any{"test": true}}, operational, false},
+		{"missing feature", grantRequest{FeatureValues: map[string]any{"test": true}}, pgx.ErrNoRows, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := resolveManualGrant(httptest.NewRequest("POST", "/", nil), failedGrantTx{err: test.err}, &test.grant)
+			if err == nil || errors.Is(err, errInvalidGrantValues) != test.invalid {
+				t.Fatalf("unexpected classification: %v", err)
+			}
+			if !test.invalid && !errors.Is(err, operational) {
+				t.Fatal("operational cause was lost")
+			}
+		})
+	}
+}
 
 func TestGrantFeatureValidation(t *testing.T) {
 	text, csv, jsonFormat := "text", "csv", "json"
@@ -96,6 +137,31 @@ func TestManualGrantSnapshotsAndSearchIntegration(t *testing.T) {
 		}
 	}
 	expires := time.Now().UTC().Add(time.Hour)
+	t.Run("operational failures remain retryable", func(t *testing.T) {
+		calls := 0
+		handler := s.idempotent(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			if calls == 1 {
+				kernel.WriteProblem(w, r, 500, "database_error", "Retry the request.")
+				return
+			}
+			kernel.WriteJSON(w, 201, map[string]any{"id": "recovered"})
+		}))
+		current := kernel.Actor{Type: "control_user", ID: kernel.NewID().String()}
+		key := kernel.NewID().String()
+		for attempt, status := range []int{500, 201, 201} {
+			request := requestWithRoute(t, "POST", "/", map[string]any{"subject_id": user}, map[string]string{"application_id": app.String()}, current)
+			request.Header.Set("Idempotency-Key", key)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != status || (attempt == 2 && response.Header().Get("Idempotent-Replayed") != "true") {
+				t.Fatalf("attempt %d: %d %s", attempt, response.Code, response.Body.String())
+			}
+		}
+		if calls != 2 {
+			t.Fatalf("expected recovery and success replay, got %d calls", calls)
+		}
+	})
 	t.Run("idempotent replay", func(t *testing.T) {
 		body := map[string]any{"subject_type": "user", "subject_id": user, "product_id": product, "expires_at": expires}
 		current := kernel.Actor{Type: "control_user", ID: kernel.NewID().String()}
