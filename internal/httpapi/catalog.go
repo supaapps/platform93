@@ -148,8 +148,19 @@ func (s *Server) products(w http.ResponseWriter, r *http.Request, public bool) {
 	if public {
 		query += ` AND p.status='active' AND p.listable=true`
 	}
-	query += ` ORDER BY p.created_at,p.id`
-	rows, err := s.app.DB.Query(r.Context(), query, chi.URLParam(r, "application_id"))
+	args := []any{chi.URLParam(r, "application_id")}
+	limit := 0
+	if !public {
+		var ok bool
+		query, args, limit, ok = referenceSearch(w, r, query, args, "p.id", "p.name", "p.key")
+		if !ok {
+			return
+		}
+	}
+	if limit == 0 {
+		query += ` ORDER BY p.created_at,p.id`
+	}
+	rows, err := s.app.DB.Query(r.Context(), query, args...)
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "database_error", "Products could not be loaded.")
 		return
@@ -167,12 +178,13 @@ func (s *Server) products(w http.ResponseWriter, r *http.Request, public bool) {
 		}
 	}
 	rows.Close()
+	items, cursor := referencePage(items, limit, func(item map[string]any) string { return item["id"].(string) })
 	for _, product := range items {
 		id := product["id"].(string)
 		product["features"] = catalogFeatureValues(r.Context(), s.app.DB, "product", id)
 		product["prices"] = s.priceList(r, id, public)
 	}
-	kernel.WriteJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})
+	kernel.WriteJSON(w, 200, map[string]any{"items": items, "next_cursor": cursor})
 }
 
 func (s *Server) getProduct(w http.ResponseWriter, r *http.Request) {

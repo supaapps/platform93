@@ -38,8 +38,15 @@ func (s *Server) createRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRoles(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.app.DB.Query(r.Context(), `SELECT id,key,name,scope,permissions,built_in,version,created_at
-FROM roles WHERE application_id=$1 ORDER BY built_in DESC,key`, chi.URLParam(r, "application_id"))
+	query, args, limit, ok := referenceSearch(w, r, `SELECT id,key,name,scope,permissions,built_in,version,created_at
+FROM roles WHERE application_id=$1`, []any{chi.URLParam(r, "application_id")}, "id", "name", "key")
+	if !ok {
+		return
+	}
+	if limit == 0 {
+		query += " ORDER BY built_in DESC,key"
+	}
+	rows, err := s.app.DB.Query(r.Context(), query, args...)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Roles could not be loaded.")
 		return
@@ -56,7 +63,8 @@ FROM roles WHERE application_id=$1 ORDER BY built_in DESC,key`, chi.URLParam(r, 
 			items = append(items, map[string]any{"id": id, "key": key, "name": name, "scope": scope, "permissions": permissions, "built_in": builtIn, "version": version, "created_at": created})
 		}
 	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
+	items, cursor := referencePage(items, limit, func(item map[string]any) string { return item["id"].(string) })
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": cursor})
 }
 
 func (s *Server) getRole(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +209,13 @@ FROM workspaces w WHERE w.application_id=$1 AND w.deleted_at IS NULL`
 		query += ` AND (w.owner_user_id=$2 OR EXISTS(SELECT 1 FROM workspace_memberships m WHERE m.workspace_id=w.id AND m.user_id=$2))`
 		args = append(args, actor(r).ID)
 	}
-	query += ` ORDER BY w.created_at,w.id`
+	query, args, limit, ok := referenceSearch(w, r, query, args, "w.id", "w.name", "w.key")
+	if !ok {
+		return
+	}
+	if limit == 0 {
+		query += ` ORDER BY w.created_at,w.id`
+	}
 	rows, err := s.app.DB.Query(r.Context(), query, args...)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Workspaces could not be loaded.")
@@ -218,7 +232,8 @@ FROM workspaces w WHERE w.application_id=$1 AND w.deleted_at IS NULL`
 			items = append(items, map[string]any{"id": id, "owner_user_id": ownerUserID, "key": key, "name": name, "metadata": decodeMap(metadata), "version": version, "created_at": created, "updated_at": updated})
 		}
 	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
+	items, cursor := referencePage(items, limit, func(item map[string]any) string { return item["id"].(string) })
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": cursor})
 }
 
 func (s *Server) assignRole(w http.ResponseWriter, r *http.Request) {

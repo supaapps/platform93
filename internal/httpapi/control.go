@@ -380,8 +380,15 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, id, chi.URLParam(r, "application_id"), req
 }
 
 func (s *Server) listClients(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.app.DB.Query(r.Context(), `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at
-FROM clients WHERE application_id=$1 AND disabled_at IS NULL ORDER BY created_at,id`, chi.URLParam(r, "application_id"))
+	query, args, limit, ok := referenceSearch(w, r, `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at
+FROM clients WHERE application_id=$1 AND disabled_at IS NULL`, []any{chi.URLParam(r, "application_id")}, "id", "name", "client_id")
+	if !ok {
+		return
+	}
+	if limit == 0 {
+		query += " ORDER BY created_at,id"
+	}
+	rows, err := s.app.DB.Query(r.Context(), query, args...)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Clients could not be loaded.")
 		return
@@ -396,7 +403,8 @@ FROM clients WHERE application_id=$1 AND disabled_at IS NULL ORDER BY created_at
 			items = append(items, map[string]any{"id": id, "client_id": clientID, "name": name, "client_type": clientType, "redirect_uris": redirects, "allowed_grants": grants, "allowed_scopes": scopes, "created_at": created})
 		}
 	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
+	items, cursor := referencePage(items, limit, func(item map[string]any) string { return item["id"].(string) })
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": cursor})
 }
 
 func validNameSlug(name, slug string) bool {

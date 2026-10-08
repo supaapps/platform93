@@ -2010,6 +2010,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listClients
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       security:
@@ -2117,6 +2121,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listRoles
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       security:
@@ -2214,6 +2222,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listWorkspaces
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       security:
@@ -3071,6 +3083,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listUsers
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Identity
       security:
@@ -4025,6 +4041,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listProducts
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Catalog
       security:
@@ -8336,6 +8356,28 @@ components:
       bearerFormat: Platform93-management-JWT
       description: Short-lived client-credentials token with actor_type=management_client and audience platform93:control.
   parameters:
+    ReferenceQuery:
+      name: query
+      in: query
+      description: Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+      schema:
+        type: string
+        maxLength: 200
+    ReferenceLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    ReferenceCursor:
+      name: cursor
+      in: query
+      description: Continue the same search using the returned next_cursor.
+      schema:
+        type: string
+        format: uuid
     ApplicationID:
       name: application_id
       in: path
@@ -12980,6 +13022,7 @@ components:
       additionalProperties: false
     CreateEntitlement:
       type: object
+      description: Manual access without a charge or renewal. Omitted feature_values and configuration snapshot the selected price defaults, or product defaults when no price is selected. Explicit maps replace defaults; an empty object clears them. Catalog selections must be active. Expiry, when supplied, must be after the start time.
       required:
         - subject_type
         - subject_id

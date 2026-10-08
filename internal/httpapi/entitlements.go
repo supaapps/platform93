@@ -42,36 +42,45 @@ func (s *Server) createEntitlement(w http.ResponseWriter, r *http.Request) {
 	if request.StartsAt != nil {
 		starts = *request.StartsAt
 	}
-	features, _ := json.Marshal(request.FeatureValues)
-	configuration, _ := json.Marshal(request.Configuration)
+	if request.ExpiresAt != nil && !request.ExpiresAt.After(starts) {
+		kernel.WriteProblem(w, r, 422, "invalid_expiry", "Expiry must be after the grant starts.")
+		return
+	}
 	id := kernel.NewID()
 	applicationID, _ := applicationID(r)
 	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
+		kernel.WriteProblem(w, r, 500, "database_error", "The entitlement could not be created.")
 		return
 	}
 	defer rollback(tx, r.Context())
-	var subjectExists bool
+	var subjectID string
 	subjectTable := "users"
 	activePredicate := "status='active'"
 	if request.SubjectType == "workspace" {
 		subjectTable = "workspaces"
 		activePredicate = "deleted_at IS NULL"
 	}
-	err = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %s
-WHERE id=$1 AND application_id=$2 AND %s)`, subjectTable, activePredicate), request.SubjectID, applicationID).Scan(&subjectExists)
-	if err != nil || !subjectExists {
+	err = tx.QueryRow(r.Context(), fmt.Sprintf(`SELECT id FROM %s
+WHERE id=$1 AND application_id=$2 AND %s FOR SHARE`, subjectTable, activePredicate), request.SubjectID, applicationID).Scan(&subjectID)
+	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_subject", "The entitlement subject is not active in this application.")
 		return
 	}
 	if request.ProductID != nil {
-		var catalogValid bool
-		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM products p
-WHERE p.id=$1 AND p.application_id=$2 AND ($3::uuid IS NULL OR EXISTS(SELECT 1 FROM prices pr WHERE pr.id=$3 AND pr.product_id=p.id AND pr.application_id=p.application_id)))`,
-			request.ProductID, applicationID, request.PriceID).Scan(&catalogValid)
-		if err != nil || !catalogValid {
-			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_catalog_reference", "The product and price must belong to this application.")
+		// Catalog writers lock the product before updating its defaults and features.
+		var status string
+		if err = tx.QueryRow(r.Context(), `SELECT status FROM products WHERE id=$1 AND application_id=$2 FOR SHARE`, request.ProductID, applicationID).Scan(&status); err != nil || status != "active" {
+			kernel.WriteProblem(w, r, 422, "invalid_catalog_reference", "The product must be active in this application.")
 			return
+		}
+		if request.PriceID != nil {
+			var active bool
+			err = tx.QueryRow(r.Context(), `SELECT active FROM prices WHERE id=$1 AND application_id=$2 AND product_id=$3 FOR SHARE`, request.PriceID, applicationID, request.ProductID).Scan(&active)
+			if err != nil || !active {
+				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_catalog_reference", "The price must be active and belong to the selected product and application.")
+				return
+			}
 		}
 	} else if request.PriceID != nil {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_catalog_reference", "A price cannot be selected without its product.")
@@ -81,6 +90,12 @@ WHERE p.id=$1 AND p.application_id=$2 AND ($3::uuid IS NULL OR EXISTS(SELECT 1 F
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_external_reference", "External reference must contain between 1 and 255 characters.")
 		return
 	}
+	if err = resolveManualGrant(r, tx, &request); err != nil {
+		kernel.WriteProblem(w, r, 422, "invalid_grant_values", err.Error())
+		return
+	}
+	features, _ := json.Marshal(request.FeatureValues)
+	configuration, _ := json.Marshal(request.Configuration)
 	_, err = tx.Exec(r.Context(), `INSERT INTO entitlement_grants
 (id,application_id,subject_type,subject_id,product_id,price_id,source_type,feature_values,configuration,starts_at,expires_at,created_by,external_reference)
 VALUES ($1,$2,$3,$4,$5,$6,'manual',$7,$8,$9,$10,$11,$12)`, id, applicationID, request.SubjectType, request.SubjectID, request.ProductID, request.PriceID, features, configuration, starts, request.ExpiresAt, actor(r).ID, request.ExternalReference)

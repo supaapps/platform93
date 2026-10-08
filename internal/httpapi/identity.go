@@ -68,11 +68,16 @@ func (s *Server) adminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) adminListUsers(w http.ResponseWriter, r *http.Request) {
 	applicationID := chi.URLParam(r, "application_id")
-	query := strings.TrimSpace(r.URL.Query().Get("query"))
-	rows, err := s.app.DB.Query(r.Context(), `SELECT id,application_id,email,first_name,last_name,username,locale,
+	query, args, limit, ok := referenceSearch(w, r, `SELECT id,application_id,email,first_name,last_name,username,locale,
 email_verified_at IS NOT NULL,is_org_verified,status,custom_attributes,version,created_at,updated_at
-FROM users WHERE application_id=$1 AND ($2='' OR normalized_email LIKE '%'||lower($2)||'%' OR first_name ILIKE '%'||$2||'%' OR last_name ILIKE '%'||$2||'%')
-ORDER BY created_at DESC,id LIMIT 101`, applicationID, query)
+FROM users WHERE application_id=$1`, []any{applicationID}, "id", "normalized_email", "first_name", "last_name")
+	if !ok {
+		return
+	}
+	if limit == 0 {
+		query += " ORDER BY created_at DESC,id LIMIT 101"
+	}
+	rows, err := s.app.DB.Query(r.Context(), query, args...)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Users could not be loaded.")
 		return
@@ -84,7 +89,8 @@ ORDER BY created_at DESC,id LIMIT 101`, applicationID, query)
 			items = append(items, user)
 		}
 	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
+	items, cursor := referencePage(items, limit, func(item userResponse) string { return item.ID })
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": cursor})
 }
 
 func (s *Server) adminGetUser(w http.ResponseWriter, r *http.Request) {

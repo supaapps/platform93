@@ -1424,6 +1424,9 @@ export type FinishWebAuthnCeremony = {
     };
 };
 
+/**
+ * Manual access without a charge or renewal. Omitted feature_values and configuration snapshot the selected price defaults, or product defaults when no price is selected. Explicit maps replace defaults; an empty object clears them. Catalog selections must be active. Expiry, when supplied, must be after the start time.
+ */
 export type CreateEntitlement = {
     subject_type: 'user' | 'workspace';
     subject_id: Uuid;
@@ -2577,6 +2580,18 @@ export type CreateBillingProviderWritable = {
     api_version?: '2026-04-22.dahlia';
     inheritable?: boolean;
 };
+
+/**
+ * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+ */
+export type ReferenceQuery = string;
+
+export type ReferenceLimit = number;
+
+/**
+ * Continue the same search using the returned next_cursor.
+ */
+export type ReferenceCursor = string;
 
 export type ApplicationId = Uuid;
 
@@ -4895,7 +4910,17 @@ export type ListClientsData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/clients';
 };
 
@@ -5007,7 +5032,17 @@ export type ListRolesData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/roles';
 };
 
@@ -5146,7 +5181,17 @@ export type ListWorkspacesData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/workspaces';
 };
 
@@ -6210,7 +6255,17 @@ export type ListUsersData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/users';
 };
 
@@ -7181,7 +7236,17 @@ export type ListProductsData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/products';
 };
 
