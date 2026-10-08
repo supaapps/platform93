@@ -37,7 +37,7 @@ func (s *Server) serviceListWorkspaces(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) serviceGetWorkspace(w http.ResponseWriter, r *http.Request) {
 	if requireApplicationPermission(w, r, "workspaces/read") {
-		s.getWorkspace(w, r)
+		s.readWorkspace(w, r)
 	}
 }
 func (s *Server) serviceWorkspaceAccess(w http.ResponseWriter, r *http.Request) {

@@ -16,6 +16,11 @@ func (s *Server) getWorkspace(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "workspace_not_found", "The workspace was not found.")
 		return
 	}
+	s.readWorkspace(w, r)
+}
+
+// Callers must authorize access before using this application-scoped read.
+func (s *Server) readWorkspace(w http.ResponseWriter, r *http.Request) {
 	var id, ownerUserID, key, name string
 	var metadata []byte
 	var version int64
