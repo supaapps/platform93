@@ -1616,6 +1616,7 @@ function WebhookEditor({ webhook, application, setMessage, onChanged }: { webhoo
 
 function WorkspaceMembers({ workspaceID, application, setMessage }: { workspaceID: string; application: Application; setMessage: (value: string) => void }) {
   const [members, setMembers] = useState<Record<string, unknown>[]>([]);
+  const [memberFormVersion, setMemberFormVersion] = useState(0);
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
     api.request<Page<Record<string, unknown>>>("GET", `/v1/control/applications/${application.id}/workspaces/${workspaceID}/members`)
@@ -1629,6 +1630,7 @@ function WorkspaceMembers({ workspaceID, application, setMessage }: { workspaceI
       await api.request("PUT", `/v1/control/applications/${application.id}/workspaces/${workspaceID}/members/${String(form.get("user_id"))}`, { role_keys: String(form.get("role_keys") ?? "").split(",").map((value) => value.trim()).filter(Boolean) });
       target.reset();
       setMessage("Workspace member roles updated.");
+      setMemberFormVersion((value) => value + 1);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
@@ -1648,7 +1650,7 @@ function WorkspaceMembers({ workspaceID, application, setMessage }: { workspaceI
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
-  return <><form className="detail-form" onSubmit={(event) => void replace(event)}><strong>Add or replace workspace member roles</strong><ResourceReference application={application} kind="users" name="user_id" label="Member" required /><ResourceReference application={application} kind="roles" name="role_keys" label="Workspace roles" roleScope="workspace" multiple required /><button>Apply roles</button></form><form className="detail-form" onSubmit={(event) => void transfer(event)}><strong>Recover workspace ownership</strong><ResourceReference application={application} kind="users" name="new_owner_user_id" label="New owner" required /><label><span>Previous owner</span><select name="previous_owner_disposition" defaultValue="member"><option value="member">Keep previous owner as member</option><option value="remove">Remove previous owner</option></select></label><button>Transfer ownership</button></form><ControlTable title="Workspace members" items={members} renderActions={(item) => item.owner ? null : <button onClick={() => void remove(String(item.user_id))}>Remove</button>} /></>;
+  return <><form key={memberFormVersion} className="detail-form" onSubmit={(event) => void replace(event)}><strong>Add or replace workspace member roles</strong><ResourceReference application={application} kind="users" name="user_id" label="Member" required /><ResourceReference application={application} kind="roles" name="role_keys" label="Workspace roles" roleScope="workspace" multiple required /><button>Apply roles</button></form><form className="detail-form" onSubmit={(event) => void transfer(event)}><strong>Recover workspace ownership</strong><ResourceReference application={application} kind="users" name="new_owner_user_id" label="New owner" required /><label><span>Previous owner</span><select name="previous_owner_disposition" defaultValue="member"><option value="member">Keep previous owner as member</option><option value="remove">Remove previous owner</option></select></label><button>Transfer ownership</button></form><ControlTable title="Workspace members" items={members} renderActions={(item) => item.owner ? null : <button onClick={() => void remove(String(item.user_id))}>Remove</button>} /></>;
 }
 
 function UserAdministration({ user, application, setMessage, onChanged }: { user: Record<string, unknown>; application: Application; setMessage: (value: string) => void; onChanged: () => void }) {

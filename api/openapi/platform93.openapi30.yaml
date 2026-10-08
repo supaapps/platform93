@@ -4197,6 +4197,8 @@ paths:
                 $ref: '#/components/schemas/EntitlementGrantPage'
     post:
       operationId: createEntitlement
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       tags:
         - Entitlements
       security:
@@ -10146,6 +10148,8 @@ components:
           type: string
         currency_exponent:
           type: integer
+          minimum: 0
+          maximum: 6
         tax_behavior:
           enum:
             - inclusive
@@ -15110,6 +15114,8 @@ components:
         currency_exponent:
           type: integer
           default: 2
+          minimum: 0
+          maximum: 6
         interval_unit:
           enum:
             - day

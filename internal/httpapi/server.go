@@ -258,7 +258,7 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Patch("/control/applications/{application_id}/products/{product_id}", s.updateProduct)
 			r.Post("/control/applications/{application_id}/products/{product_id}/prices", s.createPrice)
 			r.Get("/control/applications/{application_id}/products/{product_id}/prices", s.listPrices)
-			r.Post("/control/applications/{application_id}/entitlements", s.createEntitlement)
+			r.With(s.idempotent).Post("/control/applications/{application_id}/entitlements", s.createEntitlement)
 			r.Get("/control/applications/{application_id}/entitlements", s.listEntitlements)
 			r.Get("/control/applications/{application_id}/entitlements/{entitlement_id}", s.getEntitlement)
 			r.Post("/control/applications/{application_id}/entitlements/{entitlement_id}/adjust", s.adjustEntitlement)

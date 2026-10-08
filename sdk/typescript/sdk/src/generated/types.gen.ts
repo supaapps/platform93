@@ -7373,6 +7373,9 @@ export type ListEntitlementsResponse = ListEntitlementsResponses[keyof ListEntit
 
 export type CreateEntitlementData = {
     body: CreateEntitlement;
+    headers?: {
+        'Idempotency-Key'?: string;
+    };
     path: {
         application_id: Uuid;
     };

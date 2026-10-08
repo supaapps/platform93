@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { calendarExpiry } from "../app/manual-grant-form";
+import { calendarExpiry, priceLabel } from "../app/manual-grant-form";
 
 const id = (value: number) => `01900000-0000-7000-8000-${value.toString().padStart(12, "0")}`;
 const organization = { id: id(1), name: "Reference Org", slug: "references", role: "owner" };
@@ -210,9 +210,47 @@ test("workspace members and ownership recovery use user and role searches", asyn
   await select(page, "Workspace roles", "Editor");
   await page.getByRole("button", { name: "Apply roles" }).click();
   await expect.poll(() => member?.role_keys).toEqual(["editor"]);
+  await expect(page.getByRole("combobox", { name: "Member", exact: true })).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Remove Alex Example" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Remove Editor" })).toHaveCount(0);
   await select(page, "New owner", "Alex");
   await page.getByRole("button", { name: "Transfer ownership" }).click();
   await expect.poll(() => transfer?.new_owner_user_id).toBe(user.id);
+});
+
+test("price formatting rejects unsafe exponents without crashing", () => {
+  expect(priceLabel({ ...price, currency_exponent: -1 })).toContain("1000 minor units");
+  expect(priceLabel({ ...price, currency_exponent: 101 })).toContain("1000 minor units");
+  expect(priceLabel({ ...price, currency_exponent: 0 })).toContain("1000 EUR");
+});
+
+test("grant retries reuse keys only for identical bodies", async ({ page }) => {
+  await setup(page);
+  const secondUser = { ...user, id: id(20), email: "bea@example.test", first_name: "Bea" };
+  await page.route("**/users?**", (route) => route.fulfill({ json: { items: [user, secondUser], next_cursor: null } }));
+  const attempts: { body: Record<string, unknown>; key: string | undefined }[] = [];
+  await page.route("**/entitlements", async (route) => {
+    if (route.request().method() !== "POST") { await route.fulfill({ json: { items: [], next_cursor: null } }); return; }
+    attempts.push({ body: route.request().postDataJSON(), key: route.request().headers()["idempotency-key"] });
+    await route.fulfill({ status: 422, json: { title: "Validation failed", detail: "Fixture rejection" } });
+  });
+  await navigate(page, "entitlements", "entitlements");
+  await page.getByRole("button", { name: "Grant entitlement", exact: true }).click();
+  await select(page, "Recipient", "Alex");
+  await select(page, "Product", "Standard");
+  await page.getByRole("button", { name: "1 month", exact: true }).click();
+  await page.getByRole("button", { name: "Review grant", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm grant", exact: true }).click();
+  await expect.poll(() => attempts.length).toBe(1);
+  await page.getByRole("button", { name: "Confirm grant", exact: true }).click();
+  await expect.poll(() => attempts.length).toBe(2);
+  expect(attempts[1]?.key).toBe(attempts[0]?.key);
+  await select(page, "Recipient", "Bea");
+  await page.getByRole("button", { name: "Review grant", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm grant", exact: true }).click();
+  await expect.poll(() => attempts.length).toBe(3);
+  expect(attempts[2]?.key).not.toBe(attempts[1]?.key);
+  expect(attempts[2]?.body.subject_id).toBe(secondUser.id);
 });
 
 test("abandoned search responses cannot replace a newer query", async ({ page }) => {

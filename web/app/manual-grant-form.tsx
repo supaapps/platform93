@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { validateFreeFormInput } from "./free-form-validation";
 import { ReferencePicker, type ReferenceItem, type ReferenceRequest } from "./reference-picker";
 
@@ -18,6 +18,14 @@ export function calendarExpiry(now: Date, months: number): Date {
 function localDateTime(date: Date) {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+export function priceLabel(price: Price): string {
+  const exponent = price.currency_exponent;
+  const amount = Number.isInteger(exponent) && exponent >= 0 && exponent <= 6
+    ? (price.amount_minor / 10 ** exponent).toFixed(exponent)
+    : `${price.amount_minor} minor units`;
+  return `${price.key} · ${amount} ${price.currency} · ${price.mode}`;
 }
 
 function FreeFormGrantInput({ feature, value, onChange }: { feature: Feature; value: string | undefined; onChange: (value: string | undefined) => void }) {
@@ -50,7 +58,7 @@ export function ManualGrantForm({ basePath, request, grant, onCreated, onMessage
   const [expiry, setExpiry] = useState("");
   const [review, setReview] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const submittedRequest = useRef<{ body: string; key: string } | null>(null);
   useEffect(() => {
     let current = true;
     request(`${basePath}/features`).then((page) => { if (current) { setFeatures(page.items as unknown as Feature[]); setFeatureError(""); setFeaturesLoaded(true); } })
@@ -68,10 +76,10 @@ export function ManualGrantForm({ basePath, request, grant, onCreated, onMessage
       const raw = value.boolean_value ?? value.quantity_value ?? value.free_form_value;
       if (raw !== undefined) nextValues[feature.key] = feature.value_type === "free_form" && feature.free_form_format === "json" ? JSON.stringify(raw, null, 2) : String(raw);
     }
-    setValues(nextValues); setConfig(JSON.stringify(source?.entitlement_config ?? {}, null, 2)); setDirty(false); setReview(null); setIdempotencyKey(crypto.randomUUID());
+    setValues(nextValues); setConfig(JSON.stringify(source?.entitlement_config ?? {}, null, 2)); setDirty(false); setReview(null);
   }
   function canReset() { return !dirty || window.confirm("Discard grant-only overrides and load the selected defaults?"); }
-  function edit() { setDirty(true); setReview(null); setIdempotencyKey(crypto.randomUUID()); }
+  function edit() { setDirty(true); setReview(null); }
   function payload(form: HTMLFormElement) {
     const configuration: unknown = JSON.parse(config);
     if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) throw new Error("Configuration must be a JSON object.");
@@ -103,9 +111,12 @@ export function ManualGrantForm({ basePath, request, grant, onCreated, onMessage
       const body = payload(event.currentTarget);
       if (!review) { setReview(body); return; }
       setBusy(true);
-      await grant(body, idempotencyKey);
+      const serialized = JSON.stringify(body);
+      const key = submittedRequest.current?.body === serialized ? submittedRequest.current.key : crypto.randomUUID();
+      submittedRequest.current = { body: serialized, key };
+      await grant(body, key);
       onMessage("Entitlement granted. No payment or automatic renewal was created."); onCreated(); setOpen(false);
-      setSubject([]); setRecipient(null); setProduct(null); setPriceID(""); setExpiry(""); setValues({}); setConfig("{}"); setDirty(false); setReview(null); setIdempotencyKey(crypto.randomUUID());
+      setSubject([]); setRecipient(null); setProduct(null); setPriceID(""); setExpiry(""); setValues({}); setConfig("{}"); setDirty(false); setReview(null); submittedRequest.current = null;
     } catch (failure) { onMessage(failure instanceof Error ? failure.message : "The entitlement could not be granted.", true); }
     finally { setBusy(false); }
   }
@@ -113,12 +124,12 @@ export function ManualGrantForm({ basePath, request, grant, onCreated, onMessage
   try { const parsed = JSON.parse(config); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) configError = "Enter a JSON object."; } catch { configError = "Invalid JSON."; }
   return <section className={`create-panel ${open ? "open" : ""}`}>
     <button type="button" disabled={busy} onClick={() => setOpen(!open)}>{open ? "Close" : "Grant entitlement"}</button>
-    {open && <form onSubmit={(event) => void submit(event)} onChange={() => { setReview(null); setIdempotencyKey(crypto.randomUUID()); }}>
+    {open && <form onSubmit={(event) => void submit(event)} onChange={() => setReview(null)}>
       <fieldset disabled={busy}><div className="create-fields">
         <label>Recipient type<select value={subjectType} onChange={(event) => { setSubjectType(event.target.value); setSubject([]); setRecipient(null); setReview(null); }}><option value="user">User</option><option value="workspace">Workspace</option></select></label>
         <ReferencePicker key={subjectType} kind={subjectType === "user" ? "users" : "workspaces"} basePath={basePath} request={request} label="Recipient" required activeOnly value={subject} onChange={(ids, items) => { setSubject(ids); setRecipient(items[0] ?? null); setReview(null); }} />
         <ReferencePicker kind="products" basePath={basePath} request={request} label="Product" required activeOnly disabled={!featuresLoaded || !!featureError} value={product ? [product.id] : []} onChange={(_ids, items) => { if (!canReset()) return; const selected = items[0] ?? null; setProduct(selected); setPriceID(""); defaults(selected, ""); }} />
-<label>Price<select aria-label="Price" disabled={!product} value={priceID} onChange={(event) => { if (!canReset()) return; setPriceID(event.target.value); defaults(product, event.target.value); }}><option value="">Current product defaults</option>{prices.map((price) => <option key={price.id} value={price.id}>{price.key} · {(price.amount_minor / 10 ** price.currency_exponent).toFixed(price.currency_exponent)} {price.currency} · {price.mode}</option>)}</select></label>
+<label>Price<select aria-label="Price" disabled={!product} value={priceID} onChange={(event) => { if (!canReset()) return; setPriceID(event.target.value); defaults(product, event.target.value); }}><option value="">Current product defaults</option>{prices.map((price) => <option key={price.id} value={price.id}>{priceLabel(price)}</option>)}</select></label>
         <label>Expires at<input type="datetime-local" required value={expiry} onChange={(event) => setExpiry(event.target.value)} /><small>{Intl.DateTimeFormat().resolvedOptions().timeZone} · no automatic renewal</small></label>
         <div className="duration-actions">{[[1, "1 month"], [3, "3 months"], [6, "6 months"], [12, "1 year"]].map(([months, label]) => <button key={months} type="button" onClick={() => { setExpiry(localDateTime(calendarExpiry(new Date(), Number(months)))); setReview(null); }}>{label}</button>)}</div>
       </div>

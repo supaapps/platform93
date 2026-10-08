@@ -26,6 +26,10 @@ type grantRequest struct {
 }
 
 func (s *Server) createEntitlement(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimSpace(r.Header.Get("Idempotency-Key")) == "" {
+		kernel.WriteProblem(w, r, http.StatusBadRequest, "idempotency_key_required", "Entitlement grant creation requires an Idempotency-Key header.")
+		return
+	}
 	var request grantRequest
 	if !kernel.DecodeJSON(w, r, &request) {
 		return

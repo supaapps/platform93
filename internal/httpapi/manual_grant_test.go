@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -95,6 +96,58 @@ func TestManualGrantSnapshotsAndSearchIntegration(t *testing.T) {
 		}
 	}
 	expires := time.Now().UTC().Add(time.Hour)
+	t.Run("idempotent replay", func(t *testing.T) {
+		body := map[string]any{"subject_type": "user", "subject_id": user, "product_id": product, "expires_at": expires}
+		current := kernel.Actor{Type: "control_user", ID: kernel.NewID().String()}
+		key := kernel.NewID().String()
+		handler := s.idempotent(http.HandlerFunc(s.createEntitlement))
+		var original string
+		for attempt := range 2 {
+			request := requestWithRoute(t, "POST", "/", body, map[string]string{"application_id": app.String()}, current)
+			request.Header.Set("Idempotency-Key", key)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusCreated {
+				t.Fatalf("grant replay: %d %s", response.Code, response.Body.String())
+			}
+			if attempt == 0 {
+				original = response.Body.String()
+			} else if original != response.Body.String() || response.Header().Get("Idempotent-Replayed") != "true" {
+				t.Fatal("replay did not return the original grant")
+			}
+		}
+		var count int
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM entitlement_grants WHERE application_id=$1`, app).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("duplicate grant: count=%d err=%v", count, err)
+		}
+		body["subject_id"] = user2
+		request := requestWithRoute(t, "POST", "/", body, map[string]string{"application_id": app.String()}, current)
+		request.Header.Set("Idempotency-Key", key)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusConflict {
+			t.Fatalf("changed body reused key: %d", response.Code)
+		}
+	})
+	t.Run("currency exponents", func(t *testing.T) {
+		for _, exponent := range []int{-1, 0, 6, 101} {
+			response := httptest.NewRecorder()
+			request := requestWithRoute(t, "POST", "/", map[string]any{"key": fmt.Sprintf("exponent-%d", exponent), "mode": "local", "currency": "JPY", "amount_minor": 1000, "currency_exponent": exponent}, map[string]string{"application_id": app.String(), "product_id": product.String()}, kernel.Actor{Type: "control_user"})
+			s.createPrice(response, request)
+			if exponent < 0 || exponent > 6 {
+				if response.Code != 422 {
+					t.Fatalf("invalid exponent accepted: %d %s", response.Code, response.Body.String())
+				}
+			} else {
+				var result struct {
+					Exponent int `json:"currency_exponent"`
+				}
+				if response.Code != 201 || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.Exponent != exponent {
+					t.Fatalf("exponent not preserved: %d %s", response.Code, response.Body.String())
+				}
+			}
+		}
+	})
 	for _, test := range []struct {
 		name     string
 		extra    map[string]any
@@ -120,7 +173,9 @@ func TestManualGrantSnapshotsAndSearchIntegration(t *testing.T) {
 				body[key] = value
 			}
 			w := httptest.NewRecorder()
-			s.createEntitlement(w, requestWithRoute(t, "POST", "/", body, map[string]string{"application_id": app.String()}, kernel.Actor{Type: "control_user", ID: kernel.NewID().String()}))
+			request := requestWithRoute(t, "POST", "/", body, map[string]string{"application_id": app.String()}, kernel.Actor{Type: "control_user", ID: kernel.NewID().String()})
+			request.Header.Set("Idempotency-Key", kernel.NewID().String())
+			s.createEntitlement(w, request)
 			if w.Code != test.status {
 				t.Fatalf("%d %s", w.Code, w.Body.String())
 			}
@@ -213,7 +268,9 @@ func TestManualGrantSnapshotsAndSearchIntegration(t *testing.T) {
 				body[key] = value
 			}
 			w := httptest.NewRecorder()
-			s.createEntitlement(w, requestWithRoute(t, "POST", "/", body, map[string]string{"application_id": app.String()}, kernel.Actor{Type: "control_user"}))
+			request := requestWithRoute(t, "POST", "/", body, map[string]string{"application_id": app.String()}, kernel.Actor{Type: "control_user"})
+			request.Header.Set("Idempotency-Key", kernel.NewID().String())
+			s.createEntitlement(w, request)
 			if w.Code != 422 {
 				t.Fatalf("inactive resource granted: %d %s", w.Code, w.Body.String())
 			}
