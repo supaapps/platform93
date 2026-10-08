@@ -48,7 +48,7 @@ export function ReleaseStatus({ baseUrl }: { baseUrl: string }) {
         if (comparison === 0 && current.prerelease) comparison = -1;
         const href = `${releasesURL}/tag/${encodeURIComponent(release.tag_name)}`;
         setState({
-          label: comparison < 0 ? "Update available" : comparison > 0 ? "Ahead of latest release" : "Latest version",
+          label: comparison < 0 ? `Update available (${running.version})` : comparison > 0 ? `Ahead of latest release (${running.version})` : `Latest version (${running.version})`,
           kind: comparison < 0 ? "update" : comparison > 0 ? "unknown" : "current",
           detail: `Running ${running.version} · latest ${release.tag_name}`,
           href,

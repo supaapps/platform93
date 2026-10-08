@@ -181,11 +181,11 @@ test("a late detail error cannot rewrite the newly selected section", async ({ p
 });
 
 for (const scenario of [
-  { running: "0.2.1", latest: "v0.2.1", label: "Latest version" },
-  { running: "0.2.1", latest: "v0.3.0", label: "Update available" },
-  { running: "0.2.9", latest: "v0.2.10", label: "Update available" },
-  { running: "0.3.0-rc.1", latest: "v0.3.0", label: "Update available" },
-  { running: "0.4.0", latest: "v0.3.0", label: "Ahead of latest release" },
+  { running: "0.2.1", latest: "v0.2.1", label: "Latest version (0.2.1)" },
+  { running: "0.2.1", latest: "v0.3.0", label: "Update available (0.2.1)" },
+  { running: "0.2.9", latest: "v0.2.10", label: "Update available (0.2.9)" },
+  { running: "0.3.0-rc.1", latest: "v0.3.0", label: "Update available (0.3.0-rc.1)" },
+  { running: "0.4.0", latest: "v0.3.0", label: "Ahead of latest release (0.4.0)" },
   { running: "dev", latest: "v0.3.0", label: "Development build" },
   { running: "invalid", latest: "v0.3.0", label: "Version check unavailable" },
   { running: "0.2.1", latest: "v0.3.0", label: "Version check unavailable", status: 403 },
@@ -201,6 +201,11 @@ for (const scenario of [
     await page.goto("/?context=platform&section=overview");
     const status = page.locator(".release-status");
     await expect(status).toHaveText(scenario.label);
+    if (scenario.label.startsWith("Latest version")) {
+      await expect(status).toHaveClass(/release-status-current/);
+    } else if (scenario.label.startsWith("Update available")) {
+      await expect(status).toHaveClass(/release-status-update/);
+    }
     const href = scenario.label === "Development build" || scenario.label === "Version check unavailable"
       ? "https://github.com/supaapps/platform93/releases"
       : `https://github.com/supaapps/platform93/releases/tag/${scenario.latest}`;

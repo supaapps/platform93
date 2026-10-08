@@ -80,6 +80,7 @@ h1, h2, h3 {
   --p93-light-danger: #fae6e2;
   --p93-light-danger-text: #7e2517;
   --p93-mint: #3be8a0;
+  --p93-warning: #facc15;
   --p93-mint-deep: #176b4a;
   --p93-cyan: #2bc4ce;
   --p93-danger: #ff7a7a;
@@ -417,7 +418,7 @@ nav button.active i, nav a.active i {
 .release-status a:focus-visible { outline: 2px solid var(--acid); outline-offset: 4px; }
 .release-status-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
 .release-status-current { color: var(--p93-mint); }
-.release-status-update { color: var(--acid); }
+.release-status-update { color: var(--p93-warning); }
 .account-actions button, .account-actions a {
   border: 1px solid var(--p93-dark-border-strong);
   background: var(--p93-dark-raised);
