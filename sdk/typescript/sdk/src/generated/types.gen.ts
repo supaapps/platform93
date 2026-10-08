@@ -408,9 +408,7 @@ export type Product = {
     entitlement_config: {
         [key: string]: unknown;
     };
-    features: {
-        [key: string]: FeatureValue;
-    };
+    features: Array<CatalogFeatureSnapshot>;
     version: number;
     prices?: Array<Price>;
     created_at?: string;
@@ -432,9 +430,12 @@ export type Price = {
     entitlement_config: {
         [key: string]: unknown;
     };
-    features: {
-        [key: string]: FeatureValue;
-    };
+    features: Array<CatalogFeatureSnapshot>;
+    active: boolean;
+    interval_unit?: string | null;
+    interval_count?: number | null;
+    validity_seconds?: number | null;
+    grace_seconds?: number;
     status?: 'active' | 'archived';
     version?: number;
     created_at?: string;
@@ -1424,6 +1425,9 @@ export type FinishWebAuthnCeremony = {
     };
 };
 
+/**
+ * Manual access without a charge or renewal. Omitted feature_values and configuration snapshot the selected price defaults, or product defaults when no price is selected. Explicit maps replace defaults; an empty object clears them. Catalog selections must be active. Expiry, when supplied, must be after the start time.
+ */
 export type CreateEntitlement = {
     subject_type: 'user' | 'workspace';
     subject_id: Uuid;
@@ -2156,6 +2160,24 @@ export type FeatureValue = {
     free_form_value?: unknown;
 };
 
+export type CatalogFeatureSnapshot = {
+    feature_id: Uuid;
+    key?: string;
+    name?: string;
+    value_type?: 'boolean' | 'quantity' | 'free_form';
+    free_form_format?: 'text' | 'csv' | 'json' | null;
+    boolean_value?: boolean;
+    quantity_value?: number;
+    /**
+     * The stored JSON feature value.
+     */
+    free_form_value?: unknown;
+    /**
+     * The effective typed feature value.
+     */
+    value?: unknown;
+};
+
 export type CreateProduct = {
     key: string;
     name: string;
@@ -2577,6 +2599,18 @@ export type CreateBillingProviderWritable = {
     api_version?: '2026-04-22.dahlia';
     inheritable?: boolean;
 };
+
+/**
+ * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+ */
+export type ReferenceQuery = string;
+
+export type ReferenceLimit = number;
+
+/**
+ * Continue the same search using the returned next_cursor.
+ */
+export type ReferenceCursor = string;
 
 export type ApplicationId = Uuid;
 
@@ -4895,7 +4929,17 @@ export type ListClientsData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/clients';
 };
 
@@ -5007,7 +5051,17 @@ export type ListRolesData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/roles';
 };
 
@@ -5146,7 +5200,17 @@ export type ListWorkspacesData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/workspaces';
 };
 
@@ -6210,7 +6274,17 @@ export type ListUsersData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/users';
 };
 
@@ -7190,7 +7264,17 @@ export type ListProductsData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/products';
 };
 
@@ -7317,6 +7401,9 @@ export type ListEntitlementsResponse = ListEntitlementsResponses[keyof ListEntit
 
 export type CreateEntitlementData = {
     body: CreateEntitlement;
+    headers: {
+        'Idempotency-Key': string;
+    };
     path: {
         application_id: Uuid;
     };

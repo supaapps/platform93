@@ -3,11 +3,13 @@ import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type React
 import { flushSync } from "react-dom";
 import { Platform93Client, Platform93Error } from "@supaapps/platform93-sdk";
 import DOMPurify from "dompurify";
-import Papa from "papaparse";
+import { validateFreeFormInput } from "./free-form-validation";
 import { followRoute, navigate, rememberDestination, restoreDestination, routeHref, sectionKey, useAdminRoute } from "./navigation";
 import { ProviderIcon } from "./provider-icon";
 import { ViewportPortal } from "./viewport-portal";
 import { ReleaseStatus } from "./release-status";
+import { ReferencePicker, type ReferenceKind, type ReferencePage } from "./reference-picker";
+import { ManualGrantForm } from "./manual-grant-form";
 
 type Organization = { id: string; name: string; slug: string; role: string; version?: number; retired_at?: string | null };
 type Application = {
@@ -129,6 +131,11 @@ const api = new Platform93Client({
     typeof location === "undefined" ? "http://localhost" : location.origin,
   fetch: adminFetch,
 });
+const referenceRequest = (path: string) => api.request<ReferencePage>("GET", path);
+function ResourceReference({ application, kind, name, label, multiple = false, required = false, roleScope, machineOnly = false }: { application: Application; kind: ReferenceKind; name: string; label: string; multiple?: boolean; required?: boolean; roleScope?: string; machineOnly?: boolean }) {
+  const [values, setValues] = useState<string[]>([]);
+  return <ReferencePicker key={`${application.id}-${kind}`} basePath={`/v1/control/applications/${application.id}`} request={referenceRequest} kind={kind} name={name} label={label} value={values} onChange={setValues} multiple={multiple} required={required} roleScope={roleScope} useKeys={multiple && kind === "roles"} machineOnly={machineOnly} activeOnly={kind === "users" || kind === "workspaces"} />;
+}
 type NavigationModule = { label: string; group: string };
 const platformModules: NavigationModule[] = [
   { label: "Overview", group: "Platform" },
@@ -1124,8 +1131,8 @@ function Workspace({
         {selectedResource.path === "event-types" && <EventTypeCreator application={application} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
         {selectedResource.path === "webhooks" && <WebhookCreator application={application} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
         {selectedResource.path === "notification-templates" && <NotificationTemplateCreator application={application} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
-        {selectedResource.path === "permission-grants" && <PermissionGrantManager application={application} setMessage={setMessage} onChanged={() => setRefresh((value) => value + 1)} />}
-        {selectedResource.create && <CreateResource application={application} resource={selectedResource} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
+        {selectedResource.path === "permission-grants" && <PermissionGrantManager key={application.id} application={application} setMessage={setMessage} onChanged={() => setRefresh((value) => value + 1)} />}
+        {selectedResource.path === "entitlements" ? <ManualGrantForm key={application.id} basePath={`/v1/control/applications/${application.id}`} request={referenceRequest} grant={(body, key) => api.request("POST", `/v1/control/applications/${application.id}/entitlements`, body, { idempotencyKey: key })} onCreated={() => setRefresh((value) => value + 1)} onMessage={(message, error) => setMessage(error ? `${errorMessagePrefix}${message}` : message)} /> : selectedResource.create && <CreateResource key={`${application.id}-${selectedResource.path}`} application={application} resource={selectedResource} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
         <section className="table">
           <div className="table-head"><span>{selectedResource.label}</span><div><span>{items.length} records</span><IconButton label={`Refresh ${selectedResource.label.toLowerCase()}`} icon="refresh" loading={loading} onClick={() => setRefresh((value) => value + 1)} /></div></div>
           {items.length === 0 ? <div className="table-empty">No records yet.</div> : items.map((item, index) => (
@@ -1151,6 +1158,7 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
     const body: Record<string, unknown> = {};
     for (const field of resource.create!.fields) {
       const raw = form.get(field.name);
+      if (raw === null) continue;
       if (field.type === "checkbox") body[field.name] = raw === "on";
       else if (field.type === "number") body[field.name] = raw ? Number(raw) : undefined;
       else if (["permissions", "redirect_uris", "allowed_grants", "allowed_scopes", "role_keys", "application_role_keys", "workspace_role_keys", "event_filters"].includes(field.name))
@@ -1174,17 +1182,27 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
   return (
     <section className={`create-panel ${open ? "open" : ""}`}>
       <button className="create-toggle" onClick={() => setOpen((value) => { if (value) setFieldValues({}); return !value; })}>{open ? "Close" : resource.create.label}</button>
-      {open && <form onSubmit={submit}>
+      {open && <form onSubmit={submit}><fieldset disabled={busy}>
+        {resource.path === "role-assignments" && <label>Recipient type<select value={fieldValues._subject_type ?? "user"} onChange={(event) => setFieldValues((values) => ({ ...values, _subject_type: event.target.value, user_id: "", client_id: "" }))}><option value="user">User</option><option value="client">Machine client</option></select></label>}
         <div className="create-fields">{resource.create.fields.map((field) => {
           const visible = !field.showWhen || (fieldValues[field.showWhen.field] ?? resource.create!.fields.find((candidate) => candidate.name === field.showWhen!.field)?.options?.[0]?.value) === field.showWhen.value;
           if (!visible) return null;
+          if (resource.path === "role-assignments" && ((field.name === "user_id" && fieldValues._subject_type === "client") || (field.name === "client_id" && fieldValues._subject_type !== "client") || (field.name === "workspace_id" && fieldValues._role_scope !== "workspace"))) return null;
+          if (field.name === "workspace_role_keys" && !fieldValues.workspace_id) return null;
+          const referenceKinds: Record<string, ReferenceKind> = { user_id: "users", owner_user_id: "users", client_id: "clients", role_id: "roles", workspace_id: "workspaces", application_role_keys: "roles", workspace_role_keys: "roles" };
+          const kind = referenceKinds[field.name];
+          if (kind && !(field.name === "client_id" && resource.path === "clients")) {
+            const multiple = field.name.endsWith("role_keys");
+            const labels: Record<string, string> = { user_id: "User", owner_user_id: "Owner", client_id: "Machine client", role_id: "Role", workspace_id: "Workspace", application_role_keys: "Application roles", workspace_role_keys: "Workspace roles" };
+return <ReferencePicker key={`${field.name}-${fieldValues._subject_type ?? "user"}`} kind={kind} basePath={`/v1/control/applications/${application.id}`} request={referenceRequest} name={field.name} label={labels[field.name] ?? field.label} multiple={multiple} useKeys={multiple} required={field.required || resource.path === "role-assignments"} machineOnly={kind === "clients"} activeOnly={kind === "users" || kind === "workspaces"} roleScope={field.name === "application_role_keys" ? "application" : field.name === "workspace_role_keys" ? "workspace" : undefined} value={(fieldValues[field.name] ?? "").split(",").filter(Boolean)} onChange={(ids, items) => setFieldValues((values) => ({ ...values, [field.name]: ids.join(","), ...(field.name === "role_id" ? { _role_scope: String(items[0]?.scope ?? ""), workspace_id: "" } : {}), ...(field.name === "workspace_id" ? { workspace_role_keys: "" } : {}) }))} />;
+          }
           if (field.name === "permissions") return <PermissionListInput key={field.name} name={field.name} label={field.label} />;
           return <label key={field.name}>{field.label}
             {field.options ? <select name={field.name} required={field.required} value={fieldValues[field.name] ?? field.options[0]?.value ?? ""} onChange={(event) => setFieldValues((values) => ({ ...values, [field.name]: event.target.value }))}>{field.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : field.type === "textarea" ? <textarea name={field.name} required={field.required} placeholder={field.placeholder} /> : field.type === "checkbox" ? <input name={field.name} type="checkbox" defaultChecked /> : <input name={field.name} type={field.type ?? "text"} required={field.required} defaultValue={field.placeholder} />}
           </label>;
         })}</div>
         <button disabled={busy}>{busy ? "Working..." : resource.create.label}</button>
-      </form>}
+      </fieldset></form>}
     </section>
   );
 }
@@ -1466,9 +1484,9 @@ function PermissionGrantManager({ application, setMessage, onChanged }: { applic
   return <section className="create-panel open permission-grant-manager">
     <form onSubmit={(event) => void create(event)}>
       <div className="create-fields">
-        <label>Subject type<select value={subjectType} onChange={(event) => setSubjectType(event.target.value as PermissionGrant["subject_type"])}><option value="user">User</option><option value="client">Machine client</option></select></label>
-        <label>Subject ID<input required value={subjectID} onChange={(event) => setSubjectID(event.target.value)} placeholder="UUID" /></label>
-        <label>Workspace ID, optional<input value={workspaceID} onChange={(event) => setWorkspaceID(event.target.value)} placeholder="UUID" /></label>
+        <label>Subject type<select value={subjectType} onChange={(event) => { setSubjectType(event.target.value as PermissionGrant["subject_type"]); setSubjectID(""); setEffective(null); }}><option value="user">User</option><option value="client">Machine client</option></select></label>
+        <ReferencePicker key={subjectType} kind={subjectType === "user" ? "users" : "clients"} basePath={`/v1/control/applications/${application.id}`} request={referenceRequest} label="Recipient" required value={subjectID ? [subjectID] : []} activeOnly machineOnly={subjectType === "client"} onChange={(ids) => { setSubjectID(ids[0] ?? ""); setEffective(null); }} />
+        <ReferencePicker kind="workspaces" basePath={`/v1/control/applications/${application.id}`} request={referenceRequest} label="Workspace (optional)" value={workspaceID ? [workspaceID] : []} activeOnly onChange={(ids) => { setWorkspaceID(ids[0] ?? ""); setEffective(null); }} />
         <label>Permission segments<input required value={permission} onChange={(event) => setPermission(event.target.value)} placeholder="members:42:read" aria-invalid={permission !== "" && !valid} /></label>
       </div>
       <code className={valid ? "scope-preview valid" : "scope-preview"}>{canonical}</code>
@@ -1598,6 +1616,7 @@ function WebhookEditor({ webhook, application, setMessage, onChanged }: { webhoo
 
 function WorkspaceMembers({ workspaceID, application, setMessage }: { workspaceID: string; application: Application; setMessage: (value: string) => void }) {
   const [members, setMembers] = useState<Record<string, unknown>[]>([]);
+  const [memberFormVersion, setMemberFormVersion] = useState(0);
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
     api.request<Page<Record<string, unknown>>>("GET", `/v1/control/applications/${application.id}/workspaces/${workspaceID}/members`)
@@ -1611,6 +1630,7 @@ function WorkspaceMembers({ workspaceID, application, setMessage }: { workspaceI
       await api.request("PUT", `/v1/control/applications/${application.id}/workspaces/${workspaceID}/members/${String(form.get("user_id"))}`, { role_keys: String(form.get("role_keys") ?? "").split(",").map((value) => value.trim()).filter(Boolean) });
       target.reset();
       setMessage("Workspace member roles updated.");
+      setMemberFormVersion((value) => value + 1);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
@@ -1630,7 +1650,7 @@ function WorkspaceMembers({ workspaceID, application, setMessage }: { workspaceI
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
-  return <><form className="detail-form" onSubmit={(event) => void replace(event)}><strong>Add or replace workspace member roles</strong><label><span>User ID</span><input required name="user_id" /></label><label><span>Role keys, comma separated</span><input required name="role_keys" placeholder="e.g. workspace_member" /></label><button>Apply roles</button></form><form className="detail-form" onSubmit={(event) => void transfer(event)}><strong>Recover workspace ownership</strong><label><span>New owner user ID</span><input required name="new_owner_user_id" /></label><label><span>Previous owner</span><select name="previous_owner_disposition" defaultValue="member"><option value="member">Keep previous owner as member</option><option value="remove">Remove previous owner</option></select></label><button>Transfer ownership</button></form><ControlTable title="Workspace members" items={members} renderActions={(item) => item.owner ? null : <button onClick={() => void remove(String(item.user_id))}>Remove</button>} /></>;
+  return <><form key={memberFormVersion} className="detail-form" onSubmit={(event) => void replace(event)}><strong>Add or replace workspace member roles</strong><ResourceReference application={application} kind="users" name="user_id" label="Member" required /><ResourceReference application={application} kind="roles" name="role_keys" label="Workspace roles" roleScope="workspace" multiple required /><button>Apply roles</button></form><form className="detail-form" onSubmit={(event) => void transfer(event)}><strong>Recover workspace ownership</strong><ResourceReference application={application} kind="users" name="new_owner_user_id" label="New owner" required /><label><span>Previous owner</span><select name="previous_owner_disposition" defaultValue="member"><option value="member">Keep previous owner as member</option><option value="remove">Remove previous owner</option></select></label><button>Transfer ownership</button></form><ControlTable title="Workspace members" items={members} renderActions={(item) => item.owner ? null : <button onClick={() => void remove(String(item.user_id))}>Remove</button>} /></>;
 }
 
 function UserAdministration({ user, application, setMessage, onChanged }: { user: Record<string, unknown>; application: Application; setMessage: (value: string) => void; onChanged: () => void }) {
@@ -1665,26 +1685,6 @@ function UserAdministration({ user, application, setMessage, onChanged }: { user
   return <><form className="detail-form user-locale-form" onSubmit={(event) => void updateLocale(event)}><strong>Email localization</strong><p className="full-field">Use a BCP 47 language tag such as <code>de</code>, <code>de-CH</code>, or <code>en-GB</code>. Leave empty to use template fallback order.</p><label className="full-field"><span>Preferred locale</span><input name="locale" defaultValue={String(user.locale ?? "")} placeholder="de-CH" maxLength={35} /></label><button>Save locale</button></form><div className="detail-actions"><button onClick={() => void revokeAll()}>Revoke all user sessions</button></div><ControlTable title="User sessions" items={sessions} renderActions={() => null} /><ControlTable title="Billing addresses" items={addresses} renderActions={() => null} /></>;
 }
 
-function validateFreeFormInput(format: FreeFormFormat, raw: string): string {
-  if (!raw.trim() || format === "text") return "";
-  if (format === "json") {
-    try {
-      JSON.parse(raw);
-      return "";
-    } catch (error) {
-      return error instanceof SyntaxError ? error.message : "Enter valid JSON.";
-    }
-  }
-  const parsed = Papa.parse<string[]>(raw, { skipEmptyLines: "greedy" });
-  if (parsed.errors.length > 0) {
-    const issue = parsed.errors[0]!;
-    return `CSV row ${issue.row === undefined ? 1 : issue.row + 1}: ${issue.message}`;
-  }
-  const rows = parsed.data.filter((row) => row.length > 0);
-  const expectedColumns = rows[0]?.length ?? 0;
-  const inconsistentRow = rows.findIndex((row) => row.length !== expectedColumns);
-  return inconsistentRow === -1 ? "" : `CSV row ${inconsistentRow + 1} has ${rows[inconsistentRow]!.length} columns; expected ${expectedColumns}.`;
-}
 
 function freeFormEditorValue(format: FreeFormFormat, value: unknown): string {
   if (value === undefined) return "";

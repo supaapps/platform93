@@ -148,8 +148,19 @@ func (s *Server) products(w http.ResponseWriter, r *http.Request, public bool) {
 	if public {
 		query += ` AND p.status='active' AND p.listable=true`
 	}
-	query += ` ORDER BY p.created_at,p.id`
-	rows, err := s.app.DB.Query(r.Context(), query, chi.URLParam(r, "application_id"))
+	args := []any{chi.URLParam(r, "application_id")}
+	limit := 0
+	if !public {
+		var ok bool
+		query, args, limit, ok = referenceSearch(w, r, query, args, "p.id", "p.name", "p.key")
+		if !ok {
+			return
+		}
+	}
+	if limit == 0 {
+		query += ` ORDER BY p.created_at,p.id`
+	}
+	rows, err := s.app.DB.Query(r.Context(), query, args...)
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "database_error", "Products could not be loaded.")
 		return
@@ -167,12 +178,13 @@ func (s *Server) products(w http.ResponseWriter, r *http.Request, public bool) {
 		}
 	}
 	rows.Close()
+	items, cursor := referencePage(items, limit, func(item map[string]any) string { return item["id"].(string) })
 	for _, product := range items {
 		id := product["id"].(string)
 		product["features"] = catalogFeatureValues(r.Context(), s.app.DB, "product", id)
 		product["prices"] = s.priceList(r, id, public)
 	}
-	kernel.WriteJSON(w, 200, map[string]any{"items": items, "next_cursor": nil})
+	kernel.WriteJSON(w, 200, map[string]any{"items": items, "next_cursor": cursor})
 }
 
 func (s *Server) getProduct(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +259,7 @@ type priceRequest struct {
 	Mode              string                        `json:"mode"`
 	AmountMinor       int64                         `json:"amount_minor"`
 	Currency          string                        `json:"currency"`
-	CurrencyExponent  int16                         `json:"currency_exponent"`
+	CurrencyExponent  *int16                        `json:"currency_exponent"`
 	IntervalUnit      *string                       `json:"interval_unit"`
 	IntervalCount     *int                          `json:"interval_count"`
 	ValiditySeconds   *int64                        `json:"validity_seconds"`
@@ -268,8 +280,13 @@ func (s *Server) createPrice(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, 422, "invalid_price", "Price key, mode, currency, and amount are invalid.")
 		return
 	}
-	if request.CurrencyExponent == 0 {
-		request.CurrencyExponent = 2
+	exponent := int16(2)
+	if request.CurrencyExponent != nil {
+		exponent = *request.CurrencyExponent
+	}
+	if exponent < 0 || exponent > 6 {
+		kernel.WriteProblem(w, r, 422, "invalid_currency_exponent", "Currency exponent must be between 0 and 6.")
+		return
 	}
 	if request.TaxBehavior == "" {
 		if request.Currency == "EUR" {
@@ -299,7 +316,7 @@ func (s *Server) createPrice(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO prices
 (id,application_id,product_id,key,mode,amount_minor,currency,currency_exponent,interval_unit,interval_count,validity_seconds,grace_seconds,tax_behavior,checkout_config,entitlement_config)
-	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, id, chi.URLParam(r, "application_id"), chi.URLParam(r, "product_id"), request.Key, request.Mode, request.AmountMinor, request.Currency, request.CurrencyExponent, request.IntervalUnit, request.IntervalCount, request.ValiditySeconds, request.GraceSeconds, request.TaxBehavior, checkout, entitlement)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, id, chi.URLParam(r, "application_id"), chi.URLParam(r, "product_id"), request.Key, request.Mode, request.AmountMinor, request.Currency, exponent, request.IntervalUnit, request.IntervalCount, request.ValiditySeconds, request.GraceSeconds, request.TaxBehavior, checkout, entitlement)
 	if err == nil && request.Features == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO price_features(price_id,feature_id,boolean_value,quantity_value,free_form_value)
 SELECT $1,feature_id,boolean_value,quantity_value,free_form_value FROM product_features WHERE product_id=$2`, id, chi.URLParam(r, "product_id"))
@@ -314,7 +331,7 @@ SELECT $1,feature_id,boolean_value,quantity_value,free_form_value FROM product_f
 		kernel.WriteProblem(w, r, 409, "price_creation_failed", "The immutable price could not be created.")
 		return
 	}
-	kernel.WriteJSON(w, 201, map[string]any{"id": id, "key": request.Key, "mode": request.Mode, "amount_minor": request.AmountMinor, "currency": request.Currency, "currency_exponent": request.CurrencyExponent, "tax_behavior": request.TaxBehavior, "checkout_config": request.CheckoutConfig, "entitlement_config": decodeMap(entitlement), "features": catalogFeatureValues(r.Context(), s.app.DB, "price", id.String())})
+	kernel.WriteJSON(w, 201, map[string]any{"id": id, "key": request.Key, "mode": request.Mode, "amount_minor": request.AmountMinor, "currency": request.Currency, "currency_exponent": exponent, "tax_behavior": request.TaxBehavior, "checkout_config": request.CheckoutConfig, "entitlement_config": decodeMap(entitlement), "features": catalogFeatureValues(r.Context(), s.app.DB, "price", id.String()), "active": true})
 }
 
 func (s *Server) listPrices(w http.ResponseWriter, r *http.Request) {

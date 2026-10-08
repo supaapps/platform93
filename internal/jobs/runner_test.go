@@ -94,9 +94,19 @@ func TestDispatcherRoutesCustomEventOnlyToMatchingSubscribers(t *testing.T) {
 	if _, err = db.Exec(context.Background(), `INSERT INTO outbox(id,event_id) VALUES($1,$2)`, outboxID, eventID); err != nil {
 		t.Fatal(err)
 	}
-	processed, err := runner.dispatchOne(context.Background())
-	if err != nil || !processed {
-		t.Fatalf("custom event was not dispatched: processed=%v error=%v", processed, err)
+	// Other integration packages may enqueue events in the same test database.
+	var dispatched bool
+	for range 1000 {
+		processed, dispatchErr := runner.dispatchOne(context.Background())
+		if dispatchErr != nil {
+			t.Fatal(dispatchErr)
+		}
+		if err = db.QueryRow(context.Background(), `SELECT dispatched_at IS NOT NULL FROM outbox WHERE id=$1`, outboxID).Scan(&dispatched); err != nil || dispatched || !processed {
+			break
+		}
+	}
+	if err != nil || !dispatched {
+		t.Fatalf("custom event was not dispatched: dispatched=%v error=%v", dispatched, err)
 	}
 	var matching, unrelated int
 	if err = db.QueryRow(context.Background(), `SELECT count(*) FROM webhook_deliveries WHERE event_id=$1 AND webhook_endpoint_id=$2`, eventID, matchingEndpointID).Scan(&matching); err != nil {

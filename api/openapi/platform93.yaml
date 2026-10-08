@@ -2010,6 +2010,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listClients
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       security:
@@ -2117,6 +2121,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listRoles
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       security:
@@ -2214,6 +2222,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listWorkspaces
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       security:
@@ -3071,6 +3083,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listUsers
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Identity
       security:
@@ -4031,6 +4047,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listProducts
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Catalog
       security:
@@ -4162,6 +4182,8 @@ paths:
                 $ref: '#/components/schemas/EntitlementGrantPage'
     post:
       operationId: createEntitlement
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
       tags:
         - Entitlements
       security:
@@ -8354,6 +8376,28 @@ components:
       bearerFormat: Platform93-management-JWT
       description: Short-lived client-credentials token with actor_type=management_client and audience platform93:control.
   parameters:
+    ReferenceQuery:
+      name: query
+      in: query
+      description: Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+      schema:
+        type: string
+        maxLength: 200
+    ReferenceLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    ReferenceCursor:
+      name: cursor
+      in: query
+      description: Continue the same search using the returned next_cursor.
+      schema:
+        type: string
+        format: uuid
     ApplicationID:
       name: application_id
       in: path
@@ -9985,9 +10029,9 @@ components:
           type: object
           additionalProperties: true
         features:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/FeatureValue'
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogFeatureSnapshot'
         version:
           type: integer
           format: int64
@@ -10014,6 +10058,7 @@ components:
         - checkout_config
         - entitlement_config
         - features
+        - active
       properties:
         id:
           $ref: '#/components/schemas/UUID'
@@ -10047,9 +10092,21 @@ components:
           type: object
           additionalProperties: true
         features:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/FeatureValue'
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogFeatureSnapshot'
+        active:
+          type: boolean
+        interval_unit:
+          type: [string, 'null']
+        interval_count:
+          type: [integer, 'null']
+        validity_seconds:
+          type: [integer, 'null']
+          format: int64
+        grace_seconds:
+          type: integer
+          format: int64
         status:
           enum:
             - active
@@ -12998,6 +13055,7 @@ components:
       additionalProperties: false
     CreateEntitlement:
       type: object
+      description: Manual access without a charge or renewal. Omitted feature_values and configuration snapshot the selected price defaults, or product defaults when no price is selected. Explicit maps replace defaults; an empty object clears them. Catalog selections must be active. Expiry, when supplied, must be after the start time.
       required:
         - subject_type
         - subject_id
@@ -15032,6 +15090,32 @@ components:
         free_form_value:
           description: A string for text or CSV features, or any valid JSON value for JSON features.
       additionalProperties: false
+    CatalogFeatureSnapshot:
+      type: object
+      required: [feature_id]
+      properties:
+        feature_id:
+          $ref: '#/components/schemas/UUID'
+        key:
+          type: string
+        name:
+          type: string
+        value_type:
+          type: string
+          enum: [boolean, quantity, free_form]
+        free_form_format:
+          type: [string, 'null']
+          enum: [text, csv, json, null]
+        boolean_value:
+          type: boolean
+        quantity_value:
+          type: integer
+          format: int64
+        free_form_value:
+          description: The stored JSON feature value.
+        value:
+          description: The effective typed feature value.
+      additionalProperties: false
     CreateProduct:
       type: object
       required:
@@ -15111,6 +15195,8 @@ components:
         currency_exponent:
           type: integer
           default: 2
+          minimum: 0
+          maximum: 6
         interval_unit:
           enum:
             - day
