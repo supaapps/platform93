@@ -184,6 +184,15 @@ FROM users WHERE id=$2 AND application_id=$1 AND status='active' FOR UPDATE`, ch
 		kernel.WriteProblem(w, r, http.StatusConflict, "last_login_method", "The last usable login method cannot be removed.")
 		return
 	}
+	identityID := chi.URLParam(r, "identity_id")
+	if err = queueAppleRevocationsForIdentity(r.Context(), tx, actor(r).ID, chi.URLParam(r, "application_id"), &identityID); err != nil {
+		if err.Error() == "apple_reauthentication_required" {
+			kernel.WriteProblem(w, r, http.StatusForbidden, "apple_reauthentication_required", "Sign in with Apple again, then retry unlinking.")
+		} else {
+			kernel.WriteProblem(w, r, http.StatusInternalServerError, "identity_unlink_failed", "Apple revocation could not be scheduled.")
+		}
+		return
+	}
 	result, err := tx.Exec(r.Context(), `DELETE FROM user_identities WHERE id=$1 AND application_id=$2 AND user_id=$3`,
 		chi.URLParam(r, "identity_id"), chi.URLParam(r, "application_id"), actor(r).ID)
 	if err != nil || result.RowsAffected() != 1 {

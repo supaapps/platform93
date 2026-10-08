@@ -17,6 +17,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/kernel"
 	"github.com/supaapps/platform93/internal/secure"
 )
@@ -148,7 +149,8 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 	defer response.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	var tokenResponse struct {
-		IDToken string `json:"id_token"`
+		IDToken      string `json:"id_token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	if response.StatusCode/100 != 2 || json.Unmarshal(body, &tokenResponse) != nil || tokenResponse.IDToken == "" {
 		s.releaseExternalAuthChallenge(r, challengeID)
@@ -173,9 +175,12 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 		s.redirectExternalAuth(w, r, appRedirect, "", "provider_identity_invalid")
 		return
 	}
+	retainToken := func(tx pgx.Tx, userID string) error {
+		return s.retainAppleTokenTx(r.Context(), tx, chi.URLParam(r, "application_id"), userID, claims.Subject, provider, tokenResponse.RefreshToken)
+	}
 	if flow == "invitation" && invitationID != nil {
 		external := externalProviderIdentity{Subject: claims.Subject, Email: claims.Email, FirstName: firstName, LastName: lastName, TrustedEmail: true}
-		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, provider, external)
+		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, provider, external, retainToken)
 		if completeErr != nil {
 			s.releaseExternalAuthChallenge(r, challengeID)
 			s.redirectExternalAuth(w, r, appRedirect, "", "invitation_identity_invalid")
@@ -188,7 +193,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 		s.completeExternalAuthCallback(w, r, challengeID, appRedirect, userID, challenge)
 		return
 	}
-	userID, completeErr := s.completeExternalIdentity(r, "apple", challengeID, flow, requestedBy, claims.Subject, claims.Email, firstName, lastName)
+	userID, completeErr := s.completeExternalIdentity(r, "apple", challengeID, flow, requestedBy, claims.Subject, claims.Email, firstName, lastName, retainToken)
 	if completeErr != nil {
 		s.releaseExternalAuthChallenge(r, challengeID)
 		s.redirectExternalAuth(w, r, appRedirect, "", completeErr.Error())
