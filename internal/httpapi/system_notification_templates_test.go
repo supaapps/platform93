@@ -110,12 +110,13 @@ WHERE application_id IS NULL AND key=$1 AND status='published'`, applicationSign
 	}
 
 	clientID := kernel.NewID()
+	publicClientID := "web-" + clientID.String()
 	if _, err = db.Exec(context.Background(), `INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes)
-VALUES($1,$2,'web','Web','public',ARRAY['https://app.example/auth/callback'],ARRAY['authorization_code','refresh_token'],ARRAY['openid','profile','email'])`, clientID, applicationID); err != nil {
+VALUES($1,$2,$3,'Web','public',ARRAY['https://app.example/auth/callback'],ARRAY['authorization_code','refresh_token'],ARRAY['openid','profile','email'])`, clientID, applicationID, publicClientID); err != nil {
 		t.Fatal(err)
 	}
 	configRequest := requestWithRoute(t, http.MethodPatch, "/", map[string]any{"flows": map[string]any{
-		"oauth_client_id": "web", "sign_in_redirect_uri": "https://app.example/auth/callback", "invitation_redirect_uri": "https://app.example/invitations/accept",
+		"oauth_client_id": publicClientID, "sign_in_redirect_uri": "https://app.example/auth/callback", "invitation_redirect_uri": "https://app.example/invitations/accept",
 	}}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{Type: "control_user"})
 	configResponse := httptest.NewRecorder()
 	server.updateAuthConfig(configResponse, configRequest)
@@ -125,7 +126,7 @@ VALUES($1,$2,'web','Web','public',ARRAY['https://app.example/auth/callback'],ARR
 	publicRequest := requestWithRoute(t, http.MethodGet, "/", nil, map[string]string{"application_id": applicationID.String()}, kernel.Actor{})
 	publicResponse := httptest.NewRecorder()
 	server.publicConfig(publicResponse, publicRequest)
-	if publicResponse.Code != http.StatusOK || !strings.Contains(publicResponse.Body.String(), `"oauth_client_id":"web"`) || !strings.Contains(publicResponse.Body.String(), `"invitation_redirect_uri":"https://app.example/invitations/accept"`) {
+	if publicResponse.Code != http.StatusOK || !strings.Contains(publicResponse.Body.String(), `"oauth_client_id":"`+publicClientID+`"`) || !strings.Contains(publicResponse.Body.String(), `"invitation_redirect_uri":"https://app.example/invitations/accept"`) {
 		t.Fatalf("public config omitted application flows: %d %s", publicResponse.Code, publicResponse.Body.String())
 	}
 }
