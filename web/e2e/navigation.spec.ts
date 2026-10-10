@@ -1,3 +1,4 @@
+import { chooseSelect } from "./select-control";
 import { expect, test, type Page } from "@playwright/test";
 
 const org = { id: "01900000-0000-7000-8000-000000000101", name: "Navigation Org", slug: "nav", role: "owner" };
@@ -21,7 +22,7 @@ test("catalog products can be activated, archived and restored with version chec
     await page.getByRole("button", { name: action, exact: true }).click();
     await expect.poll(() => status).toBe(nextStatus);
     await expect(page.locator(".toast-success")).toContainText(`${action} completed.`);
-    await expect(page.locator(".table article").filter({ hasText: "Standard" }).locator("small")).toHaveText(nextStatus);
+    await expect(page.locator(".table article").filter({ hasText: "Standard" }).locator("small")).toContainText(nextStatus);
   }
 });
 
@@ -151,7 +152,7 @@ test("sidebar transitions never canonicalize resources using the previous sectio
   await expect(page.getByRole("heading", { name: "Workspaces", exact: true })).toBeVisible();
   await expect.poll(() => new URL(page.url()).searchParams.get("resource")).toBe("workspaces");
   await expect(page.locator(".toast-error")).toHaveCount(0);
-  await page.getByLabel("Access context").selectOption("platform");
+  await chooseSelect(page.getByLabel("Access context"), "platform");
   await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
   expect(new URL(page.url()).searchParams.has("resource")).toBe(false);
   await expect(page.locator(".toast-error")).toHaveCount(0);

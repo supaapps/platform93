@@ -1,3 +1,4 @@
+import { chooseSelect, nativeSelect } from "./select-control";
 import { expect, test } from "@playwright/test";
 import { AxeBuilder } from "@axe-core/playwright";
 
@@ -88,17 +89,17 @@ test("creates and renames organization and application boundaries", async ({ pag
   await expect(page.getByRole("heading", { name: "Second Organization" })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`context=organization&organization_id=${createdOrganizationID}`));
   await expect(page.locator(".context-header")).toContainText("Second Organization");
-  await expect(page.getByLabel("Access context")).toHaveValue(`organization:${createdOrganizationID}`);
+  await expect(nativeSelect(page.getByLabel("Access context"))).toHaveValue(`organization:${createdOrganizationID}`);
   await page.reload();
   await expect(page.locator(".context-header")).toContainText("Second Organization");
 
-  await page.getByLabel("Access context").selectOption(`organization:${organizationID}`);
+  await chooseSelect(page.getByLabel("Access context"), `organization:${organizationID}`);
   await page.getByLabel("Organization name").fill("Renamed Organization");
   await page.getByRole("button", { name: "Rename organization" }).click();
   await expect(page.locator(".toast-success")).toContainText("Organization renamed.");
-  await expect(page.getByLabel("Access context").locator(`option[value="organization:${organizationID}"]`)).toHaveText("Renamed Organization");
+  await expect(nativeSelect(page.getByLabel("Access context")).locator(`option[value="organization:${organizationID}"]`)).toHaveText("Renamed Organization");
 
-  await page.getByLabel("Access context").selectOption(`application:${applicationID}`);
+  await chooseSelect(page.getByLabel("Access context"), `application:${applicationID}`);
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByLabel("Application name").fill("Renamed Application");
   await page.getByRole("button", { name: "Rename application" }).click();
@@ -183,17 +184,17 @@ test("toggles installation provider inheritance after creation", async ({ page }
   await expect(page.locator(".provider-callback-box code").filter({ hasText: "/v1/auth/providers/apple/callback" })).toHaveCount(1);
   await expect(page.locator(".provider-settings")).not.toContainText("{application_id}");
   const cards = page.locator(".provider-cards article");
-  await cards.filter({ hasText: "google" }).getByRole("checkbox", { name: "Global default for organizations and applications" }).click();
-  await expect(cards.filter({ hasText: "google" }).getByRole("checkbox", { name: "Global default for organizations and applications" })).not.toBeChecked();
+  await cards.filter({ hasText: "google" }).getByRole("switch", { name: "Global default for organizations and applications" }).click();
+  await expect(cards.filter({ hasText: "google" }).getByRole("switch", { name: "Global default for organizations and applications" })).not.toBeChecked();
   await expect(page.locator(".toast-success")).toContainText("Google login is now limited to the installation scope.");
-  await cards.filter({ hasText: "Installation SMTP" }).getByRole("checkbox").click();
-  await expect(cards.filter({ hasText: "Installation SMTP" }).getByRole("checkbox")).not.toBeChecked();
+  await cards.filter({ hasText: "Installation SMTP" }).getByRole("switch").click();
+  await expect(cards.filter({ hasText: "Installation SMTP" }).getByRole("switch")).not.toBeChecked();
   await expect(page.locator(".toast-success")).toContainText("SMTP is now limited to the installation scope.");
-  await cards.filter({ hasText: "p93_stripe_test" }).getByRole("checkbox").click();
-  await expect(cards.filter({ hasText: "p93_stripe_test" }).getByRole("checkbox")).not.toBeChecked();
+  await cards.filter({ hasText: "p93_stripe_test" }).getByRole("switch").click();
+  await expect(cards.filter({ hasText: "p93_stripe_test" }).getByRole("switch")).not.toBeChecked();
   await expect(page.locator(".toast-success")).toContainText("Stripe is now limited to the installation scope.");
-  await cards.filter({ hasText: "Installation storage" }).getByRole("checkbox").click();
-  await expect(cards.filter({ hasText: "Installation storage" }).getByRole("checkbox")).not.toBeChecked();
+  await cards.filter({ hasText: "Installation storage" }).getByRole("switch").click();
+  await expect(cards.filter({ hasText: "Installation storage" }).getByRole("switch")).not.toBeChecked();
   await expect(page.locator(".toast-success")).toContainText("Storage is now limited to the installation scope.");
   await expect.poll(() => updates).toEqual([
     { path: "/v1/control/installation/auth/providers/google", body: { inheritable: false } },
@@ -264,13 +265,13 @@ test("activates provisioning and applies installation-owned organization governa
   await expect.poll(() => createdClient).toEqual({ client_id: "external-provisioner", name: "External provisioning" });
   await expect(page.locator(".toast-success")).toContainText("p93_mgmt_once");
 
-  await page.getByLabel("Access context").selectOption(`organization:${organizationID}`);
+  await chooseSelect(page.getByLabel("Access context"), `organization:${organizationID}`);
   await expect(page.locator(".context-picker small")).toHaveText("Organization");
   await page.getByRole("link", { name: "Policy", exact: true }).click();
   await page.getByLabel("Maximum applications").fill("3");
   await page.getByLabel("Maximum users").fill("100");
   const webhooksSetting = page.locator(".policy-settings label").filter({ hasText: "Outgoing webhooks" });
-  await webhooksSetting.getByRole("checkbox").uncheck();
+  await webhooksSetting.getByRole("switch").uncheck();
   await page.getByRole("button", { name: "Save installation policy" }).click();
   await expect.poll(() => policyUpdate).toMatchObject({ max_applications: 3, max_users: 100, enabled_settings: { webhooks: false } });
   expect(policyIfMatch).toBe('"v1"');
@@ -291,18 +292,18 @@ test("brand returns to the highest accessible context", async ({ page }) => {
 
   await page.goto("/");
   const context = page.getByLabel("Access context");
-  await expect(context).toHaveValue(`organization:${organizationID}`);
-  await expect(context.locator('option[value="platform"]')).toHaveCount(0);
-  await context.selectOption(`application:${applicationID}`);
+  await expect(nativeSelect(context)).toHaveValue(`organization:${organizationID}`);
+  await expect(nativeSelect(context).locator('option[value="platform"]')).toHaveCount(0);
+  await chooseSelect(context, `application:${applicationID}`);
   await page.getByRole("button", { name: "Go to highest accessible home" }).click();
-  await expect(context).toHaveValue(`organization:${organizationID}`);
+  await expect(nativeSelect(context)).toHaveValue(`organization:${organizationID}`);
 
   installationRole = "owner";
   await page.reload();
-  await expect(context.locator('option[value="platform"]')).toHaveCount(1);
-  await context.selectOption(`application:${applicationID}`);
+  await expect(nativeSelect(context).locator('option[value="platform"]')).toHaveCount(1);
+  await chooseSelect(context, `application:${applicationID}`);
   await page.getByRole("button", { name: "Go to highest accessible home" }).click();
-  await expect(context).toHaveValue("platform");
+  await expect(nativeSelect(context)).toHaveValue("platform");
 });
 
 test("manages the Platform user account and logs out from the footer", async ({ page }) => {
@@ -390,7 +391,7 @@ test("validates public configuration and applies internal application policy", a
   });
 
   await page.goto("/");
-  await page.getByLabel("Access context").selectOption({ label: "Policy Application" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Policy Application" });
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   const publicConfigURL = `${new URL(page.url()).origin}/v1/applications/${applicationID}/public-config`;
   await expect(page.getByRole("link", { name: publicConfigURL })).toHaveAttribute("href", publicConfigURL);
@@ -405,7 +406,7 @@ test("validates public configuration and applies internal application policy", a
   expect(publicIfMatch).toBe('"v1"');
   await expect(page.locator(".toast-success")).toContainText("Public application configuration saved.");
 
-  await page.getByLabel("Registration").selectOption("invite_only");
+  await chooseSelect(page.getByLabel("Registration"), "invite_only");
   await page.getByLabel("Personal API keys").check();
   await page.getByLabel("Platform user delegation").check();
   await page.getByRole("button", { name: "Save access policy" }).click();
@@ -479,13 +480,13 @@ test("shows persistent labels in the product price detail form", async ({ page }
   });
 
   await page.goto("/");
-  await page.getByLabel("Access context").selectOption({ label: "Test Application" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Test Application" });
   await expect(page.locator(".context-picker small")).toHaveText("Application");
   await page.getByRole("link", { name: "Catalog", exact: true }).click();
   await page.getByRole("link", { name: "Details", exact: true }).click();
 
   await expect(page.getByLabel("Advanced export (advanced_export)")).toBeVisible();
-  await page.getByLabel("Advanced export (advanced_export)").selectOption("true");
+  await chooseSelect(page.getByLabel("Advanced export (advanced_export)"), "true");
   await page.getByLabel("Projects (projects)").fill("5");
   const rules = page.getByLabel("Rules (rules)");
   await rules.fill('{"regions":');
@@ -510,7 +511,7 @@ test("shows persistent labels in the product price detail form", async ({ page }
   await expect(amount).toBeVisible();
   await expect(amount).toHaveAttribute("placeholder", "e.g. 1990");
   await expect(page.getByText("For EUR, 1990 means EUR 19.90.")).toBeVisible();
-  await page.getByLabel("Price mode").selectOption("local");
+  await chooseSelect(page.getByLabel("Price mode"), "local");
   await expect(page.getByLabel("Local validity in seconds")).toBeVisible();
   await expect(page.getByLabel("Billing interval")).toHaveCount(0);
   await page.getByLabel("Price key").fill("local-standard");
@@ -565,7 +566,7 @@ test("registers custom events and selects webhook subscriptions from known types
   });
 
   await page.goto("/");
-  await page.getByLabel("Access context").selectOption({ label: "Test Application" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Test Application" });
   await expect(page.locator(".context-picker small")).toHaveText("Application");
   await page.getByRole("link", { name: "Events", exact: true }).click();
   await page.getByRole("link", { name: "Details", exact: true }).first().click();
@@ -620,7 +621,7 @@ test("composes notification templates with built-in and custom codes", async ({ 
   await page.route(`**/v1/control/applications/${applicationID}/storage/objects**`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
 
   await page.goto("/");
-  await page.getByLabel("Access context").selectOption({ label: "Test Application" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Test Application" });
   await expect(page.locator(".context-picker small")).toHaveText("Application");
   await page.getByRole("link", { name: "Notifications", exact: true }).click();
   await page.getByRole("link", { name: "Templates", exact: true }).click();
@@ -697,7 +698,7 @@ test("manages user locale and creates a template localization draft", async ({ p
   await page.route(`**/v1/control/applications/${applicationID}/storage/objects**`, (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ items: [], next_cursor: null }) }));
 
   await page.goto("/");
-  await page.getByLabel("Access context").selectOption({ label: "Localized Application" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Localized Application" });
   await expect(page.locator(".context-picker small")).toHaveText("Application");
   await page.getByRole("link", { name: "Identity", exact: true }).click();
   await page.getByRole("link", { name: "Details", exact: true }).click();
@@ -741,7 +742,7 @@ test("bootstraps a clean installation and creates its first application", async 
   const installationAccess = page.locator(".control-scope").first();
   await expect(installationAccess.getByRole("heading", { name: "Platform users" })).toBeVisible();
   await installationAccess.getByLabel("Email", { exact: true }).fill("installation-admin@platform93.test");
-  await installationAccess.locator('select[name="role"]').selectOption("admin");
+  await chooseSelect(installationAccess.locator('select[name="role"]'), "admin");
   await installationAccess.getByRole("button", { name: "Invite Platform user" }).click();
   await expect(page.locator(".toast-success")).toContainText("Platform user invitation created.");
   await expect(installationAccess.getByText("installation-admin@platform93.test", { exact: true })).toBeVisible();
@@ -761,18 +762,18 @@ test("bootstraps a clean installation and creates its first application", async 
   await expect(page.getByRole("link", { name: "Platform users", exact: true })).toHaveCount(0);
   await expectNoSeriousAccessibilityViolations(page);
 
-  await page.getByLabel("Access context").selectOption({ label: "Platform93 Test" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Platform93 Test" });
   await expect(page.getByRole("link", { name: "Catalog", exact: true })).toHaveCount(0);
   await page.getByRole("link", { name: "Platform users", exact: true }).click();
   const organizationAccess = page.locator(".control-scope").first();
   await organizationAccess.getByLabel("Email", { exact: true }).fill("organization-admin@platform93.test");
-  await organizationAccess.locator('select[name="role"]').selectOption("admin");
+  await chooseSelect(organizationAccess.locator('select[name="role"]'), "admin");
   await organizationAccess.getByRole("button", { name: "Invite Platform user" }).click();
   await expect(page.locator(".toast-success")).toContainText("Invitation queued.");
   const invitationResult = await page.locator(".toast-success").textContent();
   const invitationCredential = invitationResult?.match(/p93_org_invite_[A-Za-z0-9_-]{43}/)?.[0];
   expect(invitationCredential).toBeTruthy();
-  await page.getByLabel("Access context").selectOption({ label: "Development" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Development" });
 
   await page.route("**/products", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -787,7 +788,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await page.getByRole("button", { name: "Create feature", exact: true }).click();
   await page.getByLabel("Key").fill("tokens");
   await page.getByLabel("Name").fill("Tokens");
-  await page.getByLabel("Value type").selectOption("quantity");
+  await chooseSelect(page.getByLabel("Value type"), "quantity");
   await page.getByRole("button", { name: "Create feature", exact: true }).click();
   const featureSuccess = page.locator(".toast-success");
   await expect(featureSuccess).toContainText("Create feature completed.");
@@ -797,9 +798,9 @@ test("bootstraps a clean installation and creates its first application", async 
   await expect(featureSuccess).toBeHidden({ timeout: 6000 });
   await page.getByRole("button", { name: "Create feature", exact: true }).click();
   await expect(page.getByLabel("Free-form format")).toHaveCount(0);
-  await page.getByLabel("Value type").selectOption("free_form");
+  await chooseSelect(page.getByLabel("Value type"), "free_form");
   await expect(page.getByLabel("Free-form format")).toBeVisible();
-  await page.getByLabel("Free-form format").selectOption("json");
+  await chooseSelect(page.getByLabel("Free-form format"), "json");
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("link", { name: "Overview", exact: true }).click();
 
@@ -815,7 +816,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await statisticsReload;
   await expect(page.getByText("Active users")).toBeVisible();
 
-  await page.getByLabel("Access context").selectOption({ label: "Platform93 Test" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Platform93 Test" });
   await page.getByPlaceholder("Application name").fill("Testing");
   await page.getByPlaceholder("application-slug").fill("testing");
   await page.getByRole("button", { name: "Create application", exact: true }).click();
@@ -823,13 +824,13 @@ test("bootstraps a clean installation and creates its first application", async 
   await expect(page.locator(".context-header").getByText("Testing", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/context=application.*application_id=/);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await page.getByLabel("Access context").selectOption({ label: "Platform93 Test" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Platform93 Test" });
   const developmentCard = page.locator(".application-list > article").filter({ hasText: "Development" });
   await developmentCard.getByRole("button", { name: "Retire Development", exact: true }).click();
   await expect(page.getByText("Application retired and live credentials revoked.")).toBeVisible();
   await developmentCard.getByRole("button", { name: "Restore Development", exact: true }).click();
   await expect(page.getByText("Application restored. Previously revoked credentials remain revoked.")).toBeVisible();
-  await page.getByLabel("Access context").selectOption({ label: "Development" });
+  await chooseSelect(page.getByLabel("Access context"), { label: "Development" });
   await expect(page.locator(".context-header").getByText("Development", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
@@ -839,7 +840,7 @@ test("bootstraps a clean installation and creates its first application", async 
   await expect(page.getByLabel("Invitation credential")).toHaveCount(0);
   await page.getByRole("button", { name: "Use an invitation", exact: true }).click();
   await page.getByLabel("Invitation credential").fill(invitationCredential!);
-  await page.getByLabel("Required onboarding method").selectOption("email");
+  await chooseSelect(page.getByLabel("Required onboarding method"), "email");
   await page.getByLabel("Display name").fill("Organization Admin");
   await page.getByRole("button", { name: "Accept with email" }).click();
   // Invitation authentication preserves the accessible application destination.
