@@ -1,3 +1,4 @@
+import { chooseSelect, nativeSelect } from "./select-control";
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { calendarExpiry, priceLabel } from "../app/manual-grant-form";
@@ -57,7 +58,7 @@ test("role assignment selects user/client, role scope and workspace without UUID
   await expect.poll(() => requests.length).toBe(1);
   expect(requests[0]).toEqual({ user_id: user.id, role_id: appRole.id });
   await page.getByRole("button", { name: "Assign role", exact: true }).click();
-  await page.getByLabel("Recipient type").selectOption("client");
+  await chooseSelect(page.getByLabel("Recipient type"), "client");
   await select(page, "Machine client", "Service");
   await select(page, "Role", "Editor");
   await select(page, "Workspace", "Team");
@@ -78,11 +79,14 @@ test("manual grant loads defaults, overrides configuration and requires chosen e
   await select(page, "Recipient", "Alex");
   await select(page, "Product", "Standard");
   await expect(page.getByLabel("Projects (projects)")).toHaveValue("5");
-  await page.getByLabel("Price", { exact: true }).selectOption(price.id);
+  await chooseSelect(page.getByLabel("Price", { exact: true }), price.id);
   await expect(page.getByLabel("Projects (projects)")).toHaveValue("10");
   await expect(page.getByLabel("Configuration (JSON object)")).toHaveValue(/priority/);
   await expect(page.getByLabel("Expires at")).toHaveValue("");
   await page.getByRole("button", { name: "3 months", exact: true }).click();
+  const shortcut = page.getByRole("button", { name: "3 months", exact: true });
+  await expect(shortcut).toHaveText("3m");
+  expect((await shortcut.boundingBox())?.width).toBeLessThanOrEqual(40);
   await page.getByLabel("Projects (projects)").fill("42");
   await page.getByLabel("Configuration (JSON object)").fill('{"support":"custom"}');
   await page.getByRole("button", { name: "Review grant", exact: true }).click();
@@ -126,9 +130,10 @@ test("picker supports pagination, exact ID search, keyboard and mobile accessibi
   const picker = page.getByRole("combobox", { name: "Owner", exact: true });
   await picker.click();
   await page.getByRole("button", { name: "Load more results" }).click();
-  await expect(page.locator('.reference-results [role="option"]')).toHaveCount(2);
+  await expect(page.locator('.reference-results .ui-option')).toHaveCount(2);
   await picker.fill(id(30));
-  await expect(page.locator('.reference-results [role="option"]')).toHaveCount(1);
+  await expect(page.locator('.reference-results .ui-option')).toHaveCount(1);
+  await picker.press("ArrowDown");
   await picker.press("Enter");
   await expect(page.locator('input[name="owner_user_id"]')).toHaveValue(id(30));
   await picker.press("Escape");
@@ -165,7 +170,7 @@ test("direct scopes use recipient/workspace selection and effective-access IDs",
   await page.getByRole("button", { name: "Grant direct scope" }).click();
   await expect.poll(() => submitted?.subject_id).toBe(user.id);
   expect(submitted).toMatchObject({ subject_type: "user", workspace_id: workspace.id, permission: "documents:read" });
-  await page.getByLabel("Subject type").selectOption("client");
+  await chooseSelect(page.getByLabel("Subject type"), "client");
   await expect(page.getByRole("button", { name: "View effective access" })).toBeDisabled();
 });
 
@@ -188,8 +193,9 @@ test("typed but unselected references never submit, failed searches retry", asyn
   await page.getByRole("button", { name: "Create workspace", exact: true }).click();
   expect(created).toBe(false);
   failed = false;
+  await page.getByRole("button", { name: "Show owner options" }).click();
   await page.getByRole("button", { name: "Retry search" }).click();
-  await page.locator('.reference-results [role="option"]').first().click();
+  await page.locator('.reference-results .ui-option').first().click();
   await page.getByRole("button", { name: "Create workspace", exact: true }).click();
   await expect.poll(() => created).toBe(true);
 });
@@ -270,9 +276,9 @@ test("abandoned search responses cannot replace a newer query", async ({ page })
   await picker.fill("old");
   await expect.poll(() => started).toBe(true);
   await picker.fill("new");
-  await expect(page.locator('.reference-results [role="option"]')).toContainText("New result");
+  await expect(page.locator('.reference-results .ui-option')).toContainText("New result");
   release!();
-  await expect(page.locator('.reference-results [role="option"]')).toContainText("New result");
+  await expect(page.locator('.reference-results .ui-option')).toContainText("New result");
   await expect(page.getByText("Old result", { exact: true })).toHaveCount(0);
 });
 
@@ -283,11 +289,11 @@ test("editing a grant cannot change catalog selection without confirming reset",
   await select(page, "Product", "Standard");
   await page.getByLabel("Projects (projects)").fill("42");
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByLabel("Price", { exact: true }).selectOption(price.id);
-  await expect(page.getByLabel("Price", { exact: true })).toHaveValue("");
+  await chooseSelect(page.getByLabel("Price", { exact: true }), price.id);
+  await expect(nativeSelect(page.getByLabel("Price", { exact: true }))).toHaveValue("");
   await expect(page.getByLabel("Projects (projects)")).toHaveValue("42");
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByLabel("Price", { exact: true }).selectOption(price.id);
+  await chooseSelect(page.getByLabel("Price", { exact: true }), price.id);
   await expect(page.getByLabel("Projects (projects)")).toHaveValue("10");
   await page.getByLabel("Configuration (JSON object)").fill("[]");
   await expect(page.getByRole("alert").filter({ hasText: "Enter a JSON object." })).toBeVisible();
