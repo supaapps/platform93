@@ -38,6 +38,8 @@ class InvitationInput(TypedDict):
 
 
 class Invitation(TypedDict):
+    hosted_client_id: NotRequired[str | None]
+    hosted_redirect_uri: NotRequired[str | None]
     id: str
     email: str
     workspace_id: str | None

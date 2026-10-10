@@ -213,7 +213,7 @@ export type PublishedEvent<T extends Record<string, unknown> = Record<string, un
 export type InvitationOnboardingMethod = "email" | ExternalAuthProvider;
 export type CreateInvitation = { email: string; workspace_id?: string; application_role_keys?: string[]; workspace_role_keys?: string[]; onboarding_method?: InvitationOnboardingMethod; expires_in?: number; hosted_client_id?: string; hosted_redirect_uri?: string };
 export type { HostedBranding, HostedBrandingSettings, HostedAuthView, HostedAuthActionWritable, HostedAuthReturnWritable } from "./generated/types.gen.js";
-export type Invitation = { id: string; application_id: string; email: string; workspace_id?: string | null; application_role_keys: string[]; workspace_role_keys: string[]; onboarding_method: InvitationOnboardingMethod; status: "pending" | "accepted" | "revoked" | "expired"; expires_at: string; last_sent_at: string; resend_available_at: string };
+export type Invitation = { id: string; application_id: string; email: string; workspace_id?: string | null; hosted_client_id?: string | null; hosted_redirect_uri?: string | null; application_role_keys: string[]; workspace_role_keys: string[]; onboarding_method: InvitationOnboardingMethod; status: "pending" | "accepted" | "revoked" | "expired"; expires_at: string; last_sent_at: string; resend_available_at: string };
 export type InvitationCredential = { email: string; code: string; invitation_id?: never; link_token?: never } | { invitation_id: string; link_token: string; email?: never; code?: never };
 export type InvitationExchange = InvitationCredential & { code_challenge: string };
 export type InvitationAuthorizationCode = { authorization_code: string; expires_in: number };

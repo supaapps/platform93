@@ -201,6 +201,9 @@ func hostedBrandingScope(r *http.Request) (string, string) {
 }
 func (s *Server) getHostedBranding(w http.ResponseWriter, r *http.Request) {
 	scope, id := hostedBrandingScope(r)
+	if !s.authorizeHostedBranding(w, r, scope, id, false) {
+		return
+	}
 	var raw []byte
 	var version int64
 	e := s.app.DB.QueryRow(r.Context(), `SELECT configuration,version FROM hosted_auth_branding WHERE scope_type=$1 AND scope_id=$2`, scope, id).Scan(&raw, &version)
@@ -222,6 +225,10 @@ func (s *Server) getHostedBranding(w http.ResponseWriter, r *http.Request) {
 	kernel.WriteJSON(w, 200, result)
 }
 func (s *Server) updateHostedBranding(w http.ResponseWriter, r *http.Request) {
+	scope, id := hostedBrandingScope(r)
+	if !s.authorizeHostedBranding(w, r, scope, id, true) {
+		return
+	}
 	var b hostedBranding
 	if !kernel.DecodeJSON(w, r, &b) {
 		return
@@ -230,7 +237,6 @@ func (s *Server) updateHostedBranding(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, 422, "invalid_hosted_branding", e.Error())
 		return
 	}
-	scope, id := hostedBrandingScope(r)
 	var version int64
 	e := s.app.DB.QueryRow(r.Context(), `SELECT version FROM hosted_auth_branding WHERE scope_type=$1 AND scope_id=$2`, scope, id).Scan(&version)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
@@ -249,4 +255,38 @@ func (s *Server) updateHostedBranding(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("ETag", kernel.ETag(version+1))
 	w.WriteHeader(204)
+}
+
+func (s *Server) authorizeHostedBranding(w http.ResponseWriter, r *http.Request, scope, id string, write bool) bool {
+	provider := installationProviderScope()
+	if scope == "organization" {
+		provider = organizationProviderScope(id)
+	} else if scope == "application" {
+		provider = applicationProviderScope(id)
+	}
+	if !s.authorizeProviderScope(w, r, provider, false) {
+		return false
+	}
+	if !write {
+		return true
+	}
+	if scope == "installation" {
+		role, ok := s.installationRole(r)
+		if ok && (role == "owner" || role == "admin") {
+			return true
+		}
+	} else {
+		organization := id
+		if scope == "application" {
+			if err := s.app.DB.QueryRow(r.Context(), `SELECT organization_id FROM applications WHERE id=$1 AND deleted_at IS NULL`, id).Scan(&organization); err != nil {
+				kernel.WriteProblem(w, r, 404, "application_not_found", "The application was not found.")
+				return false
+			}
+		}
+		if _, ok := s.organizationManagementRole(r, organization); ok {
+			return true
+		}
+	}
+	kernel.WriteProblem(w, r, 403, "branding_permission_required", "An owner or administrator of this scope is required to change branding.")
+	return false
 }

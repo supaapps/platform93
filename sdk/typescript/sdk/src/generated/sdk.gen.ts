@@ -18,15 +18,7 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
 
-export const startHostedInvitation = <ThrowOnError extends boolean = false>(options: Options<StartHostedInvitationData, ThrowOnError>): RequestResult<unknown, unknown, ThrowOnError> => (options.client ?? client).get<unknown, unknown, ThrowOnError>({
-    security: [{
-            key: 'bearerAuth',
-            scheme: 'bearer',
-            type: 'http'
-        }],
-    url: '/auth/invitations/{invitation_id}',
-    ...options
-});
+export const startHostedInvitation = <ThrowOnError extends boolean = false>(options: Options<StartHostedInvitationData, ThrowOnError>): RequestResult<unknown, unknown, ThrowOnError> => (options.client ?? client).get<unknown, unknown, ThrowOnError>({ url: '/auth/invitations/{invitation_id}', ...options });
 
 export const getHostedAuthInteraction = <ThrowOnError extends boolean = false>(options: Options<GetHostedAuthInteractionData, ThrowOnError>): RequestResult<GetHostedAuthInteractionResponses, unknown, ThrowOnError> => (options.client ?? client).get<GetHostedAuthInteractionResponses, unknown, ThrowOnError>({
     security: [{

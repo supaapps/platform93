@@ -35,6 +35,7 @@ paths:
   /auth/invitations/{invitation_id}:
     get:
       operationId: startHostedInvitation
+      security: []
       tags: [Auth]
       parameters:
         - name: invitation_id
@@ -8735,7 +8736,7 @@ components:
     OAuthCodeChallenge:
       name: code_challenge
       in: query
-      required: true
+      required: false
       schema:
         type: string
         minLength: 43
@@ -8743,7 +8744,7 @@ components:
     OAuthCodeChallengeMethod:
       name: code_challenge_method
       in: query
-      required: true
+      required: false
       schema:
         type: string
         const: S256
@@ -9062,7 +9063,7 @@ components:
         application_id: {$ref: '#/components/schemas/UUID'}
         client_name: {type: string}
         branding: {$ref: '#/components/schemas/HostedBranding'}
-        stage: {type: string, enum: [login, email_code, mfa, external_email, consent, invitation]}
+        stage: {type: string, enum: [login, email_code, mfa, external_email, consent, invitation, recovery]}
         user: {$ref: '#/components/schemas/HostedAuthUser'}
         consent_required: {type: boolean}
         requested_scopes: {type: array, items: {type: string}}

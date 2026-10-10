@@ -28,7 +28,7 @@ export function HostedBrandingEditor({ api, basePath, scope, onMessage }: {
   const [mobile, setMobile] = useState(false);
   const [error, setError] = useState("");
   const [assets, setAssets] = useState<{ id: string; filename: string; public_url: string }[]>([]);
-  const path = `${basePath}/auth/branding`;
+  const path = `${basePath}/auth-branding`;
   useEffect(() => {
     let active = true;
     void api.request<Settings>("GET", path).then((value) => {

@@ -157,6 +157,8 @@ type PublishedEvent struct {
 }
 
 type Invitation struct {
+	HostedClientID      *string    `json:"hosted_client_id"`
+	HostedRedirectURI   *string    `json:"hosted_redirect_uri"`
 	ID                  string     `json:"id"`
 	Email               string     `json:"email"`
 	WorkspaceID         *string    `json:"workspace_id"`

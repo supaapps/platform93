@@ -375,6 +375,9 @@ func (s *Server) writeHostedView(w http.ResponseWriter, r *http.Request, i *host
 	}
 	current, profile, live := s.hostedActor(r, i, browser)
 	stage := "login"
+	if i.Private.RecoveryChallenge != "" {
+		stage = "recovery"
+	}
 	if i.Private.EmailChallenge != "" {
 		stage = "email_code"
 	}
@@ -603,6 +606,9 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.Action == "reset_start" {
 		i.Private.RecoveryChallenge, _ = result["challenge_id"].(string)
+	}
+	if input.Action == "reset_verify" {
+		i.Private.RecoveryChallenge = ""
 	}
 	if input.Action == "verify_email_start" {
 		i.Private.VerificationChallenge, _ = result["challenge_id"].(string)

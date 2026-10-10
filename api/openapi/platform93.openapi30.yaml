@@ -36,6 +36,7 @@ paths:
   /auth/invitations/{invitation_id}:
     get:
       operationId: startHostedInvitation
+      security: []
       tags:
         - Auth
       parameters:
@@ -8832,7 +8833,7 @@ components:
     OAuthCodeChallenge:
       name: code_challenge
       in: query
-      required: true
+      required: false
       schema:
         type: string
         minLength: 43
@@ -8840,7 +8841,7 @@ components:
     OAuthCodeChallengeMethod:
       name: code_challenge_method
       in: query
-      required: true
+      required: false
       schema:
         type: string
         enum:
@@ -9234,6 +9235,7 @@ components:
             - external_email
             - consent
             - invitation
+            - recovery
         user:
           $ref: '#/components/schemas/HostedAuthUser'
         consent_required:

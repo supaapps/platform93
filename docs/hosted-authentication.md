@@ -106,3 +106,9 @@ stable subject on subsequent logins; it does not provision users. Restrict acces
 to trusted accounts with verified email and consider the security implications of
 email-based initial matching. Platform93 does not merge identities across apps or
 provide Postal provisioning, SAML or cross-application single logout.
+
+The opt-in `PLATFORM93_POSTAL_COMPAT_TEST=1` PostgreSQL integration fixture runs
+the pinned Postal 3.3.7 image with a disposable MariaDB database and a temporary
+trusted TLS certificate. It verifies stock discovery and client authentication,
+first and repeat login for an existing local user, and rejection of an unknown
+local user. CI runs this fixture; it requires Docker and the built static admin.

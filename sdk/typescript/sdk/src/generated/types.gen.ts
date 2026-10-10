@@ -44,7 +44,7 @@ export type HostedAuthView = {
     application_id: Uuid;
     client_name: string;
     branding: HostedBranding;
-    stage: 'login' | 'email_code' | 'mfa' | 'external_email' | 'consent' | 'invitation';
+    stage: 'login' | 'email_code' | 'mfa' | 'external_email' | 'consent' | 'invitation' | 'recovery';
     user?: HostedAuthUser;
     consent_required: boolean;
     requested_scopes: Array<string>;
@@ -12072,8 +12072,8 @@ export type BeginOidcAuthorizationData = {
         response_type: 'code';
         scope: string;
         state: string;
-        code_challenge: string;
-        code_challenge_method: 'S256';
+        code_challenge?: string;
+        code_challenge_method?: 'S256';
         nonce?: string;
         prompt?: string;
         max_age?: number;

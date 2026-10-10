@@ -73,3 +73,25 @@ test("provider-only applications do not show unavailable password or email forms
   await expect(page.getByLabel("Email address")).toBeVisible();
   await expect(page.getByLabel("Code", { exact: true })).toBeVisible();
 });
+
+test("password recovery resumes its code and new-password form after reload", async ({ page }) => {
+  let view: object = initial;
+  await page.route(`**${endpoint}`, (route) => route.fulfill({ json: view }));
+  await page.route(`**${endpoint}/actions`, async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.action === "reset_start") view = { ...initial, stage: "recovery" };
+    else { expect(body).toMatchObject({ action: "reset_verify", code: "ABCDEFGH", password: "New disposable password!" }); view = initial; }
+    await route.fulfill({ json: view });
+  });
+  await page.goto(`/auth/?interaction=${interaction}`);
+  await page.getByRole("button", { name: "Forgot password?" }).click();
+  await page.getByLabel("Email address").fill("user@example.test");
+  await page.getByRole("button", { name: "Send recovery code" }).click();
+  await expect(page.getByLabel("New password")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Email address")).toHaveCount(0);
+  await page.getByLabel("Code", { exact: true }).fill("ABCDEFGH");
+  await page.getByLabel("New password").fill("New disposable password!");
+  await page.getByRole("button", { name: "Set new password" }).click();
+  await expect(page.getByText("Password updated. Sign in with your new password.")).toBeVisible();
+});

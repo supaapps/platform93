@@ -398,6 +398,26 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 			t.Fatalf("inheritance: %#v %v", branding, err)
 		}
 	})
+	t.Run("recovery stage survives reloading the interaction", func(t *testing.T) {
+		params.Set("prompt", "login")
+		w := call("GET", "/oidc/authorize?"+params.Encode(), "", "", "text/html")
+		location, _ := url.Parse(w.Header().Get("Location"))
+		base := "/v1/auth/hosted/interactions/" + location.Query().Get("interaction")
+		w = call("GET", base, "", "", "application/json")
+		var view map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &view)
+		csrf, _ := view["csrf_token"].(string)
+		w = call("POST", base+"/actions", `{"action":"reset_start","email":"unavailable@example.test"}`, csrf, "application/json")
+		if w.Code != 200 {
+			t.Fatalf("start recovery: %d %s", w.Code, w.Body.String())
+		}
+		w = call("GET", base, "", "", "application/json")
+		_ = json.Unmarshal(w.Body.Bytes(), &view)
+		if view["stage"] != "recovery" {
+			t.Fatalf("recovery lost on reload: %s", w.Body.String())
+		}
+		params.Del("prompt")
+	})
 	if os.Getenv("PLATFORM93_HOSTED_BROWSER_TEST") == "1" {
 		host := httptest.NewServer(router)
 		defer host.Close()
@@ -410,6 +430,9 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 			t.Fatalf("live browser: %v\n%s", err, output)
 		}
 		t.Log(string(output))
+	}
+	if os.Getenv("PLATFORM93_POSTAL_COMPAT_TEST") == "1" {
+		testHostedPostalCompatibility(t, app, router, application, client, email)
 	}
 }
 

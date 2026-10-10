@@ -12,7 +12,7 @@ type Branding = {
 };
 type View = {
   interaction_id: string; csrf_token: string; client_name: string; branding: Branding;
-  stage: "login" | "email_code" | "mfa" | "external_email" | "consent" | "invitation";
+  stage: "login" | "email_code" | "mfa" | "external_email" | "consent" | "invitation" | "recovery";
   user?: { name: string; email: string; email_verified: boolean }; consent_required: boolean; mfa_methods: string[];
   requested_scopes: string[]; providers: string[]; password_enabled: boolean;
   passwordless_enabled: boolean; registration_enabled: boolean; ui_locales: string;
@@ -36,7 +36,7 @@ export default function HostedAuthentication() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [method, setMethod] = useState<Method>("email");
-  const [recoverySent, setRecoverySent] = useState(false);
+  const recoverySent = view?.stage === "recovery";
   const [verificationSent, setVerificationSent] = useState(false);
   const initial = useRef(false);
   const base = useRef("");
@@ -103,12 +103,12 @@ export default function HostedAuthentication() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = event.currentTarget; const fields = Object.fromEntries(new FormData(form));
     const stage = view?.stage;
-    const operation = stage === "mfa" ? "mfa" : stage === "email_code" ? "email_verify" : stage === "external_email" ? (fields.code ? "external_email_verify" : "external_email_start") : method === "email" ? "email_start" : method === "recovery" ? (recoverySent ? "reset_verify" : "reset_start") : method === "invite" ? "invitation" : method === "signup" ? "signup" : "password";
+    const operation = stage === "recovery" ? "reset_verify" : stage === "mfa" ? "mfa" : stage === "email_code" ? "email_verify" : stage === "external_email" ? (fields.code ? "external_email_verify" : "external_email_start") : method === "email" ? "email_start" : method === "recovery" ? "reset_start" : method === "invite" ? "invitation" : method === "signup" ? "signup" : "password";
     const result = await action({ ...fields, action: operation });
     if (result && !('redirect_url' in result)) {
       form.reset();
-      if (operation === "reset_start") { setRecoverySent(true); setNotice("If the account is available, a recovery code has been sent."); }
-      if (operation === "reset_verify") { setRecoverySent(false); setMethod("password"); setNotice("Password updated. Sign in with your new password."); }
+      if (operation === "reset_start") setNotice("If the account is available, a recovery code has been sent.");
+      if (operation === "reset_verify") { setMethod("password"); setNotice("Password updated. Sign in with your new password."); }
       if (operation === "external_email_start") setNotice("Enter the code sent to your email address.");
     }
   }
@@ -156,13 +156,13 @@ export default function HostedAuthentication() {
         {loginStage && <div className="hosted-methods" role="group" aria-label="Sign-in method">{view.passwordless_enabled && <button aria-pressed={method === "email"} disabled={busy} onClick={() => setMethod("email")}>Email code</button>}{view.password_enabled && <button aria-pressed={method === "password"} disabled={busy} onClick={() => setMethod("password")}>Password</button>}</div>}
         {(!loginStage || hasCredentialMethod) && <form key={`${view.stage}-${method}-${recoverySent}`} onSubmit={(event) => void submit(event)}>
           {loginStage && !recoverySent && <label>Email address<input name="email" type="email" autoComplete="email" required /></label>}
-          {loginStage && (method === "password" || method === "signup" || method === "recovery" && recoverySent) && <label>{method === "recovery" ? "New password" : "Password"}<input name="password" type="password" autoComplete={method === "password" ? "current-password" : "new-password"} required minLength={method === "password" ? undefined : 12} /></label>}
+          {(recoverySent || loginStage && (method === "password" || method === "signup")) && <label>{recoverySent ? "New password" : "Password"}<input name="password" type="password" autoComplete={recoverySent || method === "signup" ? "new-password" : "current-password"} required minLength={recoverySent || method === "signup" ? 12 : undefined} /></label>}
           {loginStage && method === "signup" && <div className="hosted-name"><label>First name<input name="first_name" autoComplete="given-name" /></label><label>Last name<input name="last_name" autoComplete="family-name" /></label></div>}
-          {(view.stage === "email_code" || view.stage === "mfa" || loginStage && (method === "invite" || recoverySent)) && <label>{view.stage === "mfa" ? "Authenticator code" : "Code"}<input name="code" autoComplete="one-time-code" required={view.stage !== "mfa"} maxLength={view.stage === "mfa" ? 6 : 8} /></label>}
+          {(recoverySent || view.stage === "email_code" || view.stage === "mfa" || loginStage && method === "invite") && <label>{view.stage === "mfa" ? "Authenticator code" : "Code"}<input name="code" autoComplete="one-time-code" required={view.stage !== "mfa"} maxLength={view.stage === "mfa" ? 6 : 8} /></label>}
           {view.stage === "mfa" && <label>Or recovery code<input name="recovery_code" autoComplete="off" /></label>}
           {view.stage === "mfa" && view.mfa_methods.includes("webauthn") && <button type="button" disabled={busy} onClick={() => void passkey()}>Use a passkey</button>}
           {view.stage === "external_email" && <><label>Email address<input name="email" type="email" autoComplete="email" /></label><label>Verification code<input name="code" autoComplete="one-time-code" maxLength={8} /></label></>}
-          <button className="hosted-primary" disabled={busy}>{busy ? "Working..." : view.stage === "email_code" || view.stage === "mfa" ? "Verify and continue" : method === "recovery" ? recoverySent ? "Set new password" : "Send recovery code" : method === "invite" ? "Accept invitation" : method === "signup" ? "Create account" : method === "email" ? "Send sign-in code" : "Continue"}</button>
+          <button className="hosted-primary" disabled={busy}>{busy ? "Working..." : recoverySent ? "Set new password" : view.stage === "email_code" || view.stage === "mfa" ? "Verify and continue" : method === "recovery" ? "Send recovery code" : method === "invite" ? "Accept invitation" : method === "signup" ? "Create account" : method === "email" ? "Send sign-in code" : "Continue"}</button>
         </form>}
         {!loginStage && <button className="hosted-cancel" disabled={busy} onClick={() => void action({ action: "restart" })}>Start over</button>}
         {loginStage && <div className="hosted-links">{view.registration_enabled && view.password_enabled && <button disabled={busy} onClick={() => setMethod(method === "signup" ? "password" : "signup")}>{method === "signup" ? "Already have an account?" : "Create account"}</button>}<button disabled={busy} onClick={() => setMethod("invite")}>Have an invitation?</button>{view.password_enabled && <button disabled={busy} onClick={() => setMethod("recovery")}>Forgot password?</button>}</div>}
