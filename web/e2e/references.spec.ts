@@ -320,3 +320,31 @@ test("free-form grants preserve empty text and validate JSON before review", asy
   await page.getByRole("button", { name: "Confirm grant", exact: true }).click();
   await expect.poll(() => submitted?.feature_values).toEqual({ projects: 5, notes: "", settings: { enabled: false } });
 });
+
+
+test("manual grant explicitly supports no expiry until revoked", async ({ page }) => {
+  await setup(page);
+  let submitted: Record<string, unknown> | undefined;
+  await page.route("**/entitlements", async (route) => {
+    if (route.request().method() === "POST") submitted = route.request().postDataJSON();
+    await route.fulfill({ json: { items: [], next_cursor: null } });
+  });
+  await navigate(page, "entitlements", "entitlements");
+  await page.getByRole("button", { name: "Grant entitlement", exact: true }).click();
+  await select(page, "Recipient", "Alex");
+  await select(page, "Product", "Standard");
+  await page.getByLabel("No expiry (until revoked)", { exact: true }).check();
+  await expect(page.getByLabel("Expires at")).toBeDisabled();
+  await page.getByRole("button", { name: "Review grant", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Grant review" })).toContainText("No expiry (until revoked)");
+  await page.getByRole("button", { name: "3 months", exact: true }).click();
+  await expect(page.getByLabel("No expiry (until revoked)", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("Expires at")).toBeEnabled();
+  await page.getByLabel("No expiry (until revoked)", { exact: true }).check();
+  await page.getByRole("button", { name: "Review grant", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm grant", exact: true }).click();
+  await expect.poll(() => submitted?.subject_id).toBe(user.id);
+  expect(submitted).toMatchObject({ product_id: product.id, feature_values: { projects: 5 } });
+  expect(submitted).not.toHaveProperty("expires_at");
+  await expect(page.getByText("Entitlement granted. No payment or automatic renewal was created.")).toBeVisible();
+});
