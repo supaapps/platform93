@@ -33,6 +33,8 @@ class InvitationInput(TypedDict):
     application_role_keys: NotRequired[list[str]]
     workspace_role_keys: NotRequired[list[str]]
     expires_in: NotRequired[int]
+    hosted_client_id: NotRequired[str]
+    hosted_redirect_uri: NotRequired[str]
 
 
 class Invitation(TypedDict):

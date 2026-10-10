@@ -76,6 +76,9 @@ func (s *Server) oauthAuthorizeInteraction(w http.ResponseWriter, r *http.Reques
 		provider.OAuth.WriteAuthorizeError(r.Context(), w, request, err)
 		return
 	}
+	if s.startHostedAuthorization(w, r, provider, request) {
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	kernel.WriteJSON(w, http.StatusOK, map[string]any{
 		"interaction":      "consent",
@@ -148,9 +151,19 @@ WHERE id=$1 AND application_id=$2 AND user_id=$3 AND revoked_at IS NULL`, curren
 		"sid": current.SessionID, "amr": amr, "custom_claims": customClaims, "roles": effective.Roles,
 	}
 	session.IDClaims.Extra = map[string]any{
-		"application_id": chi.URLParam(r, "application_id"), "email": email, "email_verified": emailVerified,
-		"is_org_verified": orgVerified, "locale": locale, "actor_type": "user", "given_name": firstName, "family_name": lastName, "sid": current.SessionID,
+		"application_id": chi.URLParam(r, "application_id"), "actor_type": "user", "sid": current.SessionID,
 		"custom_claims": customClaims, "roles": effective.Roles,
+	}
+	if stringSliceContains(consentScopes, "email") {
+		session.IDClaims.Extra["email"] = email
+		session.IDClaims.Extra["email_verified"] = emailVerified
+	}
+	if stringSliceContains(consentScopes, "profile") {
+		session.IDClaims.Extra["given_name"] = firstName
+		session.IDClaims.Extra["family_name"] = lastName
+		session.IDClaims.Extra["name"] = strings.TrimSpace(firstName + " " + lastName)
+		session.IDClaims.Extra["locale"] = locale
+		session.IDClaims.Extra["is_org_verified"] = orgVerified
 	}
 	session.IDClaims.AuthTime = authenticatedAt
 	session.IDClaims.AuthenticationMethodsReferences = amr
@@ -418,7 +431,11 @@ func (s *Server) oauthProvider(w http.ResponseWriter, r *http.Request) (*oauthse
 		kernel.WriteProblem(w, r, http.StatusNotFound, "application_not_found", "The application was not found.")
 		return nil, false
 	}
-	provider, err := oauthserver.NewProvider(r.Context(), s.app, applicationID)
+	clientID := r.FormValue("client_id")
+	if basicID, _, ok := r.BasicAuth(); ok {
+		clientID = basicID
+	}
+	provider, err := oauthserver.NewProviderForClient(r.Context(), s.app, applicationID, clientID)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "oauth_provider_unavailable", "The OAuth provider is unavailable for this application.")
 		return nil, false

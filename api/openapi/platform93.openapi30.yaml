@@ -33,6 +33,207 @@ tags:
   - name: Events
     description: Domain events, outgoing webhooks, and audit.
 paths:
+  /auth/invitations/{invitation_id}:
+    get:
+      operationId: startHostedInvitation
+      tags:
+        - Auth
+      parameters:
+        - name: invitation_id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+        - name: link_token
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 256
+      responses:
+        '303':
+          description: Browser-bound hosted invitation page.
+  /v1/auth/hosted/interactions/{interaction_id}:
+    parameters:
+      - $ref: '#/components/parameters/HostedInteractionID'
+    get:
+      operationId: getHostedAuthInteraction
+      tags:
+        - Auth
+      security:
+        - hostedCookie: []
+      responses:
+        '200':
+          description: Browser-bound interaction without bearer credentials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostedAuthView'
+  /v1/auth/hosted/interactions/{interaction_id}/actions:
+    parameters:
+      - $ref: '#/components/parameters/HostedInteractionID'
+      - $ref: '#/components/parameters/HostedCSRF'
+    post:
+      operationId: performHostedAuthAction
+      tags:
+        - Auth
+      security:
+        - hostedCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HostedAuthAction'
+      responses:
+        '200':
+          description: Updated interaction, redirect, or passkey options.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostedAuthResult'
+  /v1/auth/hosted/interactions/{interaction_id}/return:
+    parameters:
+      - $ref: '#/components/parameters/HostedInteractionID'
+      - $ref: '#/components/parameters/HostedCSRF'
+    post:
+      operationId: exchangeHostedAuthReturn
+      tags:
+        - Auth
+      security:
+        - hostedCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HostedAuthReturn'
+      responses:
+        '200':
+          description: Updated interaction after provider or email return.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostedAuthView'
+  /auth/return/{interaction_id}:
+    parameters:
+      - $ref: '#/components/parameters/HostedInteractionID'
+    get:
+      operationId: redirectHostedAuthReturn
+      tags:
+        - Auth
+      security:
+        - hostedCookie: []
+      responses:
+        '303':
+          description: Redirect to hosted page; credentials are not consumed on GET.
+          headers:
+            Location:
+              schema:
+                type: string
+  /v1/control/installation/auth-branding:
+    get:
+      operationId: getInstallationAuthBranding
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      responses:
+        '200':
+          description: Branding override and version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostedBrandingSettings'
+    put:
+      operationId: updateInstallationAuthBranding
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HostedBranding'
+      responses:
+        '204':
+          description: Branding saved; empty configuration restores defaults.
+  /v1/control/organizations/{organization_id}/auth-branding:
+    parameters:
+      - $ref: '#/components/parameters/OrganizationID'
+    get:
+      operationId: getOrganizationAuthBranding
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      responses:
+        '200':
+          description: Branding override and version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostedBrandingSettings'
+    put:
+      operationId: updateOrganizationAuthBranding
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HostedBranding'
+      responses:
+        '204':
+          description: Branding saved.
+  /v1/control/applications/{application_id}/auth-branding:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    get:
+      operationId: getApplicationAuthBranding
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      responses:
+        '200':
+          description: Branding override, effective settings, and version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostedBrandingSettings'
+    put:
+      operationId: updateApplicationAuthBranding
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HostedBranding'
+      responses:
+        '204':
+          description: Branding saved.
   /healthz:
     get:
       operationId: health
@@ -8054,6 +8255,7 @@ paths:
   /oidc/authorize:
     get:
       operationId: beginOIDCAuthorization
+      description: Opted-in hosted clients receive a browser interaction redirect. Explicit application/json requests retain the headless contract.
       tags:
         - Identity
       security: []
@@ -8065,6 +8267,27 @@ paths:
         - $ref: '#/components/parameters/OAuthState'
         - $ref: '#/components/parameters/OAuthCodeChallenge'
         - $ref: '#/components/parameters/OAuthCodeChallengeMethod'
+        - name: nonce
+          in: query
+          schema:
+            type: string
+            maxLength: 1024
+        - name: prompt
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+        - name: max_age
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 31536000
+        - name: ui_locales
+          in: query
+          schema:
+            type: string
+            maxLength: 256
       responses:
         '200':
           description: Headless consent interaction
@@ -8074,6 +8297,13 @@ paths:
                 $ref: '#/components/schemas/AuthorizationRedirect'
         '302':
           description: Authorization response redirect
+        '303':
+          description: Hosted sign-in interaction or validated authorization callback
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri-reference
     post:
       operationId: decideOIDCAuthorization
       tags:
@@ -8383,6 +8613,11 @@ paths:
           description: Application restored
 components:
   securitySchemes:
+    hostedCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-p93_hosted_browser
+      description: Browser-bound hosted session; loopback HTTP uses p93_hosted_browser.
     bearerAuth:
       type: http
       scheme: bearer
@@ -8401,6 +8636,20 @@ components:
       bearerFormat: Platform93-management-JWT
       description: Short-lived client-credentials token with actor_type=management_client and audience platform93:control.
   parameters:
+    HostedInteractionID:
+      name: interaction_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUID'
+    HostedCSRF:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 43
+        maxLength: 128
     ReferenceQuery:
       name: query
       in: query
@@ -8863,6 +9112,265 @@ components:
           schema:
             $ref: '#/components/schemas/OwnershipTransferResult'
   schemas:
+    HostedCopy:
+      type: object
+      additionalProperties: false
+      properties:
+        heading:
+          type: string
+          maxLength: 160
+        help:
+          type: string
+          maxLength: 500
+    HostedBranding:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+          maxLength: 120
+        logo_url:
+          type: string
+          format: uri
+        favicon_url:
+          type: string
+          format: uri
+        accent_color:
+          type: string
+          pattern: ^#[0-9a-fA-F]{6}$
+        background_color:
+          type: string
+          pattern: ^#[0-9a-fA-F]{6}$
+        layout:
+          type: string
+          enum:
+            - centered
+            - split
+        privacy_url:
+          type: string
+          format: uri
+        terms_url:
+          type: string
+          format: uri
+        support_url:
+          type: string
+          format: uri
+        default_locale:
+          type: string
+        copy:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/HostedCopy'
+    HostedBrandingSettings:
+      type: object
+      additionalProperties: false
+      required:
+        - scope_type
+        - configuration
+        - version
+      properties:
+        scope_type:
+          type: string
+          enum:
+            - installation
+            - organization
+            - application
+        configuration:
+          $ref: '#/components/schemas/HostedBranding'
+        effective:
+          $ref: '#/components/schemas/HostedBranding'
+        version:
+          type: integer
+          format: int64
+    HostedAuthUser:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - email
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        email_verified:
+          type: boolean
+    HostedAuthView:
+      type: object
+      additionalProperties: false
+      required:
+        - interaction_id
+        - csrf_token
+        - application_id
+        - client_name
+        - branding
+        - stage
+        - consent_required
+        - requested_scopes
+        - providers
+        - password_enabled
+        - passwordless_enabled
+        - registration_enabled
+        - expires_at
+        - ui_locales
+      properties:
+        interaction_id:
+          $ref: '#/components/schemas/UUID'
+        csrf_token:
+          type: string
+        application_id:
+          $ref: '#/components/schemas/UUID'
+        client_name:
+          type: string
+        branding:
+          $ref: '#/components/schemas/HostedBranding'
+        stage:
+          type: string
+          enum:
+            - login
+            - email_code
+            - mfa
+            - external_email
+            - consent
+            - invitation
+        user:
+          $ref: '#/components/schemas/HostedAuthUser'
+        consent_required:
+          type: boolean
+        requested_scopes:
+          type: array
+          items:
+            type: string
+        providers:
+          type: array
+          items:
+            type: string
+        password_enabled:
+          type: boolean
+        passwordless_enabled:
+          type: boolean
+        registration_enabled:
+          type: boolean
+        expires_at:
+          type: string
+          format: date-time
+        ui_locales:
+          type: string
+        mfa_methods:
+          type: array
+          items:
+            type: string
+            enum:
+              - totp
+              - webauthn
+        notice:
+          type: string
+          nullable: true
+    HostedAuthRedirect:
+      type: object
+      additionalProperties: false
+      required:
+        - redirect_url
+      properties:
+        redirect_url:
+          type: string
+          format: uri
+    HostedAuthResult:
+      oneOf:
+        - $ref: '#/components/schemas/HostedAuthView'
+        - $ref: '#/components/schemas/HostedAuthRedirect'
+        - $ref: '#/components/schemas/WebAuthnChallenge'
+    HostedAuthAction:
+      type: object
+      additionalProperties: false
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum:
+            - password
+            - signup
+            - email_start
+            - email_verify
+            - mfa
+            - webauthn_options
+            - webauthn_verify
+            - reset_start
+            - reset_verify
+            - provider
+            - external_email_start
+            - external_email_verify
+            - invitation
+            - verify_email_start
+            - verify_email
+            - approve
+            - deny
+            - switch_account
+            - logout
+            - restart
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+        first_name:
+          type: string
+        last_name:
+          type: string
+        code:
+          type: string
+          writeOnly: true
+        recovery_code:
+          type: string
+          writeOnly: true
+        provider:
+          type: string
+          enum:
+            - google
+            - apple
+            - microsoft
+            - facebook
+            - linkedin
+        intent:
+          type: string
+          enum:
+            - automatic
+            - sign_in
+            - sign_up
+        invitation_id:
+          $ref: '#/components/schemas/UUID'
+        link_token:
+          type: string
+          writeOnly: true
+        credential:
+          type: object
+          additionalProperties: true
+    HostedAuthReturn:
+      type: object
+      additionalProperties: false
+      properties:
+        challenge_id:
+          $ref: '#/components/schemas/UUID'
+        link_token:
+          type: string
+          writeOnly: true
+        provider:
+          type: string
+          enum:
+            - google
+            - apple
+            - microsoft
+            - facebook
+            - linkedin
+        code:
+          type: string
+          writeOnly: true
+        enrollment:
+          type: string
+          writeOnly: true
     HealthStatus:
       type: object
       required:
@@ -9706,6 +10214,18 @@ components:
         - name
         - client_type
       properties:
+        initiate_login_uri:
+          type: string
+          maxLength: 2048
+        authorization_ui:
+          type: string
+          enum:
+            - headless
+            - hosted
+          default: headless
+        pkce_required:
+          type: boolean
+          default: true
         id:
           $ref: '#/components/schemas/UUID'
         client_id:
@@ -9882,6 +10402,14 @@ components:
         - status
         - expires_at
       properties:
+        hosted_client_id:
+          type: string
+          format: uuid
+          nullable: true
+        hosted_redirect_uri:
+          type: string
+          maxLength: 2048
+          nullable: true
         id:
           $ref: '#/components/schemas/UUID'
         application_id:
@@ -12629,6 +13157,18 @@ components:
         - name
         - client_type
       properties:
+        initiate_login_uri:
+          type: string
+          maxLength: 2048
+        authorization_ui:
+          type: string
+          enum:
+            - headless
+            - hosted
+          default: headless
+        pkce_required:
+          type: boolean
+          default: true
         client_id:
           type: string
           minLength: 1
@@ -12665,6 +13205,16 @@ components:
       type: object
       minProperties: 1
       properties:
+        initiate_login_uri:
+          type: string
+          maxLength: 2048
+        authorization_ui:
+          type: string
+          enum:
+            - headless
+            - hosted
+        pkce_required:
+          type: boolean
         name:
           type: string
           minLength: 1
@@ -14418,6 +14968,11 @@ components:
       required:
         - email
       properties:
+        hosted_client_id:
+          $ref: '#/components/schemas/UUID'
+        hosted_redirect_uri:
+          type: string
+          format: uri
         email:
           type: string
           format: email

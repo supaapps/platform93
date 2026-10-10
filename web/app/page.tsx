@@ -10,6 +10,7 @@ import { ViewportPortal } from "./viewport-portal";
 import { ReleaseStatus } from "./release-status";
 import { ReferencePicker, type ReferenceKind, type ReferencePage } from "./reference-picker";
 import { ManualGrantForm } from "./manual-grant-form";
+import { HostedBrandingEditor } from "./hosted-branding-editor";
 
 type Organization = { id: string; name: string; slug: string; role: string; version?: number; retired_at?: string | null };
 type Application = {
@@ -182,7 +183,7 @@ const resources: Record<string, Resource[]> = {
   ],
   Workspaces: [
     { label: "Workspaces", path: "workspaces", create: { label: "Create workspace", fields: [{ name: "owner_user_id", label: "Owner user ID", required: true }, { name: "key", label: "Key", required: true }, { name: "name", label: "Name", required: true }] } },
-    { label: "Invitations", path: "invitations", create: { label: "Create invitation", fields: [{ name: "email", label: "Email", type: "email", required: true }, { name: "workspace_id", label: "Workspace ID (optional)" }, { name: "application_role_keys", label: "Application role keys, comma separated" }, { name: "workspace_role_keys", label: "Workspace role keys, comma separated" }, { name: "onboarding_method", label: "Onboarding method", required: true, options: [{ label: "Email credential", value: "email" }, { label: "Google", value: "google" }, { label: "Apple", value: "apple" }, { label: "Microsoft", value: "microsoft" }, { label: "Facebook", value: "facebook" }, { label: "LinkedIn", value: "linkedin" }] }, { name: "expires_in", label: "Expires in seconds", type: "number", placeholder: "604800" }] } },
+    { label: "Invitations", path: "invitations", create: { label: "Create invitation", fields: [{ name: "email", label: "Email", type: "email", required: true }, { name: "workspace_id", label: "Workspace ID (optional)" }, { name: "application_role_keys", label: "Application role keys, comma separated" }, { name: "workspace_role_keys", label: "Workspace role keys, comma separated" }, { name: "hosted_client_id", label: "Hosted client (optional; otherwise application-directed)" }, { name: "hosted_redirect_uri", label: "Hosted client callback" }, { name: "onboarding_method", label: "Onboarding method", required: true, options: [{ label: "Email credential", value: "email" }, { label: "Google", value: "google" }, { label: "Apple", value: "apple" }, { label: "Microsoft", value: "microsoft" }, { label: "Facebook", value: "facebook" }, { label: "LinkedIn", value: "linkedin" }] }, { name: "expires_in", label: "Expires in seconds", type: "number", placeholder: "604800" }] } },
     { label: "Delegations", path: "delegations" },
   ],
   Catalog: [
@@ -1189,12 +1190,13 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
           if (!visible) return null;
           if (resource.path === "role-assignments" && ((field.name === "user_id" && fieldValues._subject_type === "client") || (field.name === "client_id" && fieldValues._subject_type !== "client") || (field.name === "workspace_id" && fieldValues._role_scope !== "workspace"))) return null;
           if (field.name === "workspace_role_keys" && !fieldValues.workspace_id) return null;
-          const referenceKinds: Record<string, ReferenceKind> = { user_id: "users", owner_user_id: "users", client_id: "clients", role_id: "roles", workspace_id: "workspaces", application_role_keys: "roles", workspace_role_keys: "roles" };
+          if (field.name === "hosted_redirect_uri") { const redirects = JSON.parse(fieldValues._hosted_redirects ?? "[]") as string[]; return fieldValues.hosted_client_id ? <label key={field.name}>{field.label}<select required name={field.name} value={fieldValues[field.name] ?? ""} onChange={(event)=>setFieldValues((values)=>({...values,[field.name]:event.target.value}))}><option value="">Select registered callback</option>{redirects.map((uri)=><option key={uri} value={uri}>{uri}</option>)}</select></label> : null; }
+          const referenceKinds: Record<string, ReferenceKind> = { user_id: "users", owner_user_id: "users", client_id: "clients", hosted_client_id: "clients", role_id: "roles", workspace_id: "workspaces", application_role_keys: "roles", workspace_role_keys: "roles" };
           const kind = referenceKinds[field.name];
           if (kind && !(field.name === "client_id" && resource.path === "clients")) {
             const multiple = field.name.endsWith("role_keys");
             const labels: Record<string, string> = { user_id: "User", owner_user_id: "Owner", client_id: "Machine client", role_id: "Role", workspace_id: "Workspace", application_role_keys: "Application roles", workspace_role_keys: "Workspace roles" };
-return <ReferencePicker key={`${field.name}-${fieldValues._subject_type ?? "user"}`} kind={kind} basePath={`/v1/control/applications/${application.id}`} request={referenceRequest} name={field.name} label={labels[field.name] ?? field.label} multiple={multiple} useKeys={multiple} required={field.required || resource.path === "role-assignments"} machineOnly={kind === "clients"} activeOnly={kind === "users" || kind === "workspaces"} roleScope={field.name === "application_role_keys" ? "application" : field.name === "workspace_role_keys" ? "workspace" : undefined} value={(fieldValues[field.name] ?? "").split(",").filter(Boolean)} onChange={(ids, items) => setFieldValues((values) => ({ ...values, [field.name]: ids.join(","), ...(field.name === "role_id" ? { _role_scope: String(items[0]?.scope ?? ""), workspace_id: "" } : {}), ...(field.name === "workspace_id" ? { workspace_role_keys: "" } : {}) }))} />;
+return <ReferencePicker key={`${field.name}-${fieldValues._subject_type ?? "user"}`} kind={kind} basePath={`/v1/control/applications/${application.id}`} request={referenceRequest} name={field.name} label={labels[field.name] ?? field.label} multiple={multiple} useKeys={multiple} required={field.required || resource.path === "role-assignments"} machineOnly={kind === "clients" && field.name !== "hosted_client_id"} hostedOnly={field.name === "hosted_client_id"} activeOnly={kind === "users" || kind === "workspaces"} roleScope={field.name === "application_role_keys" ? "application" : field.name === "workspace_role_keys" ? "workspace" : undefined} value={(fieldValues[field.name] ?? "").split(",").filter(Boolean)} onChange={(ids, items) => setFieldValues((values) => ({ ...values, [field.name]: ids.join(","), ...(field.name === "role_id" ? { _role_scope: String(items[0]?.scope ?? ""), workspace_id: "" } : {}), ...(field.name === "workspace_id" ? { workspace_role_keys: "" } : {}), ...(field.name === "hosted_client_id" ? { hosted_redirect_uri: "", _hosted_redirects: JSON.stringify(items[0]?.redirect_uris ?? []) } : {}) }))} />;
           }
           if (field.name === "permissions") return <PermissionListInput key={field.name} name={field.name} label={field.label} />;
           return <label key={field.name}>{field.label}
@@ -1389,6 +1391,7 @@ function DetailPanel({ detail, resource, application, setMessage, onClose, onCha
 
 function OAuthClientEditor({ client, application, setMessage, onChanged }: { client: Record<string, unknown>; application: Application; setMessage: (value: string) => void; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [requiredPKCE, setRequiredPKCE] = useState(client.pkce_required !== false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1400,6 +1403,9 @@ function OAuthClientEditor({ client, application, setMessage, onChanged }: { cli
         redirect_uris: list("redirect_uris"),
         allowed_grants: list("allowed_grants"),
         allowed_scopes: list("allowed_scopes"),
+        authorization_ui: String(form.get("authorization_ui") ?? "headless"),
+        pkce_required: requiredPKCE,
+        initiate_login_uri: String(form.get("initiate_login_uri") ?? "").trim(),
       });
       setMessage("OAuth client and allowed redirect URIs updated.");
       onChanged();
@@ -1412,10 +1418,14 @@ function OAuthClientEditor({ client, application, setMessage, onChanged }: { cli
     <label><span>Client ID</span><input disabled value={String(client.client_id ?? "")} /></label>
     <label><span>Client type</span><input disabled value={String(client.client_type ?? "")} /></label>
     <label><span>Name</span><input required name="name" defaultValue={String(client.name ?? "")} /></label>
+    <label className="full-field"><span>Application sign-in/start URL</span><input name="initiate_login_uri" type="url" defaultValue={String(client.initiate_login_uri ?? "")} placeholder="https://app.example/auth/start" /><small>Hosted invitations return here after acceptance. This page starts a fresh OIDC request; it is not the OAuth callback.</small></label>
+    <label><span>Authorization UI</span><select name="authorization_ui" defaultValue={String(client.authorization_ui ?? "headless")} disabled={client.client_type === "machine"}><option value="headless">Headless SDK</option><option value="hosted">Hosted sign-in</option></select></label>
+    <label><span>Require S256 PKCE</span><input type="checkbox" checked={requiredPKCE} disabled={client.client_type !== "confidential"} onChange={(event) => { if (event.target.checked || window.confirm("Disable required PKCE for this confidential web client? Use only when a legacy OIDC client authenticates with its secret. Supplied challenges remain mandatory at exchange.")) setRequiredPKCE(event.target.checked); }} /><small>{requiredPKCE ? "Required; recommended for every client." : "Compatibility mode: client-secret authentication is required. Never expose this secret in a browser."}</small></label>
     <label className="full-field"><span>Allowed redirect URIs</span><textarea required={client.client_type === "public"} name="redirect_uris" defaultValue={lines(client.redirect_uris)} placeholder={'https://app.example/auth/callback\nsampleapp://auth/callback'} /><small>One exact URI per line. Public clients may use HTTPS, loopback HTTP, or a native app scheme such as sampleapp://. OAuth, passwordless, provider, billing, and delegation redirects are checked against this allowlist.</small></label>
     <label><span>Allowed grants</span><textarea name="allowed_grants" defaultValue={lines(client.allowed_grants)} placeholder={'authorization_code\nrefresh_token'} /></label>
     <label><span>Allowed OAuth scopes</span><textarea name="allowed_scopes" defaultValue={lines(client.allowed_scopes)} placeholder={'openid\nprofile\nemail'} /></label>
     <button disabled={busy}>{busy ? "Saving client..." : "Save OAuth client"}</button>
+    <section className="full-field"><strong>OIDC setup</strong><p>Register the relying application callback exactly in the allowlist above.</p>{["/.well-known/openid-configuration", "/authorize", "/token", "/userinfo", "/jwks"].map((suffix) => <p key={suffix}><code>{application.issuer.replace(/\/$/, "") + suffix}</code></p>)}<p>Issuer: <code>{application.issuer}</code>. Hosted sign-in is opt-in; explicit JSON authorization requests stay headless.</p></section>
   </form>;
 }
 
@@ -3046,6 +3056,7 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
       </section>
     </div>
     <StorageObjectManager basePath={basePath} allowUploads={scope !== "organization"} compact setMessage={setMessage} />
+    <HostedBrandingEditor api={api} basePath={basePath} scope={scope} onMessage={setMessage} />
   </section>;
 }
 

@@ -4,6 +4,84 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type HostedCopy = {
+    heading?: string;
+    help?: string;
+};
+
+export type HostedBranding = {
+    display_name?: string;
+    logo_url?: string;
+    favicon_url?: string;
+    accent_color?: string;
+    background_color?: string;
+    layout?: 'centered' | 'split';
+    privacy_url?: string;
+    terms_url?: string;
+    support_url?: string;
+    default_locale?: string;
+    copy?: {
+        [key: string]: HostedCopy;
+    };
+};
+
+export type HostedBrandingSettings = {
+    scope_type: 'installation' | 'organization' | 'application';
+    configuration: HostedBranding;
+    effective?: HostedBranding;
+    version: number;
+};
+
+export type HostedAuthUser = {
+    name: string;
+    email: string;
+    email_verified?: boolean;
+};
+
+export type HostedAuthView = {
+    interaction_id: Uuid;
+    csrf_token: string;
+    application_id: Uuid;
+    client_name: string;
+    branding: HostedBranding;
+    stage: 'login' | 'email_code' | 'mfa' | 'external_email' | 'consent' | 'invitation';
+    user?: HostedAuthUser;
+    consent_required: boolean;
+    requested_scopes: Array<string>;
+    providers: Array<string>;
+    password_enabled: boolean;
+    passwordless_enabled: boolean;
+    registration_enabled: boolean;
+    expires_at: string;
+    ui_locales: string;
+    mfa_methods?: Array<'totp' | 'webauthn'>;
+    notice?: string | null;
+};
+
+export type HostedAuthRedirect = {
+    redirect_url: string;
+};
+
+export type HostedAuthResult = HostedAuthView | HostedAuthRedirect | WebAuthnChallenge;
+
+export type HostedAuthAction = {
+    action: 'password' | 'signup' | 'email_start' | 'email_verify' | 'mfa' | 'webauthn_options' | 'webauthn_verify' | 'reset_start' | 'reset_verify' | 'provider' | 'external_email_start' | 'external_email_verify' | 'invitation' | 'verify_email_start' | 'verify_email' | 'approve' | 'deny' | 'switch_account' | 'logout' | 'restart';
+    email?: string;
+    first_name?: string;
+    last_name?: string;
+    provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+    intent?: 'automatic' | 'sign_in' | 'sign_up';
+    invitation_id?: Uuid;
+    credential?: {
+        [key: string]: unknown;
+    };
+};
+
+export type HostedAuthReturn = {
+    challenge_id?: Uuid;
+    provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+};
+
 export type HealthStatus = {
     status: 'ok' | 'ready';
 };
@@ -278,6 +356,9 @@ export type ApplicationDomain = {
 };
 
 export type OAuthClient = {
+    initiate_login_uri?: string;
+    authorization_ui?: 'headless' | 'hosted';
+    pkce_required?: boolean;
     id: Uuid;
     client_id: string;
     name: string;
@@ -334,6 +415,8 @@ export type Delegation = {
 };
 
 export type ApplicationInvitation = {
+    hosted_client_id?: string | null;
+    hosted_redirect_uri?: string | null;
     id: Uuid;
     application_id: Uuid;
     workspace_id?: string | null;
@@ -1289,6 +1372,9 @@ export type CreateApplicationDomain = {
 };
 
 export type CreateClient = {
+    initiate_login_uri?: string;
+    authorization_ui?: 'headless' | 'hosted';
+    pkce_required?: boolean;
     client_id: string;
     name: string;
     client_type: 'public' | 'confidential';
@@ -1298,6 +1384,9 @@ export type CreateClient = {
 };
 
 export type UpdateClient = {
+    initiate_login_uri?: string;
+    authorization_ui?: 'headless' | 'hosted';
+    pkce_required?: boolean;
     name?: string;
     redirect_uris?: Array<string>;
     allowed_grants?: Array<'authorization_code' | 'refresh_token' | 'client_credentials'>;
@@ -1930,6 +2019,8 @@ export type QueuedNotification = {
 };
 
 export type CreateInvitation = {
+    hosted_client_id?: Uuid;
+    hosted_redirect_uri?: string;
     email: string;
     workspace_id?: Uuid;
     application_role_keys?: Array<string>;
@@ -2255,6 +2346,31 @@ export type CreateCheckout = {
     external_reference?: string;
 };
 
+export type HostedAuthActionWritable = {
+    action: 'password' | 'signup' | 'email_start' | 'email_verify' | 'mfa' | 'webauthn_options' | 'webauthn_verify' | 'reset_start' | 'reset_verify' | 'provider' | 'external_email_start' | 'external_email_verify' | 'invitation' | 'verify_email_start' | 'verify_email' | 'approve' | 'deny' | 'switch_account' | 'logout' | 'restart';
+    email?: string;
+    password?: string;
+    first_name?: string;
+    last_name?: string;
+    code?: string;
+    recovery_code?: string;
+    provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+    intent?: 'automatic' | 'sign_in' | 'sign_up';
+    invitation_id?: Uuid;
+    link_token?: string;
+    credential?: {
+        [key: string]: unknown;
+    };
+};
+
+export type HostedAuthReturnWritable = {
+    challenge_id?: Uuid;
+    link_token?: string;
+    provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+    code?: string;
+    enrollment?: string;
+};
+
 export type SetupSessionWritable = {
     access_token: string;
     refresh_token: string;
@@ -2298,6 +2414,9 @@ export type SecretCredentialWritable = {
 };
 
 export type OAuthClientWritable = {
+    initiate_login_uri?: string;
+    authorization_ui?: 'headless' | 'hosted';
+    pkce_required?: boolean;
     id: Uuid;
     client_id: string;
     name: string;
@@ -2326,6 +2445,8 @@ export type DelegationWritable = {
 };
 
 export type ApplicationInvitationWritable = {
+    hosted_client_id?: string | null;
+    hosted_redirect_uri?: string | null;
     id: Uuid;
     application_id: Uuid;
     workspace_id?: string | null;
@@ -2600,6 +2721,10 @@ export type CreateBillingProviderWritable = {
     inheritable?: boolean;
 };
 
+export type HostedInteractionId = Uuid;
+
+export type HostedCsrf = string;
+
 /**
  * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
  */
@@ -2758,6 +2883,208 @@ export type OAuthTokenCredential = {
     client_id?: string;
     client_secret?: string;
 };
+
+export type StartHostedInvitationData = {
+    body?: never;
+    path: {
+        invitation_id: Uuid;
+    };
+    query: {
+        link_token: string;
+    };
+    url: '/auth/invitations/{invitation_id}';
+};
+
+export type GetHostedAuthInteractionData = {
+    body?: never;
+    path: {
+        interaction_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/auth/hosted/interactions/{interaction_id}';
+};
+
+export type GetHostedAuthInteractionResponses = {
+    /**
+     * Browser-bound interaction without bearer credentials.
+     */
+    200: HostedAuthView;
+};
+
+export type GetHostedAuthInteractionResponse = GetHostedAuthInteractionResponses[keyof GetHostedAuthInteractionResponses];
+
+export type PerformHostedAuthActionData = {
+    body: HostedAuthActionWritable;
+    headers: {
+        'X-CSRF-Token': string;
+    };
+    path: {
+        interaction_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/auth/hosted/interactions/{interaction_id}/actions';
+};
+
+export type PerformHostedAuthActionResponses = {
+    /**
+     * Updated interaction, redirect, or passkey options.
+     */
+    200: HostedAuthResult;
+};
+
+export type PerformHostedAuthActionResponse = PerformHostedAuthActionResponses[keyof PerformHostedAuthActionResponses];
+
+export type ExchangeHostedAuthReturnData = {
+    body: HostedAuthReturnWritable;
+    headers: {
+        'X-CSRF-Token': string;
+    };
+    path: {
+        interaction_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/auth/hosted/interactions/{interaction_id}/return';
+};
+
+export type ExchangeHostedAuthReturnResponses = {
+    /**
+     * Updated interaction after provider or email return.
+     */
+    200: HostedAuthView;
+};
+
+export type ExchangeHostedAuthReturnResponse = ExchangeHostedAuthReturnResponses[keyof ExchangeHostedAuthReturnResponses];
+
+export type RedirectHostedAuthReturnData = {
+    body?: never;
+    path: {
+        interaction_id: Uuid;
+    };
+    query?: never;
+    url: '/auth/return/{interaction_id}';
+};
+
+export type GetInstallationAuthBrandingData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/auth-branding';
+};
+
+export type GetInstallationAuthBrandingResponses = {
+    /**
+     * Branding override and version.
+     */
+    200: HostedBrandingSettings;
+};
+
+export type GetInstallationAuthBrandingResponse = GetInstallationAuthBrandingResponses[keyof GetInstallationAuthBrandingResponses];
+
+export type UpdateInstallationAuthBrandingData = {
+    body: HostedBranding;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/v1/control/installation/auth-branding';
+};
+
+export type UpdateInstallationAuthBrandingResponses = {
+    /**
+     * Branding saved; empty configuration restores defaults.
+     */
+    204: void;
+};
+
+export type UpdateInstallationAuthBrandingResponse = UpdateInstallationAuthBrandingResponses[keyof UpdateInstallationAuthBrandingResponses];
+
+export type GetOrganizationAuthBrandingData = {
+    body?: never;
+    path: {
+        organization_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/auth-branding';
+};
+
+export type GetOrganizationAuthBrandingResponses = {
+    /**
+     * Branding override and version.
+     */
+    200: HostedBrandingSettings;
+};
+
+export type GetOrganizationAuthBrandingResponse = GetOrganizationAuthBrandingResponses[keyof GetOrganizationAuthBrandingResponses];
+
+export type UpdateOrganizationAuthBrandingData = {
+    body: HostedBranding;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        organization_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/organizations/{organization_id}/auth-branding';
+};
+
+export type UpdateOrganizationAuthBrandingResponses = {
+    /**
+     * Branding saved.
+     */
+    204: void;
+};
+
+export type UpdateOrganizationAuthBrandingResponse = UpdateOrganizationAuthBrandingResponses[keyof UpdateOrganizationAuthBrandingResponses];
+
+export type GetApplicationAuthBrandingData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/auth-branding';
+};
+
+export type GetApplicationAuthBrandingResponses = {
+    /**
+     * Branding override, effective settings, and version.
+     */
+    200: HostedBrandingSettings;
+};
+
+export type GetApplicationAuthBrandingResponse = GetApplicationAuthBrandingResponses[keyof GetApplicationAuthBrandingResponses];
+
+export type UpdateApplicationAuthBrandingData = {
+    body: HostedBranding;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/auth-branding';
+};
+
+export type UpdateApplicationAuthBrandingResponses = {
+    /**
+     * Branding saved.
+     */
+    204: void;
+};
+
+export type UpdateApplicationAuthBrandingResponse = UpdateApplicationAuthBrandingResponses[keyof UpdateApplicationAuthBrandingResponses];
 
 export type HealthData = {
     body?: never;
@@ -11747,6 +12074,10 @@ export type BeginOidcAuthorizationData = {
         state: string;
         code_challenge: string;
         code_challenge_method: 'S256';
+        nonce?: string;
+        prompt?: string;
+        max_age?: number;
+        ui_locales?: string;
     };
     url: '/oidc/authorize';
 };

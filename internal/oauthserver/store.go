@@ -56,11 +56,12 @@ FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, 
 		ID: clientID, Secret: secret, RedirectURIs: redirects, GrantTypes: grants,
 		ResponseTypes: []string{"code"}, Scopes: scopes, Audience: []string{"platform93:application:" + s.ApplicationID.String()}, Public: clientType == "public",
 	}
-	method := "client_secret_basic"
-	if client.Public {
-		method = "none"
+	if !client.Public {
+		// DefaultClient accepts Basic and POST secret authentication, both verified
+		// against the same installation-keyed digest. Assertion methods stay disabled.
+		return client, nil
 	}
-	return &fosite.DefaultOpenIDConnectClient{DefaultClient: client, TokenEndpointAuthMethod: method}, nil
+	return &fosite.DefaultOpenIDConnectClient{DefaultClient: client, TokenEndpointAuthMethod: "none"}, nil
 }
 
 func (s *Store) ClientAssertionJWTValid(ctx context.Context, jti string) error {

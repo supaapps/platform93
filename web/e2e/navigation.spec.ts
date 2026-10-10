@@ -116,9 +116,42 @@ async function mockAdmin(page: Page) {
     if (path.endsWith("/clients/public-client")) body = { client_id: "public-client", name: "Browser", redirect_uris: [] };
     if (path === "/v1/control/auth/me") body = { id: "control-id", email: "owner@example.test", display_name: "Owner", status: "active", installation_role: "owner", organizations: [], sign_in_methods: { email_code: true, magic_link: true, password: true, external_identities: [] } };
     if (path === "/v1/control/auth/methods") body = { email_code: true, magic_link: true, password: true, providers: [] };
+    if (path.endsWith("/auth/branding")) body = { configuration: {}, version: 0, effective: { display_name: "Platform93" } };
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
 }
+
+test("hosted branding validates responses and saves localized previews", async ({ page }) => {
+  await mockAdmin(page);
+  let settings = { configuration: {} as Record<string, unknown>, version: 0, effective: { display_name: "Platform93" } as Record<string, unknown> };
+  await page.route("**/auth/branding", async (route) => {
+    if (route.request().method() === "PUT") {
+      expect(route.request().headers()["if-match"]).toBe('"v0"');
+      const configuration = route.request().postDataJSON();
+      settings = { configuration, version: 1, effective: configuration };
+      return route.fulfill({ status: 204 });
+    }
+    await route.fulfill({ json: settings });
+  });
+  await page.goto("/?context=platform&section=providers");
+  await page.getByText("Hosted authentication branding", { exact: true }).click();
+  await page.getByLabel(/^Display name/).fill("Example identity");
+  await page.getByLabel(/^Localized heading and help/).fill('{"en":{"heading":"Welcome to Example","help":"Your secure account"}}');
+  await expect(page.getByRole("heading", { name: "Welcome to Example", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Save branding", exact: true }).click();
+  await expect(page.locator(".toast-success")).toContainText("Hosted authentication branding saved.");
+  expect(settings.configuration.display_name).toBe("Example identity");
+});
+
+test("malformed branding settings do not crash provider configuration", async ({ page }) => {
+  await mockAdmin(page);
+  await page.route("**/auth/branding", (route) => route.fulfill({ json: { items: [] } }));
+  await page.goto("/?context=platform&section=providers");
+  await page.getByText("Hosted authentication branding", { exact: true }).click();
+  await expect(page.getByText("Branding settings returned an invalid response. Reload to try again.")).toBeVisible();
+  await page.getByRole("link", { name: "Configure Google", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save Google", exact: true })).toBeVisible();
+});
 
 test("sidebar transitions never canonicalize resources using the previous section", async ({ page }) => {
   await mockAdmin(page);

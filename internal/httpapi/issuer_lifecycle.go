@@ -15,10 +15,12 @@ func (s *Server) getClient(w http.ResponseWriter, r *http.Request) {
 	var id, clientID, name, clientType string
 	var redirectURIs, allowedGrants, allowedScopes []string
 	var createdAt, updatedAt time.Time
-	err := s.app.DB.QueryRow(r.Context(), `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at,updated_at
+	var ui, initiateURI string
+	var required bool
+	err := s.app.DB.QueryRow(r.Context(), `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at,updated_at,authorization_ui,pkce_required,initiate_login_uri
 FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`,
 		chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id")).Scan(
-		&id, &clientID, &name, &clientType, &redirectURIs, &allowedGrants, &allowedScopes, &createdAt, &updatedAt)
+		&id, &clientID, &name, &clientType, &redirectURIs, &allowedGrants, &allowedScopes, &createdAt, &updatedAt, &ui, &required, &initiateURI)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "client_not_found", "The client was not found.")
 		return
@@ -27,17 +29,48 @@ FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`,
 		"id": id, "client_id": clientID, "name": name, "client_type": clientType,
 		"redirect_uris": redirectURIs, "allowed_grants": allowedGrants, "allowed_scopes": allowedScopes,
 		"created_at": createdAt, "updated_at": updatedAt,
+		"authorization_ui": ui, "pkce_required": required,
+		"initiate_login_uri": initiateURI,
 	})
 }
 
 func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Name          *string  `json:"name"`
-		RedirectURIs  []string `json:"redirect_uris"`
-		AllowedGrants []string `json:"allowed_grants"`
-		AllowedScopes []string `json:"allowed_scopes"`
+		Name             *string  `json:"name"`
+		RedirectURIs     []string `json:"redirect_uris"`
+		AllowedGrants    []string `json:"allowed_grants"`
+		AllowedScopes    []string `json:"allowed_scopes"`
+		AuthorizationUI  *string  `json:"authorization_ui"`
+		PKCERequired     *bool    `json:"pkce_required"`
+		InitiateLoginURI *string  `json:"initiate_login_uri"`
 	}
 	if !kernel.DecodeJSON(w, r, &request) {
+		return
+	}
+	if request.InitiateLoginURI != nil {
+		if err := validateHostedInitiationURI(*request.InitiateLoginURI); err != nil {
+			kernel.WriteProblem(w, r, 422, "invalid_initiate_login_uri", err.Error())
+			return
+		}
+	}
+	var clientType, ui string
+	var required bool
+	var grants []string
+	if err := s.app.DB.QueryRow(r.Context(), `SELECT client_type,authorization_ui,pkce_required,allowed_grants FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id")).Scan(&clientType, &ui, &required, &grants); err != nil {
+		kernel.WriteProblem(w, r, 404, "client_not_found", "The client was not found.")
+		return
+	}
+	if request.AuthorizationUI != nil {
+		ui = *request.AuthorizationUI
+	}
+	if request.PKCERequired != nil {
+		required = *request.PKCERequired
+	}
+	if request.AllowedGrants != nil {
+		grants = request.AllowedGrants
+	}
+	if err := validateHostedClientPolicy(clientType, ui, grants, required); err != nil {
+		kernel.WriteProblem(w, r, 422, "invalid_client_policy", err.Error())
 		return
 	}
 	if request.RedirectURIs != nil {
@@ -55,9 +88,9 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 	result, err := s.app.DB.Exec(r.Context(), `UPDATE clients SET name=COALESCE($1,name),
 redirect_uris=CASE WHEN $2::text[] IS NULL THEN redirect_uris ELSE $2 END,
 allowed_grants=CASE WHEN $3::text[] IS NULL THEN allowed_grants ELSE $3 END,
-allowed_scopes=CASE WHEN $4::text[] IS NULL THEN allowed_scopes ELSE $4 END,updated_at=now()
+allowed_scopes=CASE WHEN $4::text[] IS NULL THEN allowed_scopes ELSE $4 END,authorization_ui=$7,pkce_required=$8,initiate_login_uri=COALESCE($9,initiate_login_uri),updated_at=now()
 WHERE application_id=$5 AND client_id=$6 AND disabled_at IS NULL`, request.Name, request.RedirectURIs,
-		request.AllowedGrants, request.AllowedScopes, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"))
+		request.AllowedGrants, request.AllowedScopes, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"), ui, required, request.InitiateLoginURI)
 	if err != nil || result.RowsAffected() != 1 {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "client_not_found", "The client was not found.")
 		return
