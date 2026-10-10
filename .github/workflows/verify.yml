@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: "1.25.13", cache: true }
+        with: { go-version: "1.26.9", cache: true }
       - name: Build pinned MinIO test server
         # Source commit for RELEASE.2025-07-23T15-54-02Z; its image is no longer available.
         run: |
@@ -104,7 +104,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: "1.25.13", cache: true }
+        with: { go-version: "1.26.9", cache: true }
       - uses: pnpm/action-setup@v4
         with: { version: 9.13.0 }
       - uses: actions/setup-node@v4
@@ -133,7 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: "1.25.13", cache: true }
+        with: { go-version: "1.26.9", cache: true }
       - uses: pnpm/action-setup@v4
         with: { version: 9.13.0 }
       - uses: actions/setup-node@v4
@@ -163,7 +163,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - uses: actions/setup-go@v5
-        with: { go-version: "1.25.13", cache: true }
+        with: { go-version: "1.26.9", cache: true }
       - uses: pnpm/action-setup@v4
         with: { version: 9.13.0 }
       - run: pnpm install --frozen-lockfile

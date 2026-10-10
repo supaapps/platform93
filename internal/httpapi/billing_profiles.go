@@ -50,16 +50,16 @@ func (s *Server) canManageWorkspaceBilling(r *http.Request) bool {
 }
 
 func (s *Server) canManageWorkspaceBillingFor(r *http.Request, workspaceID string) bool {
-	if actor(r).Type == "control_user" || s.isWorkspaceOwnerOrControlUser(r) {
-		if actor(r).Type == "control_user" {
-			return true
-		}
-		var owner bool
-		_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workspaces
+	if actor(r).Type == "control_user" {
+		return true
+	}
+	// Checkout supplies its subject in the body, so workspace_id is not always
+	// present in the route. Check ownership against the explicit subject.
+	var owner bool
+	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workspaces
 WHERE id=$1 AND application_id=$2 AND owner_user_id=$3 AND deleted_at IS NULL)`, workspaceID, chi.URLParam(r, "application_id"), actor(r).ID).Scan(&owner)
-		if owner {
-			return true
-		}
+	if owner {
+		return true
 	}
 	var member bool
 	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workspace_memberships
