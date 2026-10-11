@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -88,6 +89,8 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 	call := func(method, target, body, csrf, accept string) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(method, target, strings.NewReader(body))
+		fixtureIP := sha256.Sum256([]byte(application))
+		r.RemoteAddr = fmt.Sprintf("192.0.%d.%d:1234", fixtureIP[0], fixtureIP[1])
 		r.Header.Set("Origin", app.PublicURL)
 		r.Header.Set("Accept", accept)
 		if strings.HasPrefix(body, "{") {
@@ -450,6 +453,66 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 			t.Fatalf("recovery lost on reload: %s", w.Body.String())
 		}
 		params.Del("prompt")
+	})
+	t.Run("consent remains bound to its selected account across tabs", func(t *testing.T) {
+		otherUser := kernel.NewID().String()
+		otherEmail := "second+" + application + "@example.test"
+		if _, err := db.Exec(ctx, `INSERT INTO users(id,application_id,email,normalized_email,password_hash,email_verified_at) VALUES($1,$2,$3,$3,$4,now())`, otherUser, application, otherEmail, hash); err != nil {
+			t.Fatal(err)
+		}
+		start := func(login string) (string, string) {
+			params.Set("prompt", "login")
+			defer params.Del("prompt")
+			response := call("GET", "/oidc/authorize?"+params.Encode(), "", "", "text/html")
+			location, _ := url.Parse(response.Header().Get("Location"))
+			path := "/v1/auth/hosted/interactions/" + location.Query().Get("interaction")
+			view := read(call("GET", path, "", "", "application/json"))
+			csrf := view["csrf_token"].(string)
+			body, _ := json.Marshal(map[string]string{"action": "password", "email": login, "password": password})
+			response = call("POST", path+"/actions", string(body), csrf, "application/json")
+			if response.Code != 200 || read(response)["stage"] != "consent" {
+				t.Fatalf("login: %d %s", response.Code, response.Body.String())
+			}
+			return path, csrf
+		}
+		first, firstCSRF := start(email)
+		second, _ := start(otherEmail)
+		firstView := read(call("GET", first, "", "", "application/json"))
+		if firstView["user"].(map[string]any)["email"] != email {
+			t.Fatalf("account changed across tabs: %#v", firstView)
+		}
+		response := call("POST", first+"/actions", `{"action":"approve"}`, firstCSRF, "application/json")
+		callback, _ := url.Parse(read(response)["redirect_url"].(string))
+		if callback.Query().Get("code") == "" {
+			t.Fatalf("two-tab authorization: %s", callback.Query().Get("error_description"))
+		}
+		body := url.Values{"client_id": {client}, "client_secret": {"test-client-secret"}, "grant_type": {"authorization_code"}, "code": {callback.Query().Get("code")}, "redirect_uri": {params.Get("redirect_uri")}}.Encode()
+		response = call("POST", "/oidc/token", body, "", "application/json")
+		if response.Code != http.StatusOK {
+			t.Fatalf("two-tab token exchange: %d %s", response.Code, response.Body.String())
+		}
+		claims := jwt.MapClaims{}
+		_, err := jwt.ParseWithClaims(read(response)["id_token"].(string), claims, func(token *jwt.Token) (any, error) { return app.ResolvePublicKey(ctx, token.Header["kid"].(string)) }, jwt.WithValidMethods([]string{"RS256"}), jwt.WithIssuer(app.Issuer()), jwt.WithAudience(client))
+		if err != nil || claims["sub"] != user {
+			t.Fatalf("wrong consent subject: %#v %v", claims, err)
+		}
+		secondView := read(call("GET", second, "", "", "application/json"))
+		if secondView["user"].(map[string]any)["email"] != otherEmail {
+			t.Fatal("second tab session changed")
+		}
+	})
+	t.Run("cleanup drains more than one batch", func(t *testing.T) {
+		_, err := db.Exec(ctx, `INSERT INTO hosted_auth_interactions(id,application_id,client_id,browser_digest,csrf_digest,authorization_parameters,pkce_required,private_state_ciphertext,expires_at) SELECT gen_random_uuid(),$1,$2,$3,$3,'{}',true,'expired-fixture',now()-interval '1 minute' FROM generate_series(1,1001)`, application, client, vault.Digest("cleanup-fixture"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = RunLifecycleSweep(ctx, app); err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		if err = db.QueryRow(ctx, `SELECT count(*) FROM hosted_auth_interactions WHERE application_id=$1 AND expires_at<=now()`, application).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("cleanup backlog: %d %v", count, err)
+		}
 	})
 	if os.Getenv("PLATFORM93_HOSTED_BROWSER_TEST") == "1" {
 		host := httptest.NewServer(router)

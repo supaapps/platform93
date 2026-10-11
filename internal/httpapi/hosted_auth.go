@@ -51,6 +51,7 @@ type hostedInteraction struct {
 	CreatedAt     time.Time
 	ExpiresAt     time.Time
 	LockToken     string
+	SessionID     *string
 }
 type hostedActionRequest struct {
 	Action       string          `json:"action"`
@@ -256,10 +257,10 @@ func (s *Server) loadHostedInteraction(w http.ResponseWriter, r *http.Request, l
 	i := &hostedInteraction{ID: id}
 	var params []byte
 	var cipher string
-	query := `SELECT h.application_id,c.client_id,c.name,h.authorization_parameters,h.private_state_ciphertext,h.created_at,h.expires_at
+	query := `SELECT h.application_id,c.client_id,c.name,h.authorization_parameters,h.private_state_ciphertext,h.created_at,h.expires_at,h.session_id
  FROM hosted_auth_interactions h JOIN clients c ON c.id=h.client_id JOIN applications a ON a.id=h.application_id
  WHERE h.id=$1 AND h.browser_digest=$2 AND h.consumed_at IS NULL AND h.expires_at>now() AND c.disabled_at IS NULL AND c.authorization_ui='hosted' AND a.deleted_at IS NULL`
-	e := s.app.DB.QueryRow(r.Context(), query, id, s.app.Vault.Digest(browser)).Scan(&i.ApplicationID, &i.ClientID, &i.ClientName, &params, &cipher, &i.CreatedAt, &i.ExpiresAt)
+	e := s.app.DB.QueryRow(r.Context(), query, id, s.app.Vault.Digest(browser)).Scan(&i.ApplicationID, &i.ClientID, &i.ClientName, &params, &cipher, &i.CreatedAt, &i.ExpiresAt, &i.SessionID)
 	if e == nil {
 		e = json.Unmarshal(params, &i.Params)
 	}
@@ -295,7 +296,7 @@ func (s *Server) saveHostedState(r *http.Request, i *hostedInteraction) error {
 	raw, _ := json.Marshal(i.Private)
 	cipher, e := s.app.Vault.Encrypt(raw, "hosted-interaction:"+i.ID)
 	if e == nil {
-		result, err := s.app.DB.Exec(r.Context(), `UPDATE hosted_auth_interactions SET private_state_ciphertext=$2 WHERE id=$1 AND consumed_at IS NULL AND lock_token=$3 AND locked_until>now()`, i.ID, cipher, i.LockToken)
+		result, err := s.app.DB.Exec(r.Context(), `UPDATE hosted_auth_interactions SET private_state_ciphertext=$2,session_id=$4 WHERE id=$1 AND consumed_at IS NULL AND lock_token=$3 AND locked_until>now()`, i.ID, cipher, i.LockToken, i.SessionID)
 		e = err
 		if e == nil && result.RowsAffected() != 1 {
 			e = errors.New("hosted interaction lease expired")
@@ -317,9 +318,10 @@ func (s *Server) hostedActor(r *http.Request, i *hostedInteraction, browser stri
 	var email, name string
 	var verified bool
 	var authAt, created time.Time
-	e := s.app.DB.QueryRow(r.Context(), `SELECT u.id,ss.id,u.email,trim(u.first_name||' '||u.last_name),ss.authenticated_at,hs.created_at,u.email_verified_at IS NOT NULL
- FROM hosted_auth_sessions hs JOIN user_sessions ss ON ss.id=hs.session_id JOIN users u ON u.id=ss.user_id
- WHERE hs.application_id=$1 AND hs.browser_digest=$2 AND hs.expires_at>now() AND ss.application_id=$1 AND ss.revoked_at IS NULL AND ss.expires_at>now() AND ss.delegation_id IS NULL AND u.application_id=$1 AND u.status='active'`, i.ApplicationID, s.app.Vault.Digest(browser)).Scan(&current.ID, &current.SessionID, &email, &name, &authAt, &created, &verified)
+	e := s.app.DB.QueryRow(r.Context(), `SELECT u.id,ss.id,u.email,trim(u.first_name||' '||u.last_name),ss.authenticated_at,COALESCE(hs.created_at,ss.created_at),u.email_verified_at IS NOT NULL
+ FROM user_sessions ss JOIN users u ON u.id=ss.user_id
+ LEFT JOIN hosted_auth_sessions hs ON hs.session_id=ss.id AND hs.application_id=$1 AND hs.browser_digest=$2 AND hs.expires_at>now()
+ WHERE (($3::uuid IS NOT NULL AND ss.id=$3) OR ($3::uuid IS NULL AND hs.id IS NOT NULL)) AND ss.application_id=$1 AND ss.revoked_at IS NULL AND ss.expires_at>now() AND ss.delegation_id IS NULL AND u.application_id=$1 AND u.status='active'`, i.ApplicationID, s.app.Vault.Digest(browser), i.SessionID).Scan(&current.ID, &current.SessionID, &email, &name, &authAt, &created, &verified)
 	if e != nil || i.Private.MFAChallenge != "" || i.Private.ForceLogin && created.Before(i.CreatedAt) {
 		return current, nil, false
 	}
@@ -336,6 +338,14 @@ func (s *Server) hostedActor(r *http.Request, i *hostedInteraction, browser stri
 		return current, nil, false
 	}
 	current.Permissions = access.Scopes
+	if i.SessionID == nil {
+		var selected string
+		err := s.app.DB.QueryRow(r.Context(), `UPDATE hosted_auth_interactions SET session_id=COALESCE(session_id,$2::uuid) WHERE id=$1 AND consumed_at IS NULL AND expires_at>now() AND (locked_until IS NULL OR locked_until<now() OR lock_token=$3::uuid) RETURNING session_id`, i.ID, current.SessionID, nullableActorID(i.LockToken)).Scan(&selected)
+		if err != nil || selected != current.SessionID {
+			return current, nil, false
+		}
+		i.SessionID = &selected
+	}
 	return current, map[string]any{"name": name, "email": email, "email_verified": verified}, true
 }
 func hostedApplicationRequest(r *http.Request, appID string) *http.Request {
@@ -444,6 +454,7 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		i.Private = hostedPrivateState{Verifier: oauth2.GenerateVerifier(), CSRF: i.Private.CSRF, ForceLogin: true, InvitationID: i.Private.InvitationID, InvitationToken: i.Private.InvitationToken, InvitationMethod: i.Private.InvitationMethod}
+		i.SessionID = nil
 		if e := s.saveHostedState(r, i); e != nil {
 			kernel.WriteProblem(w, r, 500, "hosted_state_failed", "Sign-in could not be restarted.")
 			return
@@ -455,9 +466,9 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 		tx, err := s.app.DB.Begin(r.Context())
 		if err == nil {
 			defer tx.Rollback(r.Context())
-			_, err = tx.Exec(r.Context(), `UPDATE user_sessions SET revoked_at=now() WHERE id IN(SELECT session_id FROM hosted_auth_sessions WHERE application_id=$1 AND browser_digest=$2)`, i.ApplicationID, s.app.Vault.Digest(browser))
+			_, err = tx.Exec(r.Context(), `UPDATE user_sessions SET revoked_at=now() WHERE application_id=$1 AND id=COALESCE($3::uuid,(SELECT session_id FROM hosted_auth_sessions WHERE application_id=$1 AND browser_digest=$2))`, i.ApplicationID, s.app.Vault.Digest(browser), i.SessionID)
 			if err == nil {
-				_, err = tx.Exec(r.Context(), `DELETE FROM hosted_auth_sessions WHERE application_id=$1 AND browser_digest=$2`, i.ApplicationID, s.app.Vault.Digest(browser))
+				_, err = tx.Exec(r.Context(), `DELETE FROM hosted_auth_sessions WHERE application_id=$1 AND browser_digest=$2 AND ($3::uuid IS NULL OR session_id=$3)`, i.ApplicationID, s.app.Vault.Digest(browser), i.SessionID)
 			}
 			if err == nil {
 				err = tx.Commit(r.Context())
@@ -670,6 +681,7 @@ func (s *Server) acceptHostedAuthentication(r *http.Request, i *hostedInteractio
 		e = errors.New("hosted session is unavailable")
 	}
 	if e == nil {
+		i.SessionID = &claims.SessionID
 		i.Private.MFAChallenge = ""
 		i.Private.EmailChallenge = ""
 		i.Private.Enrollment = ""
@@ -711,6 +723,11 @@ func (s *Server) completeHostedAuthorization(w http.ResponseWriter, r *http.Requ
 	for key, values := range i.Params {
 		parameters[key] = append([]string(nil), values...)
 	}
+	// These interaction policies were enforced against the original request.
+	// Replaying prompt=login against a newly reconstructed Fosite request would
+	// incorrectly require authentication after the user has already consented.
+	parameters.Del("prompt")
+	parameters.Del("max_age")
 	if deny {
 		parameters.Set("decision", "deny")
 	}

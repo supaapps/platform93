@@ -1425,7 +1425,7 @@ function OAuthClientEditor({ client, application, setMessage, onChanged }: { cli
     <label><span>Allowed grants</span><textarea name="allowed_grants" defaultValue={lines(client.allowed_grants)} placeholder={'authorization_code\nrefresh_token'} /></label>
     <label><span>Allowed OAuth scopes</span><textarea name="allowed_scopes" defaultValue={lines(client.allowed_scopes)} placeholder={'openid\nprofile\nemail'} /></label>
     <button disabled={busy}>{busy ? "Saving client..." : "Save OAuth client"}</button>
-    <section className="full-field"><strong>OIDC setup</strong><p>Register the relying application callback exactly in the allowlist above.</p>{["/.well-known/openid-configuration", "/authorize", "/token", "/userinfo", "/jwks"].map((suffix) => <p key={suffix}><code>{application.issuer.replace(/\/$/, "") + suffix}</code></p>)}<p>Issuer: <code>{application.issuer}</code>. Hosted sign-in is opt-in; explicit JSON authorization requests stay headless.</p></section>
+    <section className="full-field"><strong>OIDC setup</strong><p>Register the relying application callback exactly in the allowlist above.</p>{["/.well-known/openid-configuration", "/authorize", "/token", "/userinfo", "/jwks.json"].map((suffix) => <p key={suffix}><code>{application.issuer.replace(/\/$/, "") + suffix}</code></p>)}<p>Issuer: <code>{application.issuer}</code>. Hosted sign-in is opt-in; explicit JSON authorization requests stay headless.</p></section>
   </form>;
 }
 
@@ -3056,7 +3056,7 @@ function ProviderSettings({ basePath, scope, setMessage }: { basePath: string; s
       </section>
     </div>
     <StorageObjectManager basePath={basePath} allowUploads={scope !== "organization"} compact setMessage={setMessage} />
-    <HostedBrandingEditor api={api} basePath={basePath} scope={scope} onMessage={setMessage} />
+    <HostedBrandingEditor key={basePath} api={api} basePath={basePath} scope={scope} onMessage={setMessage} />
   </section>;
 }
 

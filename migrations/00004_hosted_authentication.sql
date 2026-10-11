@@ -37,6 +37,7 @@ CREATE TABLE hosted_auth_interactions (
   lock_token uuid,
   created_at timestamptz NOT NULL DEFAULT now()
   ,FOREIGN KEY(application_id,client_id) REFERENCES clients(application_id,id) ON DELETE CASCADE
+  ,FOREIGN KEY(application_id,session_id) REFERENCES user_sessions(application_id,id) ON DELETE CASCADE
 );
 CREATE INDEX hosted_auth_interactions_expiry ON hosted_auth_interactions(expires_at);
 CREATE TABLE hosted_auth_sessions (

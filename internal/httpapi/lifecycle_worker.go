@@ -12,8 +12,14 @@ import (
 // events in the same transaction as the state marker.
 func RunLifecycleSweep(ctx context.Context, app *platform.App) error {
 	for _, table := range []string{"hosted_auth_interactions", "hosted_auth_sessions"} {
-		if _, err := app.DB.Exec(ctx, `DELETE FROM `+table+` WHERE id IN (SELECT id FROM `+table+` WHERE expires_at<=now() ORDER BY expires_at LIMIT 500)`); err != nil {
-			return err
+		for {
+			result, err := app.DB.Exec(ctx, `DELETE FROM `+table+` WHERE id IN (SELECT id FROM `+table+` WHERE expires_at<=now() ORDER BY expires_at LIMIT 500)`)
+			if err != nil {
+				return err
+			}
+			if result.RowsAffected() < 500 {
+				break
+			}
 		}
 	}
 	for range 100 {
