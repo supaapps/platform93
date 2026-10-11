@@ -39,7 +39,9 @@ to defaults. Overrides never edit the catalog or another recipient's access.
 
 Choose an expiry date and time, or quick-fill one month, three months, six months,
 or one year. Calendar offsets clamp to the final day of the target month. The
-form displays local time and submits UTC. Review the recipient, catalog selection,
+form displays local time and submits UTC. Alternatively, explicitly enable
+**No expiry (until revoked)** to grant access without an end date. This is off by
+default; choosing a duration switches back to finite expiry. Review the recipient, catalog selection,
 effective values, and expiry before confirming. This is access without a charge,
 Stripe subscription, invoice, or automatic renewal.
 
