@@ -12,10 +12,10 @@ function describe(kind: ReferenceKind, item: ReferenceItem) {
   return { name, secondary: [secondary, kind === "roles" ? item.scope : null, item.id].filter(Boolean).join(" · ") };
 }
 
-export function ReferencePicker({ kind, basePath, request, label, name, value = [], onChange, multiple = false, required = false, disabled = false, roleScope, machineOnly = false, activeOnly = false, useKeys = false }: {
+export function ReferencePicker({ kind, basePath, request, label, name, value = [], onChange, multiple = false, required = false, disabled = false, roleScope, machineOnly = false, hostedOnly = false, activeOnly = false, useKeys = false }: {
   kind: ReferenceKind; basePath: string; request: ReferenceRequest; label: string; name?: string;
   value?: string[]; onChange: (values: string[], items: ReferenceItem[]) => void;
-  multiple?: boolean; required?: boolean; disabled?: boolean; roleScope?: string; machineOnly?: boolean; activeOnly?: boolean; useKeys?: boolean;
+  multiple?: boolean; required?: boolean; disabled?: boolean; roleScope?: string; machineOnly?: boolean; hostedOnly?: boolean; activeOnly?: boolean; useKeys?: boolean;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -40,6 +40,7 @@ export function ReferencePicker({ kind, basePath, request, label, name, value = 
         if (!current) return;
         const results = page.items.filter((item) => (!roleScope || item.scope === roleScope)
           && (!machineOnly || item.client_type === "machine")
+          && (!hostedOnly || item.authorization_ui === "hosted")
           && (!activeOnly || (kind === "users" || kind === "products" ? item.status === "active" : !item.deleted_at)));
         setItems((previous) => pageCursor ? [...previous, ...results] : results);
         setKnown((previous) => ({ ...previous, ...Object.fromEntries(results.map((item) => [String(useKeys ? item.key : item.id), item])) }));
@@ -48,7 +49,7 @@ export function ReferencePicker({ kind, basePath, request, label, name, value = 
         .finally(() => { if (current) setLoading(false); });
     }, 250);
     return () => { current = false; clearTimeout(timer); };
-  }, [basePath, kind, query, request, retry, pageCursor, roleScope, machineOnly, activeOnly, useKeys]);
+  }, [basePath, kind, query, request, retry, pageCursor, roleScope, machineOnly, hostedOnly, activeOnly, useKeys]);
   function select(item: ReferenceItem) {
     if (disabled || input.current?.matches(":disabled")) return;
     const selectedKey = key(item);

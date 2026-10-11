@@ -102,4 +102,31 @@ func TestProviderScopeAuthorization(t *testing.T) {
 	if server.authorizeProviderScope(response, request, installationProviderScope(), true) || response.Code != 403 {
 		t.Fatalf("installation auditor could mutate providers: %d", response.Code)
 	}
+	for _, params := range []map[string]string{nil, {"organization_id": organizationID.String()}, {"application_id": applicationID.String()}} {
+		for _, method := range []string{"GET", "PUT"} {
+			request := requestWithRoute(t, method, "/", map[string]any{}, params, kernel.Actor{Type: "control_user", ID: outsiderID.String()})
+			request.Header.Set("If-Match", kernel.ETag(0))
+			response := httptest.NewRecorder()
+			if method == "GET" {
+				server.getHostedBranding(response, request)
+			} else {
+				server.updateHostedBranding(response, request)
+			}
+			if response.Code != 403 && response.Code != 404 {
+				t.Fatalf("outsider accessed %s branding at %v: %d", method, params, response.Code)
+			}
+		}
+	}
+	request = requestWithRoute(t, "GET", "/", nil, map[string]string{"organization_id": organizationID.String()}, kernel.Actor{Type: "control_user", ID: organizationAuditorID.String()})
+	response = httptest.NewRecorder()
+	server.getHostedBranding(response, request)
+	if response.Code != 200 {
+		t.Fatalf("organization auditor cannot inspect branding: %d", response.Code)
+	}
+	request = requestWithRoute(t, "PUT", "/", map[string]any{}, map[string]string{"organization_id": organizationID.String()}, kernel.Actor{Type: "control_user", ID: organizationAuditorID.String()})
+	response = httptest.NewRecorder()
+	server.updateHostedBranding(response, request)
+	if response.Code != 403 {
+		t.Fatalf("organization auditor modified branding: %d", response.Code)
+	}
 }

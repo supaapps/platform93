@@ -25,11 +25,33 @@ func TestAdminHTMLCSPAllowsOnlyExportedInlineScripts(t *testing.T) {
 	digest := sha256.Sum256([]byte("self.__next_f=[]"))
 	wanted := "'sha256-" + base64.StdEncoding.EncodeToString(digest[:]) + "'"
 	policy := response.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, "; img-src 'self' https:;") {
+		t.Fatalf("branding previews require HTTPS images: %q", policy)
+	}
 	if !strings.Contains(policy, "; connect-src 'self' https://api.github.com;") {
 		t.Fatalf("admin release check requires only same-origin and GitHub API connections: %q", policy)
 	}
 	if response.Code != 200 || !strings.Contains(policy, wanted) || strings.Contains(policy, "'unsafe-inline'") && strings.Contains(strings.Split(policy, ";")[1], "'unsafe-inline'") {
 		t.Fatalf("unexpected admin CSP: status=%d policy=%q", response.Code, policy)
+	}
+}
+
+func TestHostedHTMLCSPPreservesHashesAndSameOriginConnections(t *testing.T) {
+	directory := t.TempDir()
+	if err := os.Mkdir(filepath.Join(directory, "auth"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "auth", "index.html"), []byte(`<script>self.__next_f=[]</script>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{adminAssets: directory}
+	response := httptest.NewRecorder()
+	server.adminHandler().ServeHTTP(response, httptest.NewRequest("GET", "/auth/", nil))
+	policy := response.Header().Get("Content-Security-Policy")
+	digest := sha256.Sum256([]byte("self.__next_f=[]"))
+	wanted := "'sha256-" + base64.StdEncoding.EncodeToString(digest[:]) + "'"
+	if response.Code != 200 || !strings.Contains(policy, wanted) || !strings.Contains(policy, "; img-src 'self' https:;") || !strings.Contains(policy, "; connect-src 'self';") || strings.Contains(policy, "api.github.com") || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("unexpected hosted HTML policy: status=%d headers=%v", response.Code, response.Header())
 	}
 }
 

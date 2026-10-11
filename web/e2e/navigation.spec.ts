@@ -116,9 +116,59 @@ async function mockAdmin(page: Page) {
     if (path.endsWith("/clients/public-client")) body = { client_id: "public-client", name: "Browser", redirect_uris: [] };
     if (path === "/v1/control/auth/me") body = { id: "control-id", email: "owner@example.test", display_name: "Owner", status: "active", installation_role: "owner", organizations: [], sign_in_methods: { email_code: true, magic_link: true, password: true, external_identities: [] } };
     if (path === "/v1/control/auth/methods") body = { email_code: true, magic_link: true, password: true, providers: [] };
+    if (path.endsWith("/auth-branding")) body = { configuration: {}, version: 0, effective: { display_name: "Platform93" } };
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
   });
 }
+
+test("hosted branding validates responses and saves localized previews", async ({ page }) => {
+  await mockAdmin(page);
+  let settings = { configuration: { display_name: "Local name", copy: { en: { heading: "Local heading" } } } as Record<string, unknown>, version: 0, inherited: { display_name: "Parent name", copy: { en: { heading: "Parent heading", help: "Inherited secure access" } } }, effective: { display_name: "Local name", copy: { en: { heading: "Local heading", help: "Inherited secure access" } } } as Record<string, unknown> };
+  await page.route("**/auth-branding", async (route) => {
+    if (route.request().method() === "PUT") {
+      expect(route.request().headers()["if-match"]).toBe('"v0"');
+      const configuration = route.request().postDataJSON();
+      settings = { ...settings, configuration, version: 1, effective: configuration };
+      return route.fulfill({ status: 204 });
+    }
+    await route.fulfill({ json: settings });
+  });
+  await page.goto("/?context=platform&section=providers");
+  await page.getByText("Hosted authentication branding", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Local heading", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
+  await page.getByLabel(/^Localized heading and help/).fill('{"EN":{"heading":"Uppercase local heading"}}');
+  await expect(page.getByRole("heading", { name: "Uppercase local heading", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
+  await page.getByLabel(/^Display name/).fill("");
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Parent name");
+  await page.getByLabel(/^Localized heading and help/).fill('{}');
+  await expect(page.getByRole("heading", { name: "Parent heading", exact: true })).toBeVisible();
+  await page.getByLabel(/^Localized heading and help/).fill('{"en":{"heading":"Edited heading"}}');
+  await expect(page.getByRole("heading", { name: "Edited heading", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
+  await page.getByLabel(/^Display name/).fill("Example identity");
+  await page.getByLabel(/^Default language tag/).fill("fr-CA");
+  await page.getByLabel(/^Localized heading and help/).fill('{"FR":{"heading":"Bienvenue","help":"Accès sécurisé"}}');
+  await expect(page.getByRole("heading", { name: "Bienvenue", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Accès sécurisé");
+  await page.getByLabel(/^Default language tag/).fill("en");
+  await page.getByLabel(/^Localized heading and help/).fill('{"en":{"heading":"Welcome to Example","help":"Your secure account"}}');
+  await expect(page.getByRole("heading", { name: "Welcome to Example", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Save branding", exact: true }).click();
+  await expect(page.locator(".toast-success")).toContainText("Hosted authentication branding saved.");
+  expect(settings.configuration.display_name).toBe("Example identity");
+});
+
+test("malformed branding settings do not crash provider configuration", async ({ page }) => {
+  await mockAdmin(page);
+  await page.route("**/auth-branding", (route) => route.fulfill({ json: { items: [] } }));
+  await page.goto("/?context=platform&section=providers");
+  await page.getByText("Hosted authentication branding", { exact: true }).click();
+  await expect(page.getByText("Branding settings returned an invalid response. Reload to try again.")).toBeVisible();
+  await page.getByRole("link", { name: "Configure Google", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save Google", exact: true })).toBeVisible();
+});
 
 test("sidebar transitions never canonicalize resources using the previous section", async ({ page }) => {
   await mockAdmin(page);

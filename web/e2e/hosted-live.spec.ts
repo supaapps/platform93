@@ -1,0 +1,34 @@
+import { expect, test } from "@playwright/test";
+import { AxeBuilder } from "@axe-core/playwright";
+
+test("real PostgreSQL-backed hosted password, consent and callback", async ({ page, request }, info) => {
+  test.skip(!process.env.PLATFORM93_HOSTED_CLIENT, "Run through TestHostedAuthenticationCodeFlow with PLATFORM93_HOSTED_BROWSER_TEST=1 for disposable fixtures.");
+  const client = process.env.PLATFORM93_HOSTED_CLIENT!;
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route("https://client.example.test/callback?**", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><html lang='en'><title>Application callback</title><main>Authorized application</main></html>" }));
+  const parameters = new URLSearchParams({ client_id: client, redirect_uri: "https://client.example.test/callback", response_type: "code", scope: "openid email profile", state: "real-browser-state-12345678", nonce: "real-browser-nonce-12345678" });
+  await page.goto(`/oidc/authorize?${parameters}`);
+  await expect(page).toHaveURL(/\/auth\/\?interaction=/);
+  await page.getByRole("button", { name: "Password", exact: true }).click();
+  await page.getByLabel("Email address").fill(process.env.PLATFORM93_HOSTED_EMAIL!);
+  await page.getByLabel("Password", { exact: true }).fill("A disposable test password!");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByText("Signed in as")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Hosted User", { exact: true })).toBeVisible();
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations.filter((violation) => ["serious", "critical"].includes(violation.impact ?? ""))).toEqual([]);
+  await page.screenshot({ path: info.outputPath("hosted-live-consent.png"), fullPage: true });
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page).toHaveURL(/client\.example\.test\/callback\?/);
+  const callback = new URL(page.url());
+  expect(callback.searchParams.get("state")).toBe(parameters.get("state"));
+  expect(callback.searchParams.has("access_token")).toBe(false);
+  const token = await request.post("/oidc/token", { form: { client_id: client, client_secret: "test-client-secret", grant_type: "authorization_code", code: callback.searchParams.get("code")!, redirect_uri: parameters.get("redirect_uri")! } });
+  expect(token.ok()).toBe(true);
+  const tokens = await token.json();
+  const userinfo = await request.get("/oidc/userinfo", { headers: { Authorization: `Bearer ${tokens.access_token}` } });
+  expect(userinfo.ok()).toBe(true);
+  expect(await userinfo.json()).toMatchObject({ email: process.env.PLATFORM93_HOSTED_EMAIL, name: "Hosted User" });
+  expect(await page.evaluate(() => localStorage.length)).toBe(0);
+});

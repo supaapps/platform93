@@ -14,7 +14,7 @@ identity-specific direct grants. See [application authorization](docs/authorizat
 > The control plane outside your app.
 
 Platform93 targets fresh installations and new contracts. It does not include
-legacy API adapters, source-database import, hosted end-user pages, CRM,
+legacy API adapters, source-database import, hosted customer dashboards, CRM,
 marketing automation, or a generic application database.
 
 The repository is currently a development foundation, not a `v1.0.0` release.
@@ -75,6 +75,11 @@ go build ./cmd/platform93
 
 Native applications can register exact custom-scheme callbacks on public clients; see
 [Native mobile authentication](docs/native-mobile-auth.md).
+
+Authorization-code clients can optionally use a branded hosted sign-in and consent
+page. Headless authentication remains the default. See
+[Hosted authentication](docs/hosted-authentication.md) for client setup, branding,
+PKCE compatibility, and hosted invitation behavior.
 
 ## Principles
 

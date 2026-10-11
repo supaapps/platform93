@@ -157,6 +157,8 @@ type PublishedEvent struct {
 }
 
 type Invitation struct {
+	HostedClientID      *string    `json:"hosted_client_id"`
+	HostedRedirectURI   *string    `json:"hosted_redirect_uri"`
 	ID                  string     `json:"id"`
 	Email               string     `json:"email"`
 	WorkspaceID         *string    `json:"workspace_id"`
@@ -176,6 +178,8 @@ type CreateInvitation struct {
 	ApplicationRoleKeys []string `json:"application_role_keys,omitempty"`
 	WorkspaceRoleKeys   []string `json:"workspace_role_keys,omitempty"`
 	ExpiresIn           int64    `json:"expires_in,omitempty"`
+	HostedClientID      string   `json:"hosted_client_id,omitempty"`
+	HostedRedirectURI   string   `json:"hosted_redirect_uri,omitempty"`
 }
 
 func (c *Client) UpdateSecret(secret string) {

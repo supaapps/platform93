@@ -71,6 +71,10 @@ AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`
 		return
 	}
 	flows, err := s.loadApplicationFlowConfig(r.Context(), applicationID)
+	if callback, ok := r.Context().Value(hostedContextKey{}).(string); ok && callback != "" {
+		flows.InvitationRedirectURI = callback
+		err = nil
+	}
 	if err != nil || flows.InvitationRedirectURI == "" {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invitation_redirect_unconfigured", "The application invitation redirect is not configured.")
 		return

@@ -20,6 +20,10 @@ type Provider struct {
 }
 
 func NewProvider(ctx context.Context, app *platform.App, applicationID uuid.UUID) (*Provider, error) {
+	return NewProviderForClient(ctx, app, applicationID, "")
+}
+
+func NewProviderForClient(ctx context.Context, app *platform.App, applicationID uuid.UUID, clientID string) (*Provider, error) {
 	var active bool
 	if err := app.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM applications
 WHERE id=$1 AND deleted_at IS NULL)`, applicationID).Scan(&active); err != nil {
@@ -38,6 +42,13 @@ WHERE id=$1 AND deleted_at IS NULL)`, applicationID).Scan(&active); err != nil {
 		return nil, err
 	}
 	store := &Store{DB: app.DB, Vault: app.Vault, ApplicationID: applicationID}
+	required := true
+	if clientID != "" {
+		if err := app.DB.QueryRow(ctx, `SELECT pkce_required OR client_type<>'confidential' FROM clients
+WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, applicationID, clientID).Scan(&required); err != nil {
+			required = true
+		}
+	}
 	config := &fosite.Config{
 		AccessTokenLifespan:            5 * time.Minute,
 		RefreshTokenLifespan:           30 * 24 * time.Hour,
@@ -48,7 +59,7 @@ WHERE id=$1 AND deleted_at IS NULL)`, applicationID).Scan(&active); err != nil {
 		TokenURL:                       issuer + "/token",
 		GlobalSecret:                   app.Vault.Digest("oauth-hmac:" + applicationID.String()),
 		ClientSecretsHasher:            ClientSecretHasher{Vault: app.Vault},
-		EnforcePKCE:                    true,
+		EnforcePKCE:                    required,
 		EnforcePKCEForPublicClients:    true,
 		EnablePKCEPlainChallengeMethod: false,
 		RefreshTokenScopes:             []string{"offline_access"},
