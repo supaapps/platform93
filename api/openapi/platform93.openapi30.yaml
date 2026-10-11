@@ -1985,7 +1985,7 @@ paths:
             items:
               type: string
               maxLength: 211
-              pattern: ^(users|workspaces|products|roles|clients|webhooks):.+$
+              pattern: ^(users|workspaces|products|roles|clients|webhooks):[\s\S]{1,200}$
       responses:
         '200':
           description: Labels for existing resources in the authorized application

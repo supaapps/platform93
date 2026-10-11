@@ -1934,7 +1934,7 @@ paths:
             type: array
             minItems: 1
             maxItems: 100
-            items: {type: string, maxLength: 211, pattern: '^(users|workspaces|products|roles|clients|webhooks):.+$'}
+            items: {type: string, maxLength: 211, pattern: '^(users|workspaces|products|roles|clients|webhooks):[\s\S]{1,200}$'}
       responses:
         '200':
           description: Labels for existing resources in the authorized application

@@ -55,6 +55,22 @@ func TestReferenceLabelsAndAggregatedUsage(t *testing.T) {
 		db.Exec(ctx, `DELETE FROM organizations WHERE id=$1`, org)
 	}()
 	actor := kernel.Actor{Type: "control_user", ID: control}
+	t.Run("internal client identifiers take precedence", func(t *testing.T) {
+		preferred, alias := kernel.NewID().String(), kernel.NewID().String()
+		if _, err := db.Exec(ctx, `INSERT INTO clients(id,application_id,client_id,name,client_type) VALUES($1,$2,$3,'Preferred','machine'),($4,$2,$5,'Alias','machine')`, preferred, app, "preferred-"+preferred, alias, preferred); err != nil {
+			t.Fatal(err)
+		}
+		defer db.Exec(ctx, `DELETE FROM clients WHERE id IN ($1,$2)`, preferred, alias)
+		response := httptest.NewRecorder()
+		query := url.Values{"references": {"clients:" + preferred}}
+		server.listReferenceLabels(response, requestWithRoute(t, "GET", "/?"+query.Encode(), nil, map[string]string{"application_id": app}, actor))
+		var body struct {
+			Items []referenceLabel `json:"items"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &body) != nil || len(body.Items) != 1 || body.Items[0].Label != "Preferred" {
+			t.Fatalf("ambiguous client label: %d %s", response.Code, response.Body.String())
+		}
+	})
 	query := url.Values{"references": {"users:" + user, "users:" + foreign, "workspaces:" + workspace, "users:" + user}}
 	r := requestWithRoute(t, "GET", "/?"+query.Encode(), nil, map[string]string{"application_id": app}, actor)
 	w := httptest.NewRecorder()

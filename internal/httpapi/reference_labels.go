@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/supaapps/platform93/internal/kernel"
@@ -24,7 +25,7 @@ func (s *Server) listReferenceLabels(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{"users": true, "workspaces": true, "products": true, "roles": true, "clients": true, "webhooks": true}
 	for _, reference := range references {
 		kind, id, found := strings.Cut(reference, ":")
-		if !found || !allowed[kind] || id == "" || len(id) > 200 {
+		if !found || !allowed[kind] || id == "" || !utf8.ValidString(id) || utf8.RuneCountInString(id) > 200 {
 			kernel.WriteProblem(w, r, 422, "invalid_reference", "Each reference must identify a supported resource and a bounded identifier.")
 			return
 		}
@@ -36,7 +37,7 @@ SELECT w.kind,w.id,COALESCE(NULLIF(trim(concat_ws(' ',u.first_name,u.last_name))
 UNION ALL SELECT w.kind,w.id,p.name FROM wanted w JOIN workspaces p ON w.kind='workspaces' AND p.id::text=w.id WHERE p.application_id=$1 AND p.deleted_at IS NULL
 UNION ALL SELECT w.kind,w.id,p.name FROM wanted w JOIN products p ON w.kind='products' AND p.id::text=w.id WHERE p.application_id=$1
 UNION ALL SELECT w.kind,w.id,p.name FROM wanted w JOIN roles p ON w.kind='roles' AND p.id::text=w.id WHERE p.application_id=$1
-UNION ALL SELECT w.kind,w.id,p.name FROM wanted w JOIN clients p ON w.kind='clients' AND (p.id::text=w.id OR p.client_id=w.id) WHERE p.application_id=$1
+UNION ALL SELECT w.kind,w.id,p.name FROM wanted w JOIN clients p ON w.kind='clients' AND (p.id::text=w.id OR (p.client_id=w.id AND NOT EXISTS (SELECT 1 FROM clients preferred WHERE preferred.application_id=$1 AND preferred.id::text=w.id))) WHERE p.application_id=$1
 UNION ALL SELECT w.kind,w.id,p.uri FROM wanted w JOIN webhook_endpoints p ON w.kind='webhooks' AND p.id::text=w.id WHERE p.application_id=$1`, chi.URLParam(r, "application_id"), kinds, ids)
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "database_error", "Resource labels could not be loaded.")
