@@ -95,7 +95,10 @@ export default function HostedAuthentication() {
     try {
       const result = await request<Result>("/actions", body, view.csrf_token);
       if ("redirect_url" in result) window.location.assign(result.redirect_url);
-      else setView(result);
+      else {
+        setView(result);
+        if (result.stage === "login") setMethod(result.passwordless_enabled ? "email" : "password");
+      }
       return result;
     } catch (failure) { setError(failure instanceof Error ? failure.message : "The request failed."); }
     finally { setBusy(false); }

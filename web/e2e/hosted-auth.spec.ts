@@ -23,6 +23,7 @@ for (const viewport of [{ name: "desktop", width: 1280, height: 900 }, { name: "
       const input = route.request().postDataJSON() as Record<string, unknown>; actions.push(input);
       if (input.action === "password" && input.password === "incorrect") return route.fulfill({ status: 401, contentType: "application/problem+json", body: JSON.stringify({ detail: "The email or password is incorrect." }) });
       if (input.action === "password") view = { ...initial, stage: "consent", consent_required: true, user: { name: "Example User", email: "user@example.test", email_verified: true } };
+      if (input.action === "signup" || input.action === "invitation") view = { ...initial, stage: "consent", consent_required: true, user: { name: "Example User", email: "user@example.test", email_verified: true } };
       if (input.action === "switch_account") view = initial;
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(view) });
     });
@@ -46,9 +47,29 @@ for (const viewport of [{ name: "desktop", width: 1280, height: 900 }, { name: "
     await page.getByRole("button", { name: "Use another account" }).click();
     await expect(page.getByLabel("Email address")).toBeVisible();
     expect(actions.some((action) => action.action === "switch_account")).toBe(true);
+    await expect(page.getByRole("button", { name: "Send sign-in code", exact: true })).toBeVisible();
+    for (const mode of ["signup", "invitation"]) {
+      await page.getByRole("button", { name: mode === "signup" ? "Create account" : "Have an invitation?", exact: true }).click();
+      await page.getByLabel("Email address").fill("user@example.test");
+      if (mode === "signup") await page.getByLabel("Password", { exact: true }).fill("correct-password");
+      else await page.getByLabel("Code", { exact: true }).fill("ABCDEFGH");
+      await page.locator("form").getByRole("button", { name: mode === "signup" ? "Create account" : "Accept invitation", exact: true }).click();
+      await page.getByRole("button", { name: "Use another account" }).click();
+      await expect(page.getByRole("button", { name: "Send sign-in code", exact: true })).toBeVisible();
+      await expect(page.getByLabel("Code", { exact: true })).toHaveCount(0);
+    }
     expect(await page.evaluate(() => localStorage.length)).toBe(0);
   });
 }
+
+test("split branding keeps its tagline accessible on an allowed gray background", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route(`**${endpoint}`, (route) => route.fulfill({ json: { ...initial, branding: { ...initial.branding, layout: "split", background_color: "#909090" } } }));
+  await page.goto(`/auth/?interaction=${interaction}`);
+  await expect(page.locator(".hosted-brand > span")).toHaveCSS("color", "rgb(17, 24, 39)");
+  const accessibility = await new AxeBuilder({ page }).analyze();
+  expect(accessibility.violations.filter((violation) => violation.id === "color-contrast")).toEqual([]);
+});
 
 test("cleans one-time provider return credentials before exchange and supports restart", async ({ page }) => {
   let exchanged: Record<string, unknown> | undefined;
