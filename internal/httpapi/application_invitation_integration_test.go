@@ -80,6 +80,21 @@ VALUES($1,$2,'reader','Reader','application',ARRAY['records:read'])`, roleID, ap
 	if json.Unmarshal(createResponse.Body.Bytes(), &created) != nil || created.ID == "" {
 		t.Fatal("invitation creation did not return an id")
 	}
+	t.Run("creation returns hosted destination", func(t *testing.T) {
+		clientID := kernel.NewID().String()
+		if _, err := db.Exec(context.Background(), `INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,authorization_ui,initiate_login_uri) VALUES($1,$2,$3,'Hosted invitation','confidential',ARRAY['https://app.example/callback'],'hosted','https://app.example/login')`, clientID, applicationID, "hosted-"+clientID); err != nil {
+			t.Fatal(err)
+		}
+		request := requestWithRoute(t, http.MethodPost, "/", map[string]any{
+			"email": "hosted-" + suffix + "@example.test", "hosted_client_id": clientID, "hosted_redirect_uri": "https://app.example/callback",
+		}, map[string]string{"application_id": applicationID.String()}, current)
+		response := httptest.NewRecorder()
+		server.createControlInvitation(response, request)
+		var body map[string]any
+		if response.Code != http.StatusCreated || json.Unmarshal(response.Body.Bytes(), &body) != nil || body["hosted_client_id"] != clientID || body["hosted_redirect_uri"] != "https://app.example/callback" {
+			t.Fatalf("hosted destination missing: %d %s", response.Code, response.Body.String())
+		}
+	})
 	var oldLinkDigest, oldCodeDigest []byte
 	if err = db.QueryRow(context.Background(), `SELECT link_credential_digest,code_credential_digest
 FROM application_invitations WHERE id=$1`, created.ID).Scan(&oldLinkDigest, &oldCodeDigest); err != nil {

@@ -180,7 +180,8 @@ VALUES($1,$2,$3,$4,$5,$6,'queued')`, notificationID, applicationID, templateID, 
 		return
 	}
 	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "application_id": applicationID, "email": normalized, "workspace_id": workspace, "application_role_keys": request.ApplicationRoleKeys,
-		"workspace_role_keys": request.WorkspaceRoleKeys, "onboarding_method": request.OnboardingMethod, "status": "pending", "expires_at": expiresAt, "last_sent_at": s.app.Now(), "resend_available_at": s.app.Now().Add(time.Minute)})
+		"workspace_role_keys": request.WorkspaceRoleKeys, "onboarding_method": request.OnboardingMethod, "status": "pending", "expires_at": expiresAt, "last_sent_at": s.app.Now(), "resend_available_at": s.app.Now().Add(time.Minute),
+		"hosted_client_id": nullableActorID(request.HostedClientID), "hosted_redirect_uri": nullableText(request.HostedRedirectURI)})
 }
 
 func nullableActorID(value string) any {
