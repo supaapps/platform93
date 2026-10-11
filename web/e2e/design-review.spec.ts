@@ -187,6 +187,13 @@ test("audit actor types, delivery failures and billing amounts stay understandab
   await expect(rows.first()).toContainText("1 attempt");
   await expect(rows.first()).not.toContainText("1 attempts");
 
+  await page.route(`**/v1/control/applications/${app.id}/oauth-consents`, (route) => route.fulfill({ json: { items: [{ id: id(40), client_name: "Portal browser", user_email: "alex@example.test", scopes: ["openid", "email"], revoked_at: null }], next_cursor: null } }));
+  await page.goto(applicationRoute("identity", "oauth-consents"));
+  await expect(rows.first()).toContainText("Portal browser");
+  await expect(rows.first()).toContainText("alex@example.test");
+  await expect(rows.first()).toContainText("openid, email");
+  await expect(rows.first()).toContainText("Active");
+
   await page.route(`**/v1/control/applications/${app.id}/billing/payments`, (route) => route.fulfill({ json: { items: [{ id: id(36), provider_payment_id: "pi_example", subject_type: "user", subject_id: user.id, amount_minor: 1250, currency: "eur", status: "succeeded", created_at: "2026-10-09T09:30:00Z" }], next_cursor: null } }));
   await page.goto(applicationRoute("billing", "billing/payments"));
   await expect(rows.first()).toContainText("pi_example");
@@ -211,6 +218,12 @@ test("controls use floating overlays, stable layout, keyboard selection and form
   await recipient.press("Enter");
   await expect(page.getByRole("button", { name: "Remove Alex Morgan" })).toBeVisible();
   await expect(popover).toHaveCount(0);
+  await page.getByRole("button", { name: "Remove Alex Morgan" }).click();
+  await recipient.fill("Alex");
+  await expect(page.getByRole("option")).toHaveCount(2);
+  await recipient.press("ArrowDown");
+  await recipient.press("Enter");
+  await expect(page.getByRole("button", { name: "Remove Alex Morgan" })).toBeVisible();
   await recipient.fill("Sam");
   await expect(popover).toBeVisible();
   await recipient.press("Escape");

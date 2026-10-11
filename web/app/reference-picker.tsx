@@ -76,7 +76,7 @@ export function ReferencePicker({ kind, basePath, request, label, name, value = 
   const options = items;
   return <div className="reference-picker">
     {name && <input type="hidden" name={name} value={value.join(",")} />}
-    <ComboBox<ReferenceItem> className="ui-combobox" items={options} inputValue={query} allowsCustomValue allowsEmptyCollection menuTrigger="manual" isDisabled={disabled}
+    <ComboBox<ReferenceItem> className="ui-combobox" items={options} selectedKey={null} inputValue={query} allowsCustomValue allowsEmptyCollection menuTrigger="manual" isDisabled={disabled}
       isRequired={required && value.length === 0} validationBehavior="native" validate={() => required && value.length === 0 ? `Select ${label.toLowerCase()} from the results.` : null}
       defaultFilter={() => true}
       onInputChange={(text) => { if (text === query) return; setQuery(text); setPageCursor(""); setItems([]); setCursor(null); setLoading(true); }}

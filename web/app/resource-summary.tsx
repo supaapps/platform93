@@ -96,7 +96,10 @@ export function ResourceSummary({ item, resource }: { item: Row; resource: strin
   } else if (resource === "notification-templates") {
     title = `${text(item.key)} · ${text(item.locale) || "en"}`;
     add(item.status, item.scope || "application", item.inherited && "Inherited");
-  } else if (resource === "oauth-consents" || resource === "delegations") {
+  } else if (resource === "oauth-consents") {
+    title = text(item.client_name) || ref("clients", item.client_id) || "OAuth consent";
+    add(item.user_email || recipient, item.revoked_at ? "Revoked" : "Active", Array.isArray(item.scopes) && item.scopes.join(", "));
+  } else if (resource === "delegations") {
     title = recipient || humanize(resource);
     add(item.status, item.scope, item.expires_at && `Expires ${formatDate(item.expires_at)}`);
   } else {
