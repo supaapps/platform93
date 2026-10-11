@@ -109,6 +109,24 @@ test("overview counts and resource rows explain records rather than repeat UUIDs
   await expect(page.locator(".table article").first()).toContainText("editor");
 });
 
+test("large resource pages resolve names in bounded batches", async ({ page }) => {
+  await mock(page);
+  const batches: string[][] = [];
+  await page.route("**/reference-labels?**", (route) => {
+    const references = new URL(route.request().url()).searchParams.getAll("references");
+    batches.push(references);
+    return route.fulfill({ json: { items: references.map((reference) => ({ kind: reference.split(":")[0], id: reference.slice(reference.indexOf(":") + 1), label: `Resolved ${reference.slice(-8)}` })) } });
+  });
+  await page.route(`**/v1/control/applications/${app.id}/role-assignments`, (route) => route.fulfill({ json: {
+    items: Array.from({ length: 50 }, (_, index) => ({ id: id(1000 + index), user_id: id(2000 + index), workspace_id: id(3000 + index), role_id: id(10), role_key: "editor", role_scope: "workspace" })), next_cursor: null,
+  } }));
+  await page.goto(applicationRoute("identity", "role-assignments"));
+  await expect(page.locator(".table article")).toHaveCount(50);
+  await expect(page.locator(".table article").last()).toContainText("Resolved 00002049");
+  expect(batches).toHaveLength(2);
+  expect(batches.map((batch) => batch.length)).toEqual([100, 1]);
+});
+
 test("unavailable references retain meaningful context without hiding rows", async ({ page }) => {
   await mock(page);
   await page.route("**/reference-labels?**", (route) => route.fulfill({ json: { items: [{ kind: "workspaces", id: workspace.id, label: workspace.name }, { kind: "roles", id: id(10), label: "Editor" }] } }));
