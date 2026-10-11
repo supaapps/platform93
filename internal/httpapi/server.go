@@ -928,9 +928,15 @@ func (s *Server) serveAdminHTML(w http.ResponseWriter, r *http.Request, assets f
 		digest := sha256.Sum256(match[1])
 		hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(digest[:])+"'")
 	}
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' "+strings.Join(hashes, " ")+"; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com; frame-ancestors 'none'")
+	connections := "'self' https://api.github.com"
+	cacheControl := "no-cache"
+	if assetPath == "auth/index.html" || strings.HasPrefix(assetPath, "auth/") {
+		connections = "'self'"
+		cacheControl = "no-store"
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' "+strings.Join(hashes, " ")+"; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src "+connections+"; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", cacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content)
 }

@@ -123,7 +123,7 @@ async function mockAdmin(page: Page) {
 
 test("hosted branding validates responses and saves localized previews", async ({ page }) => {
   await mockAdmin(page);
-  let settings = { configuration: {} as Record<string, unknown>, version: 0, effective: { display_name: "Platform93" } as Record<string, unknown> };
+  let settings = { configuration: { copy: { en: { heading: "Local heading" } } } as Record<string, unknown>, version: 0, effective: { display_name: "Platform93", copy: { en: { heading: "Local heading", help: "Inherited secure access" } } } as Record<string, unknown> };
   await page.route("**/auth-branding", async (route) => {
     if (route.request().method() === "PUT") {
       expect(route.request().headers()["if-match"]).toBe('"v0"');
@@ -135,6 +135,11 @@ test("hosted branding validates responses and saves localized previews", async (
   });
   await page.goto("/?context=platform&section=providers");
   await page.getByText("Hosted authentication branding", { exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Local heading", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
+  await page.getByLabel(/^Localized heading and help/).fill('{"en":{"heading":"Edited heading"}}');
+  await expect(page.getByRole("heading", { name: "Edited heading", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
   await page.getByLabel(/^Display name/).fill("Example identity");
   await page.getByLabel(/^Localized heading and help/).fill('{"en":{"heading":"Welcome to Example","help":"Your secure account"}}');
   await expect(page.getByRole("heading", { name: "Welcome to Example", exact: true })).toBeVisible();

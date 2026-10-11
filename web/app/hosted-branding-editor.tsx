@@ -55,10 +55,16 @@ export function HostedBrandingEditor({ api, basePath, scope, onMessage }: {
   }
   function submit(event: FormEvent) { event.preventDefault(); void save(); }
   const effective = { display_name: "Platform93", accent_color: "#17261f", background_color: "#f6f8fa", ...settings?.effective, ...draft };
-  let previewCopy = effective.copy;
+  const previewCopy = { ...settings?.effective?.copy };
   try {
     const parsed: unknown = JSON.parse(copy);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) previewCopy = { ...previewCopy, ...parsed as Branding["copy"] };
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const [locale, fields] of Object.entries(parsed)) {
+        if (fields && typeof fields === "object" && !Array.isArray(fields)) {
+          previewCopy[locale] = { ...previewCopy[locale], ...fields };
+        }
+      }
+    }
   } catch { /* Keep the last valid inherited preview while JSON is being edited. */ }
   const previewLocale = effective.default_locale ?? "en";
   const previewText = previewCopy?.[previewLocale] ?? previewCopy?.en;
