@@ -422,7 +422,7 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 		for _, record := range []struct{ scope, id, configuration string }{
 			{"installation", "00000000-0000-0000-0000-000000000000", `{"display_name":"Installation","copy":{"en":{"heading":"Welcome","help":"Inherited help"}}}`},
 			{"organization", org, `{"display_name":"Organization","layout":"split"}`},
-			{"application", application, `{"display_name":"Application","copy":{"en":{"heading":"Application login"}}}`},
+			{"application", application, `{"display_name":"Application","copy":{"EN":{"heading":"Application login"}}}`},
 		} {
 			if _, err := db.Exec(ctx, `INSERT INTO hosted_auth_branding(scope_type,scope_id,configuration) VALUES($1,$2,$3) ON CONFLICT(scope_type,scope_id) DO UPDATE SET configuration=EXCLUDED.configuration`, record.scope, record.id, record.configuration); err != nil {
 				t.Fatal(err)

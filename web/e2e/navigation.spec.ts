@@ -137,6 +137,9 @@ test("hosted branding validates responses and saves localized previews", async (
   await page.getByText("Hosted authentication branding", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "Local heading", exact: true })).toBeVisible();
   await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
+  await page.getByLabel(/^Localized heading and help/).fill('{"EN":{"heading":"Uppercase local heading"}}');
+  await expect(page.getByRole("heading", { name: "Uppercase local heading", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
   await page.getByLabel(/^Display name/).fill("");
   await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Parent name");
   await page.getByLabel(/^Localized heading and help/).fill('{}');

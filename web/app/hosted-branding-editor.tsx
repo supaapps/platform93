@@ -61,12 +61,13 @@ export function HostedBrandingEditor({ api, basePath, scope, onMessage }: {
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       for (const [locale, fields] of Object.entries(parsed)) {
         if (fields && typeof fields === "object" && !Array.isArray(fields)) {
-          const inherited = { ...previewCopy[locale] };
+          const key = Object.keys(previewCopy).find((key) => key.toLowerCase() === locale.toLowerCase()) ?? locale;
+          const inherited = { ...previewCopy[key] };
           for (const key of ["heading", "help"] as const) {
             const text = (fields as Record<string, unknown>)[key];
             if (typeof text === "string" && text) inherited[key] = text;
           }
-          previewCopy[locale] = inherited;
+          previewCopy[key] = inherited;
         }
       }
     }

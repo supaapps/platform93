@@ -99,10 +99,16 @@ func validateHostedBranding(b hostedBranding) error {
 			return errors.New("Default locale must be a valid language tag.")
 		}
 	}
+	seen := map[string]bool{}
 	for tag, c := range b.Copy {
-		if _, e := language.Parse(tag); e != nil || len(c.Heading) > 160 || len(c.Help) > 500 || strings.ContainsRune(c.Heading+c.Help, 0) {
+		parsed, e := language.Parse(tag)
+		if e != nil || len(c.Heading) > 160 || len(c.Help) > 500 || strings.ContainsRune(c.Heading+c.Help, 0) {
 			return errors.New("Localized copy must use valid language tags and bounded plain text.")
 		}
+		if seen[parsed.String()] {
+			return errors.New("Localized copy must not contain duplicate canonical language tags.")
+		}
+		seen[parsed.String()] = true
 	}
 	return nil
 }
@@ -171,7 +177,17 @@ func (s *Server) resolveHostedBranding(ctx context.Context, scope, id string, in
 				if err := json.Unmarshal(v, &copies); err != nil {
 					return b, err
 				}
+				seen := map[string]bool{}
 				for locale, copy := range copies {
+					tag, err := language.Parse(locale)
+					if err != nil {
+						return b, err
+					}
+					locale = tag.String()
+					if seen[locale] {
+						return b, errors.New("Duplicate canonical branding locale.")
+					}
+					seen[locale] = true
 					inherited := b.Copy[locale]
 					if copy.Heading != "" {
 						inherited.Heading = copy.Heading
@@ -246,6 +262,16 @@ func (s *Server) updateHostedBranding(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, 422, "invalid_hosted_branding", e.Error())
 		return
 	}
+	if b.DefaultLocale != "" {
+		tag, _ := language.Parse(b.DefaultLocale)
+		b.DefaultLocale = tag.String()
+	}
+	canonicalCopy := make(map[string]hostedCopy, len(b.Copy))
+	for locale, copy := range b.Copy {
+		tag, _ := language.Parse(locale)
+		canonicalCopy[tag.String()] = copy
+	}
+	b.Copy = canonicalCopy
 	var version int64
 	e := s.app.DB.QueryRow(r.Context(), `SELECT version FROM hosted_auth_branding WHERE scope_type=$1 AND scope_id=$2`, scope, id).Scan(&version)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
