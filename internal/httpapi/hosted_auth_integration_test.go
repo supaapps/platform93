@@ -433,6 +433,14 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 		if err != nil || branding.DisplayName != "Application" || branding.Layout != "split" || branding.Copy["en"].Heading != "Application login" || branding.Copy["en"].Help != "Inherited help" {
 			t.Fatalf("inheritance: %#v %v", branding, err)
 		}
+		parent, err := (&Server{app: app}).resolveHostedBranding(ctx, "application", application, false)
+		if err != nil || parent.DisplayName != "Organization" || parent.Copy["en"].Heading != "Welcome" || parent.Copy["en"].Help != "Inherited help" {
+			t.Fatalf("parent inheritance: %#v %v", parent, err)
+		}
+		defaults, err := (&Server{app: app}).resolveHostedBranding(ctx, "installation", installationBrandingID, false)
+		if err != nil || defaults.DisplayName != "Platform93" || defaults.Copy["en"].Heading != "Sign in" {
+			t.Fatalf("installation defaults: %#v %v", defaults, err)
+		}
 	})
 	t.Run("recovery stage survives reloading the interaction", func(t *testing.T) {
 		params.Set("prompt", "login")

@@ -140,12 +140,15 @@ func (s *Server) effectiveHostedBranding(ctx context.Context, appID string) (hos
 	return s.effectiveHostedBrandingForScope(ctx, "application", appID)
 }
 func (s *Server) effectiveHostedBrandingForScope(ctx context.Context, scope, id string) (hostedBranding, error) {
+	return s.resolveHostedBranding(ctx, scope, id, true)
+}
+func (s *Server) resolveHostedBranding(ctx context.Context, scope, id string, includeLocal bool) (hostedBranding, error) {
 	b := hostedBranding{DisplayName: "Platform93", AccentColor: "#17261f", BackgroundColor: "#f6f8fa", Layout: "centered", DefaultLocale: "en", Copy: map[string]hostedCopy{"en": {Heading: "Sign in", Help: "Secure access to your application."}}}
-	rows, e := s.app.DB.Query(ctx, `SELECT configuration FROM hosted_auth_branding WHERE
+	rows, e := s.app.DB.Query(ctx, `SELECT configuration FROM hosted_auth_branding WHERE ($4 OR NOT (scope_type=$3 AND scope_id=$2)) AND (
  (scope_type='installation' AND scope_id=$1) OR
  (scope_type='organization' AND (($3='organization' AND scope_id=$2) OR ($3='application' AND scope_id=(SELECT organization_id FROM applications WHERE id=$2)))) OR
- (scope_type='application' AND $3='application' AND scope_id=$2)
- ORDER BY CASE scope_type WHEN 'installation' THEN 0 WHEN 'organization' THEN 1 ELSE 2 END`, installationBrandingID, id, scope)
+ (scope_type='application' AND $3='application' AND scope_id=$2))
+ ORDER BY CASE scope_type WHEN 'installation' THEN 0 WHEN 'organization' THEN 1 ELSE 2 END`, installationBrandingID, id, scope, includeLocal)
 	if e != nil {
 		return b, e
 	}
@@ -222,6 +225,12 @@ func (s *Server) getHostedBranding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result["effective"] = b
+	inherited, err := s.resolveHostedBranding(r.Context(), scope, id, false)
+	if err != nil {
+		kernel.WriteProblem(w, r, 500, "branding_unavailable", "Inherited branding could not be loaded.")
+		return
+	}
+	result["inherited"] = inherited
 	kernel.WriteJSON(w, 200, result)
 }
 func (s *Server) updateHostedBranding(w http.ResponseWriter, r *http.Request) {

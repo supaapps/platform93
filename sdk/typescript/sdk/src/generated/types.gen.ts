@@ -29,6 +29,7 @@ export type HostedBrandingSettings = {
     scope_type: 'installation' | 'organization' | 'application';
     configuration: HostedBranding;
     effective?: HostedBranding;
+    inherited?: HostedBranding;
     version: number;
 };
 

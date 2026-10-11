@@ -123,12 +123,12 @@ async function mockAdmin(page: Page) {
 
 test("hosted branding validates responses and saves localized previews", async ({ page }) => {
   await mockAdmin(page);
-  let settings = { configuration: { copy: { en: { heading: "Local heading" } } } as Record<string, unknown>, version: 0, effective: { display_name: "Platform93", copy: { en: { heading: "Local heading", help: "Inherited secure access" } } } as Record<string, unknown> };
+  let settings = { configuration: { display_name: "Local name", copy: { en: { heading: "Local heading" } } } as Record<string, unknown>, version: 0, inherited: { display_name: "Parent name", copy: { en: { heading: "Parent heading", help: "Inherited secure access" } } }, effective: { display_name: "Local name", copy: { en: { heading: "Local heading", help: "Inherited secure access" } } } as Record<string, unknown> };
   await page.route("**/auth-branding", async (route) => {
     if (route.request().method() === "PUT") {
       expect(route.request().headers()["if-match"]).toBe('"v0"');
       const configuration = route.request().postDataJSON();
-      settings = { configuration, version: 1, effective: configuration };
+      settings = { ...settings, configuration, version: 1, effective: configuration };
       return route.fulfill({ status: 204 });
     }
     await route.fulfill({ json: settings });
@@ -137,6 +137,10 @@ test("hosted branding validates responses and saves localized previews", async (
   await page.getByText("Hosted authentication branding", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "Local heading", exact: true })).toBeVisible();
   await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
+  await page.getByLabel(/^Display name/).fill("");
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Parent name");
+  await page.getByLabel(/^Localized heading and help/).fill('{}');
+  await expect(page.getByRole("heading", { name: "Parent heading", exact: true })).toBeVisible();
   await page.getByLabel(/^Localized heading and help/).fill('{"en":{"heading":"Edited heading"}}');
   await expect(page.getByRole("heading", { name: "Edited heading", exact: true })).toBeVisible();
   await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");

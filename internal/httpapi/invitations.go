@@ -130,6 +130,10 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, applic
 	expiresAt := s.app.Now().Add(time.Duration(request.ExpiresIn) * time.Second)
 	linkURI, templateKey, workspaceName, presentationErr := s.invitationPresentation(r.Context(), applicationID, id.String(), link, request.WorkspaceID, request.OnboardingMethod, request.HostedClientID, request.HostedRedirectURI)
 	if presentationErr != nil {
+		if request.HostedClientID != "" {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "hosted_invitation_unconfigured", "Hosted invitations require an enabled hosted client, a registered callback, and a configured application sign-in/start URL.")
+			return
+		}
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invitation_redirect_unconfigured", "Configure the application's invitation redirect before creating invitations.")
 		return
 	}

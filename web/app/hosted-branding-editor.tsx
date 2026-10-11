@@ -9,7 +9,7 @@ type Branding = {
   privacy_url?: string; terms_url?: string; support_url?: string; default_locale?: string;
   copy?: Record<string, { heading?: string; help?: string }>;
 };
-type Settings = { configuration: Branding; effective?: Branding; version: number };
+type Settings = { configuration: Branding; effective?: Branding; inherited?: Branding; version: number };
 
 function validateSettings(value: Settings): Settings {
   if (!value || !value.configuration || typeof value.configuration !== "object" || Array.isArray(value.configuration) || !Number.isInteger(value.version) || value.version < 0) {
@@ -54,14 +54,19 @@ export function HostedBrandingEditor({ api, basePath, scope, onMessage }: {
     finally { setBusy(false); }
   }
   function submit(event: FormEvent) { event.preventDefault(); void save(); }
-  const effective = { display_name: "Platform93", accent_color: "#17261f", background_color: "#f6f8fa", ...settings?.effective, ...draft };
-  const previewCopy = { ...settings?.effective?.copy };
+  const effective = { display_name: "Platform93", accent_color: "#17261f", background_color: "#f6f8fa", ...settings?.inherited, ...draft };
+  const previewCopy = { ...settings?.inherited?.copy };
   try {
     const parsed: unknown = JSON.parse(copy);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       for (const [locale, fields] of Object.entries(parsed)) {
         if (fields && typeof fields === "object" && !Array.isArray(fields)) {
-          previewCopy[locale] = { ...previewCopy[locale], ...fields };
+          const inherited = { ...previewCopy[locale] };
+          for (const key of ["heading", "help"] as const) {
+            const text = (fields as Record<string, unknown>)[key];
+            if (typeof text === "string" && text) inherited[key] = text;
+          }
+          previewCopy[locale] = inherited;
         }
       }
     }

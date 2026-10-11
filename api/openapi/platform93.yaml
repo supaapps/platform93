@@ -9044,6 +9044,7 @@ components:
         scope_type: {type: string, enum: [installation, organization, application]}
         configuration: {$ref: '#/components/schemas/HostedBranding'}
         effective: {$ref: '#/components/schemas/HostedBranding'}
+        inherited: {$ref: '#/components/schemas/HostedBranding'}
         version: {type: integer, format: int64}
     HostedAuthUser:
       type: object
