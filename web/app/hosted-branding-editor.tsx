@@ -72,7 +72,11 @@ export function HostedBrandingEditor({ api, basePath, scope, onMessage }: {
     }
   } catch { /* Keep the last valid inherited preview while JSON is being edited. */ }
   const previewLocale = effective.default_locale ?? "en";
-  const previewText = previewCopy?.[previewLocale] ?? previewCopy?.en;
+  const localeKeys = Object.keys(previewCopy);
+  const previewKey = localeKeys.find((key) => key.toLowerCase() === previewLocale.toLowerCase())
+    ?? localeKeys.find((key) => key.toLowerCase() === (previewLocale.split("-")[0] ?? previewLocale).toLowerCase())
+    ?? localeKeys.find((key) => key.toLowerCase() === "en");
+  const previewText = previewKey ? previewCopy[previewKey] : undefined;
   const previewHeading = typeof previewText?.heading === "string" ? previewText.heading : "Sign in";
   const previewHelp = typeof previewText?.help === "string" ? previewText.help : "Continue to your application";
   const inherited = (key: keyof Branding) => draft[key] === undefined ? "Inherited default" : "Local override";

@@ -145,6 +145,11 @@ test("hosted branding validates responses and saves localized previews", async (
   await expect(page.getByRole("heading", { name: "Edited heading", exact: true })).toBeVisible();
   await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Inherited secure access");
   await page.getByLabel(/^Display name/).fill("Example identity");
+  await page.getByLabel(/^Default language tag/).fill("fr-CA");
+  await page.getByLabel(/^Localized heading and help/).fill('{"FR":{"heading":"Bienvenue","help":"Accès sécurisé"}}');
+  await expect(page.getByRole("heading", { name: "Bienvenue", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hosted sign-in preview")).toContainText("Accès sécurisé");
+  await page.getByLabel(/^Default language tag/).fill("en");
   await page.getByLabel(/^Localized heading and help/).fill('{"en":{"heading":"Welcome to Example","help":"Your secure account"}}');
   await expect(page.getByRole("heading", { name: "Welcome to Example", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Save branding", exact: true }).click();

@@ -29,6 +29,7 @@ for (const viewport of [{ name: "desktop", width: 1280, height: 900 }, { name: "
     });
     await page.goto(`/auth/?interaction=${interaction}`);
     await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(page.getByText("Secure access to your application.", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
     const accessibility = await new AxeBuilder({ page }).analyze();
     expect(accessibility.violations.filter((violation) => ["critical", "serious"].includes(violation.impact ?? ""))).toEqual([]);
