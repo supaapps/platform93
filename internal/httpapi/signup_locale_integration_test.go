@@ -121,7 +121,9 @@ VALUES($1,$2,$3,'Browser','public',ARRAY['https://app.example.test/callback'])`,
 	verify := func(t *testing.T, credentials map[string]any, appID string, status int) {
 		t.Helper()
 		w := httptest.NewRecorder()
-		server.emailVerify(w, requestWithRoute(t, http.MethodPost, "/", credentials, map[string]string{"application_id": appID}, kernel.Actor{}))
+		request := requestWithRoute(t, http.MethodPost, "/", credentials, map[string]string{"application_id": appID}, kernel.Actor{})
+		request.RemoteAddr = ""
+		server.emailVerify(w, request)
 		if w.Code != status {
 			t.Fatalf("verify: %d %s, want %d", w.Code, w.Body.String(), status)
 		}
