@@ -155,6 +155,14 @@ jobs:
           exit 1
       - run: pnpm --dir web exec playwright install --with-deps chromium
       - run: pnpm --dir web test:e2e
+      - name: Hosted browser flow with disposable database fixtures
+        run: go test ./internal/httpapi -run '^TestHostedAuthenticationCodeFlow$' -count=1 -v
+        env:
+          PLATFORM93_HOSTED_BROWSER_TEST: "1"
+      - name: Stock Postal confidential OIDC compatibility
+        run: go test ./internal/httpapi -run '^TestHostedAuthenticationCodeFlow$' -count=1 -v -timeout 15m
+        env:
+          PLATFORM93_POSTAL_COMPAT_TEST: "1"
 
   contracts:
     runs-on: ubuntu-latest

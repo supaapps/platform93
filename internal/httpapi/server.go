@@ -72,6 +72,12 @@ func New(app *platform.App, adminAssets string) http.Handler {
 		r.Post("/control/invitations/accept", s.acceptOrganizationInvitation)
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireControlUser)
+			r.Get("/control/installation/auth-branding", s.getHostedBranding)
+			r.Put("/control/installation/auth-branding", s.updateHostedBranding)
+			r.Get("/control/organizations/{organization_id}/auth-branding", s.getHostedBranding)
+			r.Put("/control/organizations/{organization_id}/auth-branding", s.updateHostedBranding)
+			r.Get("/control/applications/{application_id}/auth-branding", s.getHostedBranding)
+			r.Put("/control/applications/{application_id}/auth-branding", s.updateHostedBranding)
 			r.Get("/control/auth/sessions", s.listControlUserSessions)
 			r.Get("/control/auth/me", s.getControlUserAccount)
 			r.Patch("/control/auth/me", s.updateControlUserAccount)
@@ -517,9 +523,14 @@ func New(app *platform.App, adminAssets string) http.Handler {
 		})
 	})
 
+	r.Get("/v1/auth/hosted/interactions/{interaction_id}", s.getHostedInteraction)
+	r.Post("/v1/auth/hosted/interactions/{interaction_id}/actions", s.hostedAction)
+	r.Post("/v1/auth/hosted/interactions/{interaction_id}/return", s.hostedReturnExchange)
+	r.Get("/auth/return/{interaction_id}", s.hostedReturn)
+	r.Get("/auth/invitations/{invitation_id}", s.startHostedInvitation)
 	r.Get("/oidc/.well-known/openid-configuration", s.discovery)
 	r.Get("/oidc/jwks.json", s.jwks)
-	r.With(s.resolveOAuthApplication).Get("/oidc/authorize", s.oauthAuthorizeInteraction)
+	r.With(s.hostedAuthorizationErrors, s.resolveOAuthApplication).Get("/oidc/authorize", s.oauthAuthorizeInteraction)
 	r.With(s.resolveOAuthApplication, s.requireUser).Post("/oidc/authorize", s.oauthAuthorizeDecision)
 	r.With(s.resolveOAuthApplication).Post("/oidc/token", s.oauthToken)
 	r.With(s.resolveOAuthApplication).Post("/oidc/revoke", s.oauthRevoke)
@@ -565,6 +576,10 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+		if strings.HasPrefix(r.URL.Path, "/auth/") || strings.HasPrefix(r.URL.Path, "/v1/auth/hosted/") {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		}
 		if strings.HasPrefix(s.app.PublicURL, "https://") {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000")
 		}
@@ -913,9 +928,15 @@ func (s *Server) serveAdminHTML(w http.ResponseWriter, r *http.Request, assets f
 		digest := sha256.Sum256(match[1])
 		hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(digest[:])+"'")
 	}
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' "+strings.Join(hashes, " ")+"; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.github.com; frame-ancestors 'none'")
+	connections := "'self' https://api.github.com"
+	cacheControl := "no-cache"
+	if assetPath == "auth/index.html" || strings.HasPrefix(assetPath, "auth/") {
+		connections = "'self'"
+		cacheControl = "no-store"
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' "+strings.Join(hashes, " ")+"; style-src 'self' 'unsafe-inline'; img-src 'self' https:; connect-src "+connections+"; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", cacheControl)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content)
 }

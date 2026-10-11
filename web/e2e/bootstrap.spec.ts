@@ -134,6 +134,10 @@ test("renders accessible compact actions with stable spacing", async ({ page }) 
 });
 
 test("toggles installation provider inheritance after creation", async ({ page }) => {
+  await page.route("**/v1/control/installation/auth-branding", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ configuration: {}, effective: {}, version: 0 }),
+  }));
   const smtpID = "01900000-0000-7000-8000-000000000121";
   const stripeID = "01900000-0000-7000-8000-000000000122";
   const storageID = "01900000-0000-7000-8000-000000000123";

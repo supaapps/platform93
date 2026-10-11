@@ -9,8 +9,8 @@ use RuntimeException;
 /**
  * @phpstan-type NotificationInput array{template_key:string,user_id?:string,recipient?:string,locale?:string,variables?:array<string,mixed>,attachments?:list<array{filename:string,content_type:string,content_base64:string}>}
  * @phpstan-type QueuedNotification array{id:string,status:'queued'|'suppressed',requested_locale:string,resolved_locale:string,fallback_used:bool}
- * @phpstan-type InvitationInput array{email:string,workspace_id?:string,application_role_keys?:list<string>,workspace_role_keys?:list<string>,expires_in?:int}
- * @phpstan-type Invitation array{id:string,email:string,workspace_id:?string,application_role_keys:list<string>,workspace_role_keys:list<string>,status:string,expires_at:string}
+ * @phpstan-type InvitationInput array{email:string,workspace_id?:string,application_role_keys?:list<string>,workspace_role_keys?:list<string>,expires_in?:int,hosted_client_id?:string,hosted_redirect_uri?:string}
+ * @phpstan-type Invitation array{id:string,email:string,workspace_id:?string,application_role_keys:list<string>,workspace_role_keys:list<string>,status:string,expires_at:string,hosted_client_id?:?string,hosted_redirect_uri?:?string}
  * @phpstan-type InvitationResent array{id:string,last_sent_at:string,resend_available_at:string,expires_at:string}
  * @phpstan-type User array{id:string,application_id:string,email:string,first_name:string,last_name:string,username:?string,locale:string,email_verified:bool,is_org_verified:bool,status:string,custom_attributes:array<string,mixed>,version:int}
  * @phpstan-type Workspace array{id:string,application_id:string,owner_user_id:string,key:string,name:string,metadata:array<string,mixed>,status:string,version:int,created_at:string,updated_at:string}

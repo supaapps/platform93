@@ -343,12 +343,15 @@ func (s *Server) publicConfig(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createClient(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		ClientID      string   `json:"client_id"`
-		Name          string   `json:"name"`
-		ClientType    string   `json:"client_type"`
-		RedirectURIs  []string `json:"redirect_uris"`
-		AllowedGrants []string `json:"allowed_grants"`
-		AllowedScopes []string `json:"allowed_scopes"`
+		ClientID         string   `json:"client_id"`
+		Name             string   `json:"name"`
+		ClientType       string   `json:"client_type"`
+		RedirectURIs     []string `json:"redirect_uris"`
+		AllowedGrants    []string `json:"allowed_grants"`
+		AllowedScopes    []string `json:"allowed_scopes"`
+		AuthorizationUI  string   `json:"authorization_ui"`
+		PKCERequired     *bool    `json:"pkce_required"`
+		InitiateLoginURI string   `json:"initiate_login_uri"`
 	}
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
@@ -357,8 +360,20 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_client_type", "Client type must be public, confidential, or machine.")
 		return
 	}
+	if request.AuthorizationUI == "" {
+		request.AuthorizationUI = "headless"
+	}
+	required := request.PKCERequired == nil || *request.PKCERequired
+	if err := validateHostedClientPolicy(request.ClientType, request.AuthorizationUI, request.AllowedGrants, required); err != nil {
+		kernel.WriteProblem(w, r, 422, "invalid_client_policy", err.Error())
+		return
+	}
 	if err := validateClientRedirectURIs(request.ClientType, request.RedirectURIs); err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_redirect_uri", err.Error())
+		return
+	}
+	if err := validateHostedInitiationURI(request.InitiateLoginURI); err != nil {
+		kernel.WriteProblem(w, r, 422, "invalid_initiate_login_uri", err.Error())
 		return
 	}
 	id := kernel.NewID()
@@ -369,18 +384,18 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request) {
 		digest = s.app.Vault.Digest(secret)
 	}
 	_, err := s.app.DB.Exec(r.Context(), `INSERT INTO clients
-(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,secret_digest)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, id, chi.URLParam(r, "application_id"), request.ClientID, request.Name,
-		request.ClientType, request.RedirectURIs, request.AllowedGrants, request.AllowedScopes, digest)
+(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,secret_digest,authorization_ui,pkce_required,initiate_login_uri)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, chi.URLParam(r, "application_id"), request.ClientID, request.Name,
+		request.ClientType, request.RedirectURIs, request.AllowedGrants, request.AllowedScopes, digest, request.AuthorizationUI, required, request.InitiateLoginURI)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusConflict, "client_conflict", "The client could not be created.")
 		return
 	}
-	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "client_id": request.ClientID, "name": request.Name, "client_type": request.ClientType, "client_secret": optionalSecret(secret)})
+	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "client_id": request.ClientID, "name": request.Name, "client_type": request.ClientType, "client_secret": optionalSecret(secret), "authorization_ui": request.AuthorizationUI, "pkce_required": required})
 }
 
 func (s *Server) listClients(w http.ResponseWriter, r *http.Request) {
-	query, args, limit, ok := referenceSearch(w, r, `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at
+	query, args, limit, ok := referenceSearch(w, r, `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at,authorization_ui,pkce_required,initiate_login_uri
 FROM clients WHERE application_id=$1 AND disabled_at IS NULL`, []any{chi.URLParam(r, "application_id")}, "id", "name", "client_id")
 	if !ok {
 		return
@@ -398,9 +413,11 @@ FROM clients WHERE application_id=$1 AND disabled_at IS NULL`, []any{chi.URLPara
 	for rows.Next() {
 		var id, clientID, name, clientType string
 		var created time.Time
+		var ui, initiateLoginURI string
+		var required bool
 		var redirects, grants, scopes []string
-		if rows.Scan(&id, &clientID, &name, &clientType, &redirects, &grants, &scopes, &created) == nil {
-			items = append(items, map[string]any{"id": id, "client_id": clientID, "name": name, "client_type": clientType, "redirect_uris": redirects, "allowed_grants": grants, "allowed_scopes": scopes, "created_at": created})
+		if rows.Scan(&id, &clientID, &name, &clientType, &redirects, &grants, &scopes, &created, &ui, &required, &initiateLoginURI) == nil {
+			items = append(items, map[string]any{"id": id, "client_id": clientID, "name": name, "client_type": clientType, "redirect_uris": redirects, "allowed_grants": grants, "allowed_scopes": scopes, "created_at": created, "authorization_ui": ui, "pkce_required": required, "initiate_login_uri": initiateLoginURI})
 		}
 	}
 	items, cursor := referencePage(items, limit, func(item map[string]any) string { return item["id"].(string) })
