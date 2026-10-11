@@ -164,6 +164,16 @@ test("audit actor types, delivery failures and billing amounts stay understandab
   await page.goto(applicationRoute("webhooks", "webhooks"));
   await expect(rows.first()).toContainText("https://events.example.test/hook");
 
+  await page.route(`**/v1/control/applications/${app.id}/permission-grants`, (route) => route.fulfill({ json: { items: [{ id: id(37), subject_type: "client", subject_id: client.id, permission: "records:read" }], next_cursor: null } }));
+  await page.goto(applicationRoute("identity", "permission-grants"));
+  await expect(rows.first()).toContainText(client.name);
+  await expect(rows.first()).not.toContainText("User ·");
+
+  await page.route(`**/v1/control/applications/${app.id}/notifications`, (route) => route.fulfill({ json: { items: [{ id: id(38), recipient: "user@example.test", attempt_count: 1 }], next_cursor: null } }));
+  await page.goto(applicationRoute("notifications", "notifications"));
+  await expect(rows.first()).toContainText("1 attempt");
+  await expect(rows.first()).not.toContainText("1 attempts");
+
   await page.route(`**/v1/control/applications/${app.id}/billing/payments`, (route) => route.fulfill({ json: { items: [{ id: id(36), provider_payment_id: "pi_example", subject_type: "user", subject_id: user.id, amount_minor: 1250, currency: "eur", status: "succeeded", created_at: "2026-10-09T09:30:00Z" }], next_cursor: null } }));
   await page.goto(applicationRoute("billing", "billing/payments"));
   await expect(rows.first()).toContainText("pi_example");

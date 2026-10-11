@@ -53,7 +53,8 @@ export function ResourceLabels({ items, basePath, lookup, children }: { items: R
 export function ResourceSummary({ item, resource }: { item: Row; resource: string }) {
   const labels = useContext(Labels);
   const ref = (kind: string, id: unknown) => !text(id) ? "" : labels[`${kind}:${text(id)}`] || `${humanize(kind).replace(/s$/, "")} · ${shortID(id)}`;
-  const recipient = item.user_id ? ref("users", item.user_id) : item.client_id ? ref("clients", item.client_id) : ref(item.subject_type === "workspace" ? "workspaces" : "users", item.subject_id);
+  const recipient = item.user_id ? ref("users", item.user_id) : item.client_id ? ref("clients", item.client_id) : ref(item.subject_type === "workspace" ? "workspaces" : item.subject_type === "client" ? "clients" : "users", item.subject_id);
+  const attempts = item.attempt_count !== undefined ? `${text(item.attempt_count)} ${item.attempt_count === 1 ? "attempt" : "attempts"}` : "";
   let title = resourceName(item);
   const facts: string[] = [];
   const add = (...values: unknown[]) => facts.push(...values.map(text).filter(Boolean));
@@ -81,11 +82,11 @@ export function ResourceSummary({ item, resource }: { item: Row; resource: strin
     if (resource.endsWith("reconciliation-runs")) add(item.finished_at ? `Finished ${formatDate(item.finished_at)}` : "Reconciliation in progress");
   } else if (resource === "events" || resource === "webhook-deliveries") {
     title = text(item.event_type || item.type) || (resource === "events" ? "Domain event" : "Webhook delivery");
-    add(item.status, item.subject, item.endpoint_url || item.url, item.attempt_count !== undefined && `${text(item.attempt_count)} attempts`);
+    add(item.status, item.subject, item.endpoint_url || item.url, attempts);
     if (resource === "webhook-deliveries") add(item.response_status && `HTTP ${text(item.response_status)}`, item.webhook_endpoint_id && `Endpoint: ${ref("webhooks", item.webhook_endpoint_id)}`, item.event_id && `Event · ${shortID(item.event_id)}`, item.response_excerpt);
   } else if (resource === "notifications") {
     title = text(item.subject || item.template_key || item.recipient) || "Notification";
-    add(item.recipient || recipient, item.status, item.locale, item.attempt_count !== undefined && `${text(item.attempt_count)} attempts`, item.last_error);
+    add(item.recipient || recipient, item.status, item.locale, attempts, item.last_error);
   } else if (resource === "invitations") {
     title = text(item.email || item.recipient_email) || "Invitation";
     add(item.status, item.workspace_id ? ref("workspaces", item.workspace_id) : "Application invitation", Array.isArray(item.application_role_keys) && item.application_role_keys.join(", "), Array.isArray(item.workspace_role_keys) && item.workspace_role_keys.join(", "), item.expires_at && `Expires ${formatDate(item.expires_at)}`);
