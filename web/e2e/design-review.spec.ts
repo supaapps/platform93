@@ -5,7 +5,7 @@ import path from "node:path";
 import { chooseSelect, nativeSelect } from "./select-control";
 
 const id = (value: number) => `01900000-0000-7000-8000-${String(value).padStart(12, "0")}`;
-const org = { id: id(1), name: "Example Studio", slug: "example", role: "owner", version: 1 };
+const org = { id: id(1), name: "Example Studio", slug: "example", role: "owner", version: 1, usage: { applications: 1, users: 128 } };
 const app = { id: id(2), organization_id: org.id, name: "Customer portal", slug: "portal", issuer: "https://platform.example.test/oidc", version: 1, auth_config: { flows: {} }, public_config: { brand_name: "Example Studio" }, internal_config: { registration_mode: "public", password_enabled: true, passwordless_enabled: true, personal_api_keys_enabled: false, delegation_enabled: false, user_invitations_enabled: true, custom_token_claim_keys: [] } };
 const user = { id: id(3), first_name: "Alex", last_name: "Morgan", email: "alex@example.test", status: "active", locale: "en", version: 1 };
 const workspace = { id: id(4), key: "design", name: "Design team", owner_user_id: user.id, version: 1 };
@@ -29,12 +29,17 @@ async function mock(page: Page, mode: "admin" | "login" | "setup" = "admin") {
     else if (url.pathname === "/v1/control/organizations") {
       if (mode === "login") { await route.fulfill({ status: 401, json: { status: 401, title: "Sign in required", code: "control_access_required" } }); return; }
       body = { items: [org], next_cursor: null, installation_role: "owner" };
-    } else if (resource === "applications") body = { items: [app], next_cursor: null };
+    } else if (resource === "applications") body = { items: [{ ...app, usage: { users: 128, workspaces: 12 } }], next_cursor: null };
     else if (resource === app.id) body = app;
     else if (resource === "methods") body = methods;
     else if (url.pathname.endsWith("/auth/me")) body = account;
     else if (resource === "policy") body = { organization_id: org.id, max_applications: 10, max_users: 1000, enabled_settings: {}, usage: { applications: 1, users: 128 }, version: 1 };
     else if (resource === "statistics") body = { users: { active: 128, suspended: 2 }, workspaces: 12, active_entitlements: 96, pending_local_requests: 3, live_subscriptions: 42, active_products: 4, notification_failures: 1, webhook_failures: 0, events_last_24_hours: 185 };
+    else if (resource === "auth-branding") body = { configuration: {}, effective: {}, version: 0 };
+    else if (resource === "reference-labels") {
+      const labels: Record<string, string> = { [`users:${user.id}`]: "Alex Morgan", [`workspaces:${workspace.id}`]: workspace.name, [`products:${product.id}`]: product.name, [`roles:${id(10)}`]: "Editor", [`clients:${client.client_id}`]: client.name, [`webhooks:${id(28)}`]: "https://events.example.test/hook", [`webhooks:${id(34)}`]: "https://events.example.test/hook" };
+      body = { items: url.searchParams.getAll("references").filter((key) => labels[key]).map((key) => ({ kind: key.slice(0, key.indexOf(":")), id: key.slice(key.indexOf(":") + 1), label: labels[key] })) };
+    }
     else if (resource === "management-api") body = { enabled: false, can_manage: true, active_clients: 0, token_endpoint: "https://platform.example.test/oidc/token", api_base: "https://platform.example.test/v1" };
     else if (resource === "auth-policy") body = { email_code_enabled: true, magic_link_enabled: true, password_enabled: true };
     else if (url.pathname.endsWith(`/notification-templates/${template.id}`)) body = template;
@@ -53,7 +58,7 @@ async function mock(page: Page, mode: "admin" | "login" | "setup" = "admin") {
         events: [{ id: id(24), type: "user.created", subject: `user/${user.id}`, created_at: "2026-10-09T09:30:00Z" }],
         notifications: [{ id: id(25), recipient: "alex@example.test", status: "delivered", attempt_count: 1, created_at: "2026-10-09T09:30:00Z" }],
         invitations: [{ id: id(26), email: "sam@example.test", workspace_id: workspace.id, workspace_role_keys: ["editor"], status: "pending", expires_at: "2026-10-16T09:30:00Z", created_at: "2026-10-09T09:30:00Z" }],
-        "webhook-deliveries": [{ id: id(27), webhook_id: id(28), event_id: id(24), status: "failed", attempt_count: 3, response_status: 503, last_error: "Destination unavailable", created_at: "2026-10-09T09:30:00Z" }],
+        "webhook-deliveries": [{ id: id(27), webhook_endpoint_id: id(28), event_id: id(24), status: "failed", attempt_count: 3, response_status: 503, response_excerpt: "Destination unavailable", created_at: "2026-10-09T09:30:00Z" }],
         subscriptions: [{ id: id(40), provider_subscription_id: "sub_example", subject_type: "workspace", subject_id: workspace.id, status: "active", created_at: "2026-10-09T09:30:00Z" }],
         invoices: [{ id: id(41), provider_invoice_id: "in_example", subject_type: "workspace", subject_id: workspace.id, status: "paid", currency: "eur", total_minor: 1900, created_at: "2026-10-09T09:30:00Z" }],
         payments: [{ id: id(42), provider_payment_id: "pi_example", subject_type: "user", subject_id: user.id, status: "succeeded", currency: "eur", amount_minor: 1900, created_at: "2026-10-09T09:30:00Z" }],
@@ -72,16 +77,20 @@ async function mock(page: Page, mode: "admin" | "login" | "setup" = "admin") {
 
 test("overview counts and resource rows explain records rather than repeat UUIDs", async ({ page }) => {
   await mock(page);
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(new URL(request.url()).pathname));
   await page.goto("/?context=platform&section=overview");
   await expect(page.getByLabel("Example Studio usage")).toContainText("1 active apps");
   await expect(page.getByLabel("Example Studio usage")).toContainText("128 users");
   await page.goto(`/?context=organization&organization_id=${org.id}&section=overview`);
   await expect(page.locator(".application-list")).toContainText("128 active users");
   await expect(page.locator(".application-list")).toContainText("12 workspaces");
+  expect(requests.filter((path) => path.endsWith("/policy") || path.endsWith("/statistics"))).toEqual([]);
   await page.goto(applicationRoute("audit", "audit-logs"));
   const audit = page.locator(".table article").first();
   await expect(audit.locator(".resource-summary strong")).toHaveText("user updated");
   await expect(audit).toContainText("Alex Morgan");
+  expect(requests.filter((path) => path.endsWith("/reference-labels"))).toHaveLength(1);
   await expect(audit).toContainText("Profile corrected");
   await expect(audit.locator("time")).toBeVisible();
   await expect(audit.locator("code")).not.toBeVisible();
@@ -126,7 +135,7 @@ test("audit actor types, delivery failures and billing amounts stay understandab
   await expect(page.getByLabel("Loaded records summary")).toContainText("3 loaded · more available");
   await expect(page.locator(".toast-error")).toHaveCount(0);
 
-  await page.route(`**/v1/control/applications/${app.id}/webhook-deliveries`, (route) => route.fulfill({ json: { items: [{ id: id(33), webhook_id: id(34), event_id: id(35), status: "failed", attempt_count: 3, response_status: 503, last_error: "Destination unavailable", created_at: "2026-10-09T09:30:00Z" }], next_cursor: null } }));
+  await page.route(`**/v1/control/applications/${app.id}/webhook-deliveries`, (route) => route.fulfill({ json: { items: [{ id: id(33), webhook_endpoint_id: id(34), event_id: id(35), status: "failed", attempt_count: 3, response_status: 503, response_excerpt: "Destination unavailable", created_at: "2026-10-09T09:30:00Z" }], next_cursor: null } }));
   await page.goto(applicationRoute("webhooks", "webhook-deliveries"));
   await expect(rows.first()).toContainText("Webhook delivery");
   await expect(rows.first()).toContainText("HTTP 503");

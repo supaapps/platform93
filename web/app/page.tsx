@@ -17,8 +17,9 @@ import { ListHints, ResourceLabels, ResourceSummary } from "./resource-summary";
 
 const loadRowLabels = (path: string) => api.request<Page<Record<string, unknown>>>("GET", path);
 
-type Organization = { id: string; name: string; slug: string; role: string; version?: number; retired_at?: string | null };
+type Organization = { id: string; name: string; slug: string; role: string; version?: number; retired_at?: string | null; usage?: { applications: number; users: number } };
 type Application = {
+  usage?: { users: number; workspaces: number };
   id: string;
   organization_id?: string;
   name: string;
@@ -2215,29 +2216,13 @@ function Onboarding({
 }
 
 function OrganizationUsage({ organization }: { organization: Organization }) {
-  const [usage, setUsage] = useState<OrganizationPolicy["usage"] | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let current = true;
-    api.request<OrganizationPolicy>("GET", `/v1/control/organizations/${organization.id}/policy`)
-      .then((value) => { if (current) { if (value.usage && typeof value.usage.users === "number" && typeof value.usage.applications === "number") setUsage(value.usage); else setFailed(true); } })
-      .catch(() => { if (current) setFailed(true); });
-    return () => { current = false; };
-  }, [organization.id]);
-  return <div className="list-hints" aria-label={`${organization.name} usage`}>{usage ? <><span><strong>{usage.applications}</strong> active apps</span><span><strong>{usage.users}</strong> users</span></> : <span>{failed ? "Usage unavailable" : "Loading usage…"}</span>}</div>;
+  const usage = organization.usage;
+  return <div className="list-hints" aria-label={`${organization.name} usage`}>{usage ? <><span><strong>{usage.applications}</strong> active apps</span><span><strong>{usage.users}</strong> users</span></> : <span>Usage unavailable</span>}</div>;
 }
 
-function ApplicationUsage({ applicationID }: { applicationID: string }) {
-  const [counts, setCounts] = useState<{ users: number; workspaces: number } | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let current = true;
-    api.request<{ users: { active: number }; workspaces: number }>("GET", `/v1/control/applications/${applicationID}/statistics`)
-      .then((value) => { if (current) { if (typeof value.users?.active === "number" && typeof value.workspaces === "number") setCounts({ users: value.users.active, workspaces: value.workspaces }); else setFailed(true); } })
-      .catch(() => { if (current) setFailed(true); });
-    return () => { current = false; };
-  }, [applicationID]);
-  return <div className="list-hints">{counts ? <><span><strong>{counts.users}</strong> active users</span><span><strong>{counts.workspaces}</strong> workspaces</span></> : <span>{failed ? "Usage unavailable" : "Loading usage…"}</span>}</div>;
+function ApplicationUsage({ application }: { application: Application }) {
+  const counts = application.usage;
+  return <div className="list-hints">{counts ? <><span><strong>{counts.users}</strong> active users</span><span><strong>{counts.workspaces}</strong> workspaces</span></> : <span>Usage unavailable</span>}</div>;
 }
 
 function OrganizationCreator({ onCreated, setMessage }: { onCreated: (organization: Organization) => void; setMessage: (value: string) => void }) {
@@ -2532,7 +2517,7 @@ function ApplicationPicker({ organization, setApplication, setMessage, reloadBou
   return <section className="boundary-picker">
     <div className="picker-head"><div><p className="eyebrow">ORGANIZATION</p><h3>{organization.name}</h3></div></div>
     <section className="boundary-settings"><div><p className="eyebrow">ORGANIZATION SETTINGS</p><h3>Identity</h3><p>The slug remains stable for application configuration. Renaming changes only the display name.</p></div><form onSubmit={(event) => void renameOrganization(event)}><label>Organization name<input required maxLength={255} name="name" defaultValue={organization.name} /></label><label>Stable slug<input disabled value={organization.slug} /></label><button disabled={renaming}>{renaming ? "Renaming..." : "Rename organization"}</button></form></section>
-    {loading ? <div className="empty">Loading applications...</div> : <div className="application-list">{applications.map((item) => <article className={item.retired_at ? "retired" : ""} key={item.id}><div><strong>{item.name}</strong><small>{item.retired_at ? "Retired application" : item.slug}</small>{!item.retired_at && <ApplicationUsage key={`${item.id}-${refresh}`} applicationID={item.id} />}</div><ActionGroup label={`${item.name} application actions`}>
+    {loading ? <div className="empty">Loading applications...</div> : <div className="application-list">{applications.map((item) => <article className={item.retired_at ? "retired" : ""} key={item.id}><div><strong>{item.name}</strong><small>{item.retired_at ? "Retired application" : item.slug}</small>{!item.retired_at && <ApplicationUsage application={item} />}</div><ActionGroup label={`${item.name} application actions`}>
       {!item.retired_at && <IconButton label={`Open ${item.name}`} icon="open" href={routeHref({ context: "application", application_id: item.id, organization_id: organization.id, section: "overview" }, true)} disabled={applicationAction !== ""} onClick={() => setApplication(item)} />}
       {item.retired_at
         ? <IconButton label={`Restore ${item.name}`} icon="restore" loading={applicationAction === `restore-${item.id}`} disabled={applicationAction !== ""} onClick={() => void setApplicationRetirement(item.id, true)} />

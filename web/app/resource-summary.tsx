@@ -9,13 +9,13 @@ const text = (value: unknown) => typeof value === "string" || typeof value === "
 const humanize = (value: unknown) => text(value).replace(/[._:-]+/g, " ");
 const shortID = (value: unknown) => text(value).slice(-8);
 const actorLabel = (value: unknown) => value === "control_user" ? "Platform user" : value === "client" ? "Machine client" : value === "system" || !text(value) ? "System" : humanize(value);
-const references: Record<string, string> = { user_id: "users", owner_user_id: "users", workspace_id: "workspaces", product_id: "products", role_id: "roles", client_id: "clients" };
+const references: Record<string, string> = { user_id: "users", owner_user_id: "users", workspace_id: "workspaces", product_id: "products", role_id: "roles", client_id: "clients", webhook_endpoint_id: "webhooks" };
 
 export function resourceName(item: Row): string {
   return text(item.name || item.display_name) || [text(item.first_name), text(item.last_name)].filter(Boolean).join(" ") || text(item.email || item.key || item.client_id);
 }
 
-/** Resolve only referenced records through their existing authorized, bounded searches. */
+/** Resolve referenced names in bounded batches within the authorized application. */
 export function ResourceLabels({ items, basePath, lookup, children }: { items: Row[]; basePath: string; lookup: Lookup; children: ReactNode }) {
   const [result, setResult] = useState<{ items: Row[]; labels: Record<string, string> } | null>(null);
   useEffect(() => {
@@ -28,20 +28,23 @@ export function ResourceLabels({ items, basePath, lookup, children }: { items: R
         if (id) requests.set(`${kind}:${id}`, { kind, id });
       }
     }
-    const queue = [...requests.entries()];
-    // Bound simultaneous requests; missing/deleted/forbidden names remain explicit ID fallbacks.
-    const worker = async () => {
-      while (current && queue.length) {
-        const [key, { kind, id }] = queue.shift()!;
+    const keys = [...requests.keys()];
+    void (async () => {
+      const labels: Record<string, string> = {};
+      for (let offset = 0; current && offset < keys.length; offset += 100) {
+        const batch = keys.slice(offset, offset + 100);
+        const query = new URLSearchParams();
+        for (const key of batch) query.append("references", key);
         try {
-          const page = await lookup(`${basePath}/${kind}?query=${encodeURIComponent(id)}&limit=10`);
-          const match = page.items.find((row) => row.id === id || row.client_id === id);
-          const label = match && resourceName(match);
-          if (current && label) setResult((existing) => ({ items, labels: { ...(existing?.items === items ? existing.labels : {}), [key]: label } }));
-        } catch { /* A denied name lookup must not hide the original record. */ }
+          const page = await lookup(`${basePath}/reference-labels?${query}`);
+          for (const row of page.items) {
+            const key = `${text(row.kind)}:${text(row.id)}`;
+            if (requests.has(key) && text(row.label)) labels[key] = text(row.label);
+          }
+        } catch { /* Missing or denied names retain explicit ID fallbacks. */ }
       }
-    };
-    void Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
+      if (current) setResult({ items, labels });
+    })();
     return () => { current = false; };
   }, [items, basePath, lookup]);
   return <Labels.Provider value={result?.items === items ? result.labels : {}}>{children}</Labels.Provider>;
@@ -79,7 +82,7 @@ export function ResourceSummary({ item, resource }: { item: Row; resource: strin
   } else if (resource === "events" || resource === "webhook-deliveries") {
     title = text(item.event_type || item.type) || (resource === "events" ? "Domain event" : "Webhook delivery");
     add(item.status, item.subject, item.endpoint_url || item.url, item.attempt_count !== undefined && `${text(item.attempt_count)} attempts`);
-    if (resource === "webhook-deliveries") add(item.response_status && `HTTP ${text(item.response_status)}`, item.webhook_id && `Endpoint · ${shortID(item.webhook_id)}`, item.event_id && `Event · ${shortID(item.event_id)}`, item.last_error);
+    if (resource === "webhook-deliveries") add(item.response_status && `HTTP ${text(item.response_status)}`, item.webhook_endpoint_id && `Endpoint: ${ref("webhooks", item.webhook_endpoint_id)}`, item.event_id && `Event · ${shortID(item.event_id)}`, item.response_excerpt);
   } else if (resource === "notifications") {
     title = text(item.subject || item.template_key || item.recipient) || "Notification";
     add(item.recipient || recipient, item.status, item.locale, item.attempt_count !== undefined && `${text(item.attempt_count)} attempts`, item.last_error);

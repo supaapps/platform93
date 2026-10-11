@@ -1915,6 +1915,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Application'
+  /v1/control/applications/{application_id}/reference-labels:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    get:
+      operationId: listApplicationReferenceLabels
+      tags: [Control]
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - name: references
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 100
+            items: {type: string, maxLength: 211, pattern: '^(users|workspaces|products|roles|clients|webhooks):.+$'}
+      responses:
+        '200':
+          description: Labels for existing resources in the authorized application
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReferenceLabelList'}
+        '422':
+          $ref: '#/components/responses/Problem'
   /v1/control/applications/{application_id}/statistics:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -9754,6 +9782,34 @@ components:
           type: string
           format: date-time
       additionalProperties: false
+    ReferenceLabel:
+      type: object
+      additionalProperties: false
+      required: [kind, id, label]
+      properties:
+        kind: {type: string, enum: [users, workspaces, products, roles, clients, webhooks]}
+        id: {type: string}
+        label: {type: string}
+    ReferenceLabelList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ReferenceLabel'}}
+    OrganizationUsage:
+      type: object
+      additionalProperties: false
+      required: [applications, users]
+      properties:
+        applications: {type: integer, format: int64, minimum: 0}
+        users: {type: integer, format: int64, minimum: 0}
+    ApplicationUsage:
+      type: object
+      additionalProperties: false
+      required: [users, workspaces]
+      properties:
+        users: {type: integer, format: int64, minimum: 0}
+        workspaces: {type: integer, format: int64, minimum: 0}
     Organization:
       type: object
       required:
@@ -9773,6 +9829,7 @@ components:
           format: int64
         role:
           type: string
+        usage: {$ref: '#/components/schemas/OrganizationUsage'}
         retired_at:
           type: [string, 'null']
           format: date-time
@@ -9808,6 +9865,7 @@ components:
           format: uri
         audience:
           type: string
+        usage: {$ref: '#/components/schemas/ApplicationUsage'}
         auth_config:
           type: object
           additionalProperties: true
@@ -11334,7 +11392,7 @@ components:
       required:
         - id
         - event_id
-        - webhook_id
+        - webhook_endpoint_id
         - status
         - attempt_count
         - created_at
@@ -11343,7 +11401,7 @@ components:
           $ref: '#/components/schemas/UUID'
         event_id:
           $ref: '#/components/schemas/UUID'
-        webhook_id:
+        webhook_endpoint_id:
           $ref: '#/components/schemas/UUID'
         status:
           enum:
@@ -11358,7 +11416,7 @@ components:
           type:
             - integer
             - 'null'
-        last_error:
+        response_excerpt:
           type:
             - string
             - 'null'
