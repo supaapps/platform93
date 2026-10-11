@@ -59,6 +59,7 @@ for (const viewport of [{ name: "desktop", width: 1280, height: 900 }, { name: "
       await expect(page.getByRole("button", { name: "Send sign-in code", exact: true })).toBeVisible();
       await expect(page.getByLabel("Code", { exact: true })).toHaveCount(0);
     }
+    expect(actions.find((action) => action.action === "signup")?.locale).toBe(await page.evaluate(() => navigator.language));
     expect(await page.evaluate(() => localStorage.length)).toBe(0);
   });
 }
@@ -70,6 +71,23 @@ test("split branding keeps its tagline accessible on an allowed gray background"
   await expect(page.locator(".hosted-brand > span")).toHaveCSS("color", "rgb(17, 24, 39)");
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations.filter((violation) => violation.id === "color-contrast")).toEqual([]);
+});
+
+test("hosted email signup carries browser locale without putting it into verification credentials", async ({ page }) => {
+  const actions: Record<string, unknown>[] = [];
+  await page.route(`**${endpoint}`, (route) => route.fulfill({ json: initial }));
+  await page.route(`**${endpoint}/actions`, (route) => {
+    const input = route.request().postDataJSON();
+    actions.push(input);
+    return route.fulfill({ json: { ...initial, stage: input.action === "email_start" ? "email_code" : "consent" } });
+  });
+  await page.goto(`/auth/?interaction=${interaction}`);
+  await page.getByLabel("Email address").fill("new@example.test");
+  await page.getByRole("button", { name: "Send sign-in code", exact: true }).click();
+  expect(actions[0]).toMatchObject({ action: "email_start", email: "new@example.test", locale: await page.evaluate(() => navigator.language) });
+  await page.getByLabel("Code", { exact: true }).fill("ABCDEFGH");
+  await page.getByRole("button", { name: "Verify and continue", exact: true }).click();
+  expect(actions[1]).not.toHaveProperty("locale");
 });
 
 test("cleans one-time provider return credentials before exchange and supports restart", async ({ page }) => {

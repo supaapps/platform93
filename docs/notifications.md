@@ -24,6 +24,16 @@ Application users have an optional free-text `locale` profile field. It can be
 updated through the current-user or control-plane user APIs and is also exposed as
 the standard `locale` OIDC profile claim. An empty value means no preference.
 
+For first passwordless signup, pass `locale` to `startEmail`, for example
+`{ email, intent: "sign_up", delivery: "both", locale: "de-CH" }`. The server
+validates and canonicalizes it, uses it for the initial email, and stores it on
+the one-time challenge. Successful signup saves the requested locale on the new
+user even if the email fell back to a different translation. The hosted signup
+page supplies the browser language for email and password registration.
+Existing users retain their saved locale; login never changes their profile.
+If no locale is supplied, normal template fallback applies. Social account
+creation does not automatically import a provider locale in this change.
+
 When a message is queued, Platform93 resolves localization in this order:
 
 1. The explicit `locale` on the queue request, when present.

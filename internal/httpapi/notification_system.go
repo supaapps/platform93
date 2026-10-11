@@ -72,7 +72,7 @@ func (s *Server) renderSystemNotification(ctx context.Context, applicationID *st
 			variables["support_url"] = strings.TrimSpace(toString(publicConfig["support_url"]))
 			var recipientLocale string
 			if s.app.DB.QueryRow(ctx, `SELECT locale FROM users WHERE application_id=$1 AND normalized_email=$2 AND status='active'`,
-				*applicationID, recipient).Scan(&recipientLocale) == nil {
+				*applicationID, recipient).Scan(&recipientLocale) == nil && recipientLocale != "" {
 				preferredLocale = recipientLocale
 				variables["user_locale"] = recipientLocale
 			}

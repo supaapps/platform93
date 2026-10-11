@@ -318,8 +318,15 @@ func (s *Server) emailStart(w http.ResponseWriter, r *http.Request) {
 		Intent      string `json:"intent"`
 		Delivery    string `json:"delivery"`
 		RedirectURI string `json:"redirect_uri,omitempty"`
+		Locale      string `json:"locale,omitempty"`
 	}
 	if !kernel.DecodeJSON(w, r, &request) {
+		return
+	}
+	var localeErr error
+	request.Locale, localeErr = normalizeNotificationLocale(request.Locale)
+	if localeErr != nil {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_user_locale", localeErr.Error())
 		return
 	}
 	if !s.authFlag(r, "passwordless_enabled") {
@@ -387,6 +394,7 @@ WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris))`, chi
 	applicationIDString := applicationID.String()
 	templateID, templateLocale, payload, renderErr := s.renderSystemNotification(r.Context(), &applicationIDString, applicationSignInTemplate, request.Email, map[string]any{
 		"code": deliveredCode, "magic_link": magicLink, "expires_minutes": 10, "intent": request.Intent,
+		"user_locale": request.Locale,
 	})
 	if renderErr != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "challenge_template_unavailable", "The application sign-in email template is unavailable or invalid.")
@@ -399,9 +407,9 @@ WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris))`, chi
 	}
 	defer rollback(tx, r.Context())
 	_, err = tx.Exec(r.Context(), `INSERT INTO login_challenges
-(id,application_id,normalized_email,intent,code_digest,link_digest,redirect_uri,expires_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, id, applicationID, normalizedEmail, request.Intent,
-		codeDigest, linkDigest, request.RedirectURI, s.app.Now().Add(10*time.Minute))
+(id,application_id,normalized_email,intent,code_digest,link_digest,redirect_uri,expires_at,locale)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, id, applicationID, normalizedEmail, request.Intent,
+		codeDigest, linkDigest, request.RedirectURI, s.app.Now().Add(10*time.Minute), request.Locale)
 	if err == nil {
 		ciphertext, encryptErr := s.app.Vault.Encrypt(payload, "notification:"+id.String())
 		if encryptErr == nil {
@@ -440,11 +448,11 @@ func (s *Server) emailVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollback(tx, r.Context())
-	var normalized, intent string
+	var normalized, intent, locale string
 	var codeDigest, linkDigest []byte
 	var attempts int
-	err = tx.QueryRow(r.Context(), `SELECT normalized_email,intent,code_digest,link_digest,attempts FROM login_challenges
-WHERE id=$1 AND application_id=$2 AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`, request.ChallengeID, chi.URLParam(r, "application_id")).Scan(&normalized, &intent, &codeDigest, &linkDigest, &attempts)
+	err = tx.QueryRow(r.Context(), `SELECT normalized_email,intent,code_digest,link_digest,attempts,locale FROM login_challenges
+WHERE id=$1 AND application_id=$2 AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`, request.ChallengeID, chi.URLParam(r, "application_id")).Scan(&normalized, &intent, &codeDigest, &linkDigest, &attempts, &locale)
 	valid := err == nil && attempts < 8 && ((request.Code != "" && equalBytes(codeDigest, s.app.Vault.Digest(strings.ToUpper(request.Code)))) || (request.LinkToken != "" && equalBytes(linkDigest, s.app.Vault.Digest(request.LinkToken))))
 	if !valid {
 		if err == nil {
@@ -458,8 +466,8 @@ WHERE id=$1 AND application_id=$2 AND consumed_at IS NULL AND expires_at>now() F
 	err = tx.QueryRow(r.Context(), "SELECT id FROM users WHERE application_id=$1 AND normalized_email=$2", chi.URLParam(r, "application_id"), normalized).Scan(&userID)
 	if err != nil && (intent == "sign_up" || intent == "automatic") && s.registrationEnabled(r) {
 		userID = kernel.NewID().String()
-		_, err = tx.Exec(r.Context(), `INSERT INTO users (id,application_id,email,normalized_email,email_verified_at)
-VALUES ($1,$2,$3,$3,now())`, userID, chi.URLParam(r, "application_id"), normalized)
+		_, err = tx.Exec(r.Context(), `INSERT INTO users (id,application_id,email,normalized_email,email_verified_at,locale)
+VALUES ($1,$2,$3,$3,now(),$4)`, userID, chi.URLParam(r, "application_id"), normalized, locale)
 	}
 	if err != nil || intent == "sign_up" && userID == "" {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "account_unavailable", "The account is unavailable for this flow.")

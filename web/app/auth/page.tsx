@@ -108,7 +108,7 @@ export default function HostedAuthentication() {
     event.preventDefault(); const form = event.currentTarget; const fields = Object.fromEntries(new FormData(form));
     const stage = view?.stage;
     const operation = stage === "recovery" ? "reset_verify" : stage === "mfa" ? "mfa" : stage === "email_code" ? "email_verify" : stage === "external_email" ? (fields.code ? "external_email_verify" : "external_email_start") : method === "email" ? "email_start" : method === "recovery" ? "reset_start" : method === "invite" ? "invitation" : method === "signup" ? "signup" : "password";
-    const result = await action({ ...fields, action: operation });
+    const result = await action({ ...fields, action: operation, ...((operation === "email_start" || operation === "signup") ? { locale: navigator.language } : {}) });
     if (result && !('redirect_url' in result)) {
       form.reset();
       if (operation === "reset_start") setNotice("If the account is available, a recovery code has been sent.");

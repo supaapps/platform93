@@ -71,6 +71,7 @@ export type HostedAuthAction = {
     email?: string;
     first_name?: string;
     last_name?: string;
+    locale?: Locale;
     provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     intent?: 'automatic' | 'sign_in' | 'sign_up';
     invitation_id?: Uuid;
@@ -1981,6 +1982,10 @@ export type EmailStart = {
     intent: 'sign_in' | 'sign_up' | 'automatic';
     delivery: 'code' | 'link' | 'both';
     redirect_uri?: string;
+    /**
+     * Preferred locale for first signup delivery and the newly created user. An existing user's saved preference takes precedence and is never overwritten.
+     */
+    locale?: Locale;
 };
 
 export type EmailVerify = {
@@ -2376,6 +2381,7 @@ export type HostedAuthActionWritable = {
     password?: string;
     first_name?: string;
     last_name?: string;
+    locale?: Locale;
     code?: string;
     recovery_code?: string;
     provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';

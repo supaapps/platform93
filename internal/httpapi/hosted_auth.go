@@ -59,6 +59,7 @@ type hostedActionRequest struct {
 	Password     string          `json:"password,omitempty"`
 	FirstName    string          `json:"first_name,omitempty"`
 	LastName     string          `json:"last_name,omitempty"`
+	Locale       string          `json:"locale,omitempty"`
 	Code         string          `json:"code,omitempty"`
 	RecoveryCode string          `json:"recovery_code,omitempty"`
 	Provider     string          `json:"provider,omitempty"`
@@ -495,14 +496,14 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 		body = map[string]any{"email": input.Email, "password": input.Password}
 		handler = s.passwordSignIn
 	case "signup":
-		body = map[string]any{"email": input.Email, "password": input.Password, "first_name": input.FirstName, "last_name": input.LastName}
+		body = map[string]any{"email": input.Email, "password": input.Password, "first_name": input.FirstName, "last_name": input.LastName, "locale": input.Locale}
 		handler = s.passwordSignUp
 	case "email_start":
 		intent := input.Intent
 		if intent == "" {
 			intent = "automatic"
 		}
-		body = map[string]any{"email": input.Email, "intent": intent, "delivery": "both", "redirect_uri": callback}
+		body = map[string]any{"email": input.Email, "intent": intent, "delivery": "both", "redirect_uri": callback, "locale": input.Locale}
 		handler = s.emailStart
 	case "email_verify":
 		body = map[string]any{"challenge_id": i.Private.EmailChallenge, "code": input.Code}
