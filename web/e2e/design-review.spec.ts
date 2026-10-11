@@ -37,7 +37,7 @@ async function mock(page: Page, mode: "admin" | "login" | "setup" = "admin") {
     else if (resource === "statistics") body = { users: { active: 128, suspended: 2 }, workspaces: 12, active_entitlements: 96, pending_local_requests: 3, live_subscriptions: 42, active_products: 4, notification_failures: 1, webhook_failures: 0, events_last_24_hours: 185 };
     else if (resource === "auth-branding") body = { configuration: {}, effective: {}, version: 0 };
     else if (resource === "reference-labels") {
-      const labels: Record<string, string> = { [`users:${user.id}`]: "Alex Morgan", [`workspaces:${workspace.id}`]: workspace.name, [`products:${product.id}`]: product.name, [`roles:${id(10)}`]: "Editor", [`clients:${client.client_id}`]: client.name, [`webhooks:${id(28)}`]: "https://events.example.test/hook", [`webhooks:${id(34)}`]: "https://events.example.test/hook" };
+      const labels: Record<string, string> = { [`users:${user.id}`]: "Alex Morgan", [`workspaces:${workspace.id}`]: workspace.name, [`products:${product.id}`]: product.name, [`roles:${id(10)}`]: "Editor", [`clients:${client.client_id}`]: client.name, [`clients:${client.id}`]: client.name, [`webhooks:${id(28)}`]: "https://events.example.test/hook", [`webhooks:${id(34)}`]: "https://events.example.test/hook" };
       body = { items: url.searchParams.getAll("references").filter((key) => labels[key]).map((key) => ({ kind: key.slice(0, key.indexOf(":")), id: key.slice(key.indexOf(":") + 1), label: labels[key] })) };
     }
     else if (resource === "management-api") body = { enabled: false, can_manage: true, active_clients: 0, token_endpoint: "https://platform.example.test/oidc/token", api_base: "https://platform.example.test/v1" };
@@ -111,7 +111,7 @@ test("overview counts and resource rows explain records rather than repeat UUIDs
 
 test("unavailable references retain meaningful context without hiding rows", async ({ page }) => {
   await mock(page);
-  await page.route("**/users?query=**", (route) => route.fulfill({ status: 403, json: { status: 403, title: "Forbidden" } }));
+  await page.route("**/reference-labels?**", (route) => route.fulfill({ json: { items: [{ kind: "workspaces", id: workspace.id, label: workspace.name }, { kind: "roles", id: id(10), label: "Editor" }] } }));
   await page.goto(applicationRoute("identity", "role-assignments"));
   await expect(page.locator(".table article").first()).toContainText("editor");
   await expect(page.locator(".table article").first()).toContainText("user · 00000003");
