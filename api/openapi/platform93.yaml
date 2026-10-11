@@ -9128,6 +9128,7 @@ components:
         password: {type: string, writeOnly: true}
         first_name: {type: string}
         last_name: {type: string}
+        locale: {$ref: '#/components/schemas/Locale'}
         code: {type: string, writeOnly: true}
         recovery_code: {type: string, writeOnly: true}
         provider: {type: string, enum: [google, apple, microsoft, facebook, linkedin]}
@@ -14639,6 +14640,9 @@ components:
         redirect_uri:
           type: string
           format: uri
+        locale:
+          $ref: '#/components/schemas/Locale'
+          description: Preferred locale for first signup delivery and the newly created user. An existing user's saved preference takes precedence and is never overwritten.
       additionalProperties: false
     EmailVerify:
       type: object

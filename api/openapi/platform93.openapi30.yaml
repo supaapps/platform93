@@ -9359,6 +9359,8 @@ components:
           type: string
         last_name:
           type: string
+        locale:
+          $ref: '#/components/schemas/Locale'
         code:
           type: string
           writeOnly: true
@@ -14911,6 +14913,11 @@ components:
         redirect_uri:
           type: string
           format: uri
+        locale:
+          $ref: '#/components/schemas/Locale'
+          description: >-
+            Preferred locale for first signup delivery and the newly created user. An existing user's saved preference takes precedence and is never
+            overwritten.
       additionalProperties: false
     EmailVerify:
       type: object
