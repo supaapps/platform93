@@ -90,7 +90,7 @@ export function ResourceSummary({ item, resource }: { item: Row; resource: strin
     title = text(item.email || item.recipient_email) || "Invitation";
     add(item.status, item.workspace_id ? ref("workspaces", item.workspace_id) : "Application invitation", Array.isArray(item.application_role_keys) && item.application_role_keys.join(", "), Array.isArray(item.workspace_role_keys) && item.workspace_role_keys.join(", "), item.expires_at && `Expires ${formatDate(item.expires_at)}`);
   } else if (resource === "webhooks") {
-    title ||= text(item.url || item.endpoint_url) || "Webhook endpoint";
+    title ||= text(item.uri || item.url || item.endpoint_url) || "Webhook endpoint";
     add(item.disabled_at ? "Disabled" : "Enabled", Array.isArray(item.event_filters) && item.event_filters.join(", "));
   } else if (resource === "notification-templates") {
     title = `${text(item.key)} · ${text(item.locale) || "en"}`;

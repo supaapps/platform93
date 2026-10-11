@@ -160,6 +160,10 @@ test("audit actor types, delivery failures and billing amounts stay understandab
   await expect(rows.first()).toContainText("3 attempts");
   await expect(rows.first()).toContainText("Destination unavailable");
 
+  await page.route(`**/v1/control/applications/${app.id}/webhooks`, (route) => route.fulfill({ json: { items: [{ id: id(34), uri: "https://events.example.test/hook", event_filters: ["user.updated"] }], next_cursor: null } }));
+  await page.goto(applicationRoute("webhooks", "webhooks"));
+  await expect(rows.first()).toContainText("https://events.example.test/hook");
+
   await page.route(`**/v1/control/applications/${app.id}/billing/payments`, (route) => route.fulfill({ json: { items: [{ id: id(36), provider_payment_id: "pi_example", subject_type: "user", subject_id: user.id, amount_minor: 1250, currency: "eur", status: "succeeded", created_at: "2026-10-09T09:30:00Z" }], next_cursor: null } }));
   await page.goto(applicationRoute("billing", "billing/payments"));
   await expect(rows.first()).toContainText("pi_example");

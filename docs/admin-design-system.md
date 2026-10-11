@@ -42,13 +42,15 @@ authorized catalog. Billing amounts use the currency's minor-unit precision;
 delivery rows include attempts, response status and available failure messages.
 Invitation rows show recipient, workspace, assigned roles and expiry.
 
-`ResourceLabels` resolves referenced users, workspaces, products and roles only
-through existing application-scoped authorized searches. Lookups are deduplicated
-and limited to four concurrent requests. Removed or inaccessible references retain
+`ResourceLabels` resolves referenced users, workspaces, products, roles, clients,
+and webhook endpoints through the authorized application-scoped `reference-labels`
+endpoint. Lookups are deduplicated and batched in groups of at most 100 references.
+Removed or inaccessible references retain
 a resource-type/short-ID fallback without hiding the record or emitting a toast.
 
-Organization cards show authoritative policy usage (active applications and
-provisioned users). Application cards use the existing statistics API. List hints
+Organization and application cards use aggregated usage from their authorized list
+responses, without per-card requests. Organization usage counts active applications
+and provisioned users; application usage counts active users and workspaces. List hints
 describe the currently loaded page and never imply installation-wide totals.
 Unavailable counts are labeled unavailable rather than displayed as zero.
 
