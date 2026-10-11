@@ -53,10 +53,21 @@ func (s *Server) createOrganization(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listOrganizations(w http.ResponseWriter, r *http.Request) {
 	includeRetired := r.URL.Query().Get("include_retired") == "true"
 	installationRole, installationAccess := s.installationRole(r)
-	rows, err := s.app.DB.Query(r.Context(), `SELECT o.id,o.name,o.slug,o.version,o.created_at,o.updated_at,
-COALESCE(m.role,$4),o.deleted_at FROM organizations o
+	rows, err := s.app.DB.Query(r.Context(), `WITH visible AS (
+SELECT o.*,COALESCE(m.role,$4) AS access_role FROM organizations o
 LEFT JOIN organization_memberships m ON m.organization_id=o.id AND m.control_user_id=$1
-WHERE ($3 OR m.control_user_id IS NOT NULL) AND ($2 OR o.deleted_at IS NULL) ORDER BY o.created_at,o.id`, actor(r).ID, includeRetired, installationAccess, "installation:"+installationRole)
+WHERE ($3 OR m.control_user_id IS NOT NULL) AND ($2 OR o.deleted_at IS NULL)
+), app_counts AS (
+SELECT a.organization_id,count(*) AS total FROM applications a JOIN visible v ON v.id=a.organization_id
+WHERE a.deleted_at IS NULL GROUP BY a.organization_id
+), user_counts AS (
+SELECT a.organization_id,count(*) AS total FROM users u JOIN applications a ON a.id=u.application_id
+JOIN visible v ON v.id=a.organization_id WHERE u.status<>'deleted' GROUP BY a.organization_id
+)
+SELECT o.id,o.name,o.slug,o.version,o.created_at,o.updated_at,o.access_role,o.deleted_at,
+COALESCE(a.total,0),COALESCE(u.total,0) FROM visible o
+LEFT JOIN app_counts a ON a.organization_id=o.id LEFT JOIN user_counts u ON u.organization_id=o.id
+ORDER BY o.created_at,o.id`, actor(r).ID, includeRetired, installationAccess, "installation:"+installationRole)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Organizations could not be loaded.")
 		return
@@ -68,8 +79,9 @@ WHERE ($3 OR m.control_user_id IS NOT NULL) AND ($2 OR o.deleted_at IS NULL) ORD
 		var created, updated time.Time
 		var retiredAt *time.Time
 		var version int64
-		if rows.Scan(&id, &name, &slug, &version, &created, &updated, &role, &retiredAt) == nil {
-			items = append(items, map[string]any{"id": id, "name": name, "slug": slug, "version": version, "role": role, "created_at": created, "updated_at": updated, "retired_at": retiredAt})
+		var applications, users int64
+		if rows.Scan(&id, &name, &slug, &version, &created, &updated, &role, &retiredAt, &applications, &users) == nil {
+			items = append(items, map[string]any{"id": id, "name": name, "slug": slug, "version": version, "role": role, "created_at": created, "updated_at": updated, "retired_at": retiredAt, "usage": map[string]int64{"applications": applications, "users": users}})
 		}
 	}
 	var currentInstallationRole any
@@ -231,8 +243,18 @@ func (s *Server) listApplications(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "organization_not_found", "The organization was not found.")
 		return
 	}
-	rows, err := s.app.DB.Query(r.Context(), `SELECT id,name,slug,version,created_at,deleted_at FROM applications
-WHERE organization_id=$1 AND ($2 OR deleted_at IS NULL) ORDER BY created_at,id`, chi.URLParam(r, "organization_id"), includeRetired)
+	rows, err := s.app.DB.Query(r.Context(), `WITH visible AS (
+SELECT * FROM applications WHERE organization_id=$1 AND ($2 OR deleted_at IS NULL)
+), user_counts AS (
+SELECT u.application_id,count(*) AS total FROM users u JOIN visible a ON a.id=u.application_id
+WHERE u.status='active' GROUP BY u.application_id
+), workspace_counts AS (
+SELECT w.application_id,count(*) AS total FROM workspaces w JOIN visible a ON a.id=w.application_id
+WHERE w.deleted_at IS NULL GROUP BY w.application_id
+)
+SELECT a.id,a.name,a.slug,a.version,a.created_at,a.deleted_at,COALESCE(u.total,0),COALESCE(w.total,0)
+FROM visible a LEFT JOIN user_counts u ON u.application_id=a.id
+LEFT JOIN workspace_counts w ON w.application_id=a.id ORDER BY a.created_at,a.id`, chi.URLParam(r, "organization_id"), includeRetired)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Applications could not be loaded.")
 		return
@@ -244,8 +266,9 @@ WHERE organization_id=$1 AND ($2 OR deleted_at IS NULL) ORDER BY created_at,id`,
 		var version int64
 		var created time.Time
 		var retiredAt *time.Time
-		if rows.Scan(&id, &name, &slug, &version, &created, &retiredAt) == nil {
-			items = append(items, map[string]any{"id": id, "organization_id": chi.URLParam(r, "organization_id"), "name": name, "slug": slug, "issuer": s.app.Issuer(), "audience": "platform93:application:" + id, "version": version, "created_at": created, "retired_at": retiredAt})
+		var users, workspaces int64
+		if rows.Scan(&id, &name, &slug, &version, &created, &retiredAt, &users, &workspaces) == nil {
+			items = append(items, map[string]any{"id": id, "organization_id": chi.URLParam(r, "organization_id"), "name": name, "slug": slug, "issuer": s.app.Issuer(), "audience": "platform93:application:" + id, "version": version, "created_at": created, "retired_at": retiredAt, "usage": map[string]int64{"users": users, "workspaces": workspaces}})
 		}
 	}
 	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})

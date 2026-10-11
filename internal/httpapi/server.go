@@ -190,6 +190,7 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Post("/control/organizations/{organization_id}/applications/{application_resource_id}/restore", s.restoreApplication)
 			r.Get("/control/applications/{application_id}", s.getApplication)
 			r.Get("/control/applications/{application_id}/statistics", s.applicationStatistics)
+			r.Get("/control/applications/{application_id}/reference-labels", s.listReferenceLabels)
 			r.Patch("/control/applications/{application_id}/public-config", s.updatePublicApplicationConfig)
 			r.Patch("/control/applications/{application_id}/internal-config", s.updateInternalApplicationConfig)
 			r.Patch("/control/applications/{application_id}/auth-config", s.updateAuthConfig)

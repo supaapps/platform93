@@ -301,12 +301,33 @@ export type ManagementClient = {
     updated_at?: string;
 };
 
+export type ReferenceLabel = {
+    kind: 'users' | 'workspaces' | 'products' | 'roles' | 'clients' | 'webhooks';
+    id: string;
+    label: string;
+};
+
+export type ReferenceLabelList = {
+    items: Array<ReferenceLabel>;
+};
+
+export type OrganizationUsage = {
+    applications: number;
+    users: number;
+};
+
+export type ApplicationUsage = {
+    users: number;
+    workspaces: number;
+};
+
 export type Organization = {
     id: Uuid;
     slug: string;
     name: string;
     version: number;
     role?: string;
+    usage?: OrganizationUsage;
     retired_at?: string | null;
     created_at?: string;
     updated_at?: string;
@@ -320,6 +341,7 @@ export type Application = {
     version: number;
     issuer?: string;
     audience?: string;
+    usage?: ApplicationUsage;
     auth_config?: {
         [key: string]: unknown;
     };
@@ -833,11 +855,11 @@ export type Webhook = {
 export type WebhookDelivery = {
     id: Uuid;
     event_id: Uuid;
-    webhook_id: Uuid;
+    webhook_endpoint_id: Uuid;
     status: 'pending' | 'delivered' | 'failed' | 'dead';
     attempt_count: number;
     response_status?: number | null;
-    last_error?: string | null;
+    response_excerpt?: string | null;
     next_attempt_at?: string | null;
     created_at: string;
     delivered_at?: string | null;
@@ -4996,6 +5018,35 @@ export type GetApplicationResponses = {
 };
 
 export type GetApplicationResponse = GetApplicationResponses[keyof GetApplicationResponses];
+
+export type ListApplicationReferenceLabelsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query: {
+        references: Array<string>;
+    };
+    url: '/v1/control/applications/{application_id}/reference-labels';
+};
+
+export type ListApplicationReferenceLabelsErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+};
+
+export type ListApplicationReferenceLabelsError = ListApplicationReferenceLabelsErrors[keyof ListApplicationReferenceLabelsErrors];
+
+export type ListApplicationReferenceLabelsResponses = {
+    /**
+     * Labels for existing resources in the authorized application
+     */
+    200: ReferenceLabelList;
+};
+
+export type ListApplicationReferenceLabelsResponse = ListApplicationReferenceLabelsResponses[keyof ListApplicationReferenceLabelsResponses];
 
 export type GetApplicationStatisticsData = {
     body?: never;
