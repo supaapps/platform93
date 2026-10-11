@@ -16,6 +16,7 @@ type View = {
   user?: { name: string; email: string; email_verified: boolean }; consent_required: boolean; mfa_methods: string[];
   requested_scopes: string[]; providers: string[]; password_enabled: boolean;
   passwordless_enabled: boolean; registration_enabled: boolean; ui_locales: string;
+  verification_pending?: boolean;
 };
 type Result = View | { redirect_url: string };
 type PasskeyOptions = { options: { publicKey: Omit<PublicKeyCredentialRequestOptions, "challenge" | "allowCredentials"> & { challenge: string; allowCredentials?: { id: string; type: "public-key"; transports?: AuthenticatorTransport[] }[] } } };
@@ -37,7 +38,7 @@ export default function HostedAuthentication() {
   const [busy, setBusy] = useState(false);
   const [method, setMethod] = useState<Method>("email");
   const recoverySent = view?.stage === "recovery";
-  const [verificationSent, setVerificationSent] = useState(false);
+  const verificationSent = view?.verification_pending === true;
   const initial = useRef(false);
   const base = useRef("");
 
@@ -108,7 +109,7 @@ export default function HostedAuthentication() {
     if (result && !('redirect_url' in result)) {
       form.reset();
       if (operation === "reset_start") setNotice("If the account is available, a recovery code has been sent.");
-      if (operation === "reset_verify") { setMethod("password"); setNotice("Password updated. Sign in with your new password."); }
+      if (operation === "reset_verify") { setMethod("password"); setNotice("Password updated. Continue to complete sign-in."); }
       if (operation === "external_email_start") setNotice("Enter the code sent to your email address.");
     }
   }
@@ -145,7 +146,7 @@ export default function HostedAuthentication() {
       {notice && <div className="hosted-feedback" role="status">{notice}</div>}
       {view.stage === "consent" ? <div className="hosted-consent">
         <p>Signed in as <strong>{view.user?.name || view.user?.email}</strong><small>{view.user?.email}</small></p>
-        {view.user && !view.user.email_verified && <details><summary>Verify your email address</summary>{verificationSent ? <form onSubmit={(event) => { event.preventDefault(); const code = new FormData(event.currentTarget).get("code"); void action({ action: "verify_email", code }).then((result) => { if (result) { setVerificationSent(false); setNotice("Email verified."); } }); }}><label>Verification code<input required name="code" maxLength={8} autoComplete="one-time-code" /></label><button disabled={busy}>Verify email</button></form> : <button disabled={busy} onClick={() => void action({ action: "verify_email_start" }).then((result) => { if (result) { setVerificationSent(true); setNotice("A verification code has been sent."); } })}>Send verification code</button>}</details>}
+        {view.user && !view.user.email_verified && <details open={verificationSent}><summary>Verify your email address</summary>{verificationSent ? <form onSubmit={(event) => { event.preventDefault(); const code = new FormData(event.currentTarget).get("code"); void action({ action: "verify_email", code }).then((result) => { if (result) setNotice("Email verified."); }); }}><label>Verification code<input required name="code" maxLength={8} autoComplete="one-time-code" /></label><button disabled={busy}>Verify email</button></form> : <button disabled={busy} onClick={() => void action({ action: "verify_email_start" }).then((result) => { if (result) setNotice("A verification code has been sent."); })}>Send verification code</button>}</details>}
         {view.consent_required && <><p>This application requests:</p><ul>{view.requested_scopes.map((scope) => <li key={scope}>{({ openid: "Your account identifier", email: "Your email and verification status", profile: "Your name and profile", offline_access: "Access while you are away" } as Record<string, string>)[scope] || scope}</li>)}</ul></>}
         {view.requested_scopes.includes("email") && !view.user?.email_verified && <p>Verify your email before sharing it with this application.</p>}
         <button className="hosted-primary" disabled={busy || view.requested_scopes.includes("email") && !view.user?.email_verified} onClick={() => void action({ action: "approve" })}>{busy ? "Continuing..." : "Continue"}</button>

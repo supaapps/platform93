@@ -47,6 +47,7 @@ export type HostedAuthView = {
     stage: 'login' | 'email_code' | 'mfa' | 'external_email' | 'consent' | 'invitation' | 'recovery';
     user?: HostedAuthUser;
     consent_required: boolean;
+    verification_pending?: boolean;
     requested_scopes: Array<string>;
     providers: Array<string>;
     password_enabled: boolean;

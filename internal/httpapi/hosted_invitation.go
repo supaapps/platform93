@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -34,7 +35,7 @@ func (s *Server) startHostedInvitation(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, 400, "invalid_invitation", "The invitation is unavailable.")
 		return
 	}
-	if !s.allowAuthAttempt(w, r, "hosted-invitation", id, 10, 5*time.Minute) {
+	if !s.allowAuthAttempt(w, r, "hosted-invitation", id+":"+hex.EncodeToString(s.app.Vault.Digest(r.URL.Query().Get("link_token"))), 10, 5*time.Minute) {
 		return
 	}
 	var app, clientDatabaseID, callback, onboarding string

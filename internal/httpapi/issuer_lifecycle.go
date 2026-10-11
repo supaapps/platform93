@@ -88,9 +88,9 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 	result, err := s.app.DB.Exec(r.Context(), `UPDATE clients SET name=COALESCE($1,name),
 redirect_uris=CASE WHEN $2::text[] IS NULL THEN redirect_uris ELSE $2 END,
 allowed_grants=CASE WHEN $3::text[] IS NULL THEN allowed_grants ELSE $3 END,
-allowed_scopes=CASE WHEN $4::text[] IS NULL THEN allowed_scopes ELSE $4 END,authorization_ui=$7,pkce_required=$8,initiate_login_uri=COALESCE($9,initiate_login_uri),updated_at=now()
+allowed_scopes=CASE WHEN $4::text[] IS NULL THEN allowed_scopes ELSE $4 END,authorization_ui=COALESCE($7,authorization_ui),pkce_required=COALESCE($8,pkce_required),initiate_login_uri=COALESCE($9,initiate_login_uri),updated_at=now()
 WHERE application_id=$5 AND client_id=$6 AND disabled_at IS NULL`, request.Name, request.RedirectURIs,
-		request.AllowedGrants, request.AllowedScopes, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"), ui, required, request.InitiateLoginURI)
+		request.AllowedGrants, request.AllowedScopes, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"), request.AuthorizationUI, request.PKCERequired, request.InitiateLoginURI)
 	if err != nil || result.RowsAffected() != 1 {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "client_not_found", "The client was not found.")
 		return

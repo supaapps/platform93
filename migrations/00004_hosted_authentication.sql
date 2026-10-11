@@ -51,6 +51,8 @@ CREATE TABLE hosted_auth_sessions (
   ,FOREIGN KEY(application_id,session_id) REFERENCES user_sessions(application_id,id) ON DELETE CASCADE
 );
 
+CREATE INDEX hosted_auth_sessions_expiry ON hosted_auth_sessions(expires_at);
+
 -- +goose Down
 DROP TABLE hosted_auth_sessions;
 DROP TABLE hosted_auth_interactions;

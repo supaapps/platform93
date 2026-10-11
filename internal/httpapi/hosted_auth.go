@@ -403,6 +403,7 @@ func (s *Server) writeHostedView(w http.ResponseWriter, r *http.Request, i *host
 		view["user"] = profile
 	}
 	view["mfa_methods"] = append([]string{}, i.Private.MFAMethods...)
+	view["verification_pending"] = i.Private.VerificationChallenge != ""
 	kernel.WriteJSON(w, 200, view)
 }
 
@@ -612,6 +613,9 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.Action == "verify_email_start" {
 		i.Private.VerificationChallenge, _ = result["challenge_id"].(string)
+	}
+	if input.Action == "verify_email" {
+		i.Private.VerificationChallenge = ""
 	}
 	if input.Action == "provider" {
 		if e := s.saveHostedState(r, i); e != nil {

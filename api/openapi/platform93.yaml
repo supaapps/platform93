@@ -9066,6 +9066,7 @@ components:
         stage: {type: string, enum: [login, email_code, mfa, external_email, consent, invitation, recovery]}
         user: {$ref: '#/components/schemas/HostedAuthUser'}
         consent_required: {type: boolean}
+        verification_pending: {type: boolean}
         requested_scopes: {type: array, items: {type: string}}
         providers: {type: array, items: {type: string}}
         password_enabled: {type: boolean}

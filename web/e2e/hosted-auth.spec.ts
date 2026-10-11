@@ -80,7 +80,7 @@ test("password recovery resumes its code and new-password form after reload", as
   await page.route(`**${endpoint}/actions`, async (route) => {
     const body = route.request().postDataJSON();
     if (body.action === "reset_start") view = { ...initial, stage: "recovery" };
-    else { expect(body).toMatchObject({ action: "reset_verify", code: "ABCDEFGH", password: "New disposable password!" }); view = initial; }
+    else { expect(body).toMatchObject({ action: "reset_verify", code: "ABCDEFGH", password: "New disposable password!" }); view = { ...initial, stage: "consent", user: { name: "Example User", email: "user@example.test", email_verified: true } }; }
     await route.fulfill({ json: view });
   });
   await page.goto(`/auth/?interaction=${interaction}`);
@@ -93,5 +93,27 @@ test("password recovery resumes its code and new-password form after reload", as
   await page.getByLabel("Code", { exact: true }).fill("ABCDEFGH");
   await page.getByLabel("New password").fill("New disposable password!");
   await page.getByRole("button", { name: "Set new password" }).click();
-  await expect(page.getByText("Password updated. Sign in with your new password.")).toBeVisible();
+  await expect(page.getByText("Password updated. Continue to complete sign-in.")).toBeVisible();
+  await expect(page.getByText("Signed in as")).toBeVisible();
+});
+
+test("email verification resumes its pending code after reload", async ({ page }) => {
+  let view = { ...initial, stage: "consent", user: { name: "Example User", email: "user@example.test", email_verified: false }, verification_pending: false };
+  await page.route(`**${endpoint}`, (route) => route.fulfill({ json: view }));
+  await page.route(`**${endpoint}/actions`, async (route) => {
+    const body = route.request().postDataJSON();
+    if (body.action === "verify_email_start") view = { ...view, verification_pending: true };
+    else {
+      expect(body).toMatchObject({ action: "verify_email", code: "ABCDEFGH" });
+      view = { ...view, verification_pending: false, user: { ...view.user, email_verified: true } };
+    }
+    await route.fulfill({ json: view });
+  });
+  await page.goto(`/auth/?interaction=${interaction}`);
+  await page.getByText("Verify your email address", { exact: true }).click();
+  await page.getByRole("button", { name: "Send verification code" }).click();
+  await page.reload();
+  await page.getByLabel("Verification code").fill("ABCDEFGH");
+  await page.getByRole("button", { name: "Verify email", exact: true }).click();
+  await expect(page.getByText("Email verified.", { exact: true })).toBeVisible();
 });

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/supaapps/platform93/internal/database"
 	"github.com/supaapps/platform93/internal/identity"
@@ -117,6 +118,29 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 		t.Fatalf("silent unauthenticated: %d %s", w.Code, w.Header().Get("Location"))
 	}
 	params.Del("prompt")
+	t.Run("client patches preserve omitted hosted policy", func(t *testing.T) {
+		patch := func(body string) {
+			r := httptest.NewRequest("PATCH", "/", strings.NewReader(body))
+			r.Header.Set("Content-Type", "application/json")
+			params := chi.NewRouteContext()
+			params.URLParams.Add("application_id", application)
+			params.URLParams.Add("client_id", client)
+			r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, params))
+			w := httptest.NewRecorder()
+			(&Server{app: app}).updateClient(w, r)
+			if w.Code != http.StatusNoContent {
+				t.Fatalf("patch: %d %s", w.Code, w.Body.String())
+			}
+		}
+		patch(`{"pkce_required":true}`)
+		patch(`{"name":"Renamed client"}`)
+		var required bool
+		var ui string
+		if err := db.QueryRow(ctx, `SELECT pkce_required,authorization_ui FROM clients WHERE id=$1`, client).Scan(&required, &ui); err != nil || !required || ui != "hosted" {
+			t.Fatalf("omitted policy changed: %v %s %v", required, ui, err)
+		}
+		patch(`{"pkce_required":false}`)
+	})
 	w = call("GET", "/oidc/authorize?"+params.Encode(), "", "", "application/json")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"interaction":"consent"`) {
 		t.Fatalf("headless: %d %s", w.Code, w.Body.String())
@@ -349,7 +373,16 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer db.Exec(ctx, `DELETE FROM application_invitations WHERE id=$1`, invitation)
+		for attempt := 0; attempt < 11; attempt++ {
+			invalid := call("GET", "/auth/invitations/"+invitation+"?link_token=invalid-token", "", "", "text/html")
+			if attempt == 10 && invalid.Code != http.StatusTooManyRequests {
+				t.Fatalf("invalid-token rate limit: %d", invalid.Code)
+			}
+		}
 		w := call("GET", "/auth/invitations/"+invitation+"?link_token="+credential, "", "", "text/html")
+		if w.Code != http.StatusSeeOther {
+			t.Fatalf("invalid tokens poisoned valid invitation: %d %s", w.Code, w.Body.String())
+		}
 		location, _ := url.Parse(w.Header().Get("Location"))
 		base := "/v1/auth/hosted/interactions/" + location.Query().Get("interaction")
 		view := read(call("GET", base, "", "", "application/json"))

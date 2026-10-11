@@ -9240,6 +9240,8 @@ components:
           $ref: '#/components/schemas/HostedAuthUser'
         consent_required:
           type: boolean
+        verification_pending:
+          type: boolean
         requested_scopes:
           type: array
           items:
