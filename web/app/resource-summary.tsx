@@ -100,9 +100,10 @@ export function ResourceSummary({ item, resource }: { item: Row; resource: strin
     title = recipient || humanize(resource);
     add(item.status, item.scope, item.expires_at && `Expires ${formatDate(item.expires_at)}`);
   } else {
-    if (resource.includes("member")) { title ||= recipient; add(item.owner ? "Owner" : "Member", Array.isArray(item.role_keys) && item.role_keys.join(", ")); }
+    const owner = resource.includes("member") && (item.owner || item.status === "owner");
+    if (resource.includes("member")) { title ||= recipient; add(owner ? "Owner" : "Member", Array.isArray(item.role_keys) && item.role_keys.join(", ")); }
     title ||= text(item.hostname || item.email || item.user_agent || item.event_type || item.provider_event_id) || humanize(resource);
-    add(item.email !== title && item.email, item.key !== title && item.key, item.client_type, item.status, item.scope, item.role, item.value_type, item.description, item.ip_address);
+    add(item.email !== title && item.email, item.key !== title && item.key, item.client_type, owner ? undefined : item.status, item.scope, item.role, item.value_type, item.description, item.ip_address);
     if (resource.includes("session")) { title ||= "Session"; add(item.revoked_at ? "Revoked" : "Active", item.last_used_at && `Last used ${formatDate(item.last_used_at)}`); }
     if (resource.includes("address")) {
       title = text(item.name || item.line1 || item.street) || "Billing address";

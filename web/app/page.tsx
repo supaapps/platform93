@@ -1006,6 +1006,8 @@ function Workspace({
   }, [routeMatchesWorkspace, application, selectedResource, route.id, refresh, setMessage]);
   useEffect(() => {
     if (!routeMatchesWorkspace) return;
+    setItems([]);
+    setNextCursor(null);
     if (!application) {
       setItems([]);
       return;

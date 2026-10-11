@@ -109,6 +109,19 @@ test("overview counts and resource rows explain records rather than repeat UUIDs
   await expect(page.locator(".table article").first()).toContainText("editor");
 });
 
+test("failed resource navigation clears previous rows and pagination", async ({ page }) => {
+  await mock(page);
+  await page.route(`**/v1/control/applications/${app.id}/audit-logs`, (route) => route.fulfill({ json: { items: [{ id: id(39), action: "user.updated" }], next_cursor: "next" } }));
+  await page.route(`**/v1/control/applications/${app.id}/roles`, (route) => route.fulfill({ status: 503, json: { detail: "Roles unavailable" } }));
+  await page.goto(applicationRoute("audit", "audit-logs"));
+  await expect(page.locator(".table article")).toHaveCount(1);
+  await page.getByRole("link", { name: "Identity", exact: true }).click();
+  await page.getByRole("link", { name: "Roles", exact: true }).click();
+  await expect(page.locator(".toast-error")).toContainText("Roles unavailable");
+  await expect(page.locator(".table article")).toHaveCount(0);
+  await expect(page.getByLabel("Loaded records summary")).not.toContainText("more available");
+});
+
 test("large resource pages resolve names in bounded batches", async ({ page }) => {
   await mock(page);
   const batches: string[][] = [];
