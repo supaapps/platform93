@@ -92,10 +92,17 @@ func TestReferenceLabelsAndAggregatedUsage(t *testing.T) {
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &applications) != nil {
 		t.Fatalf("application counts: %d %s", w.Code, w.Body.String())
 	}
+	found := false
 	for _, item := range applications.Items {
-		if item.ID == app && (item.Usage.Users != 1 || item.Usage.Workspaces != 1) {
-			t.Fatalf("application usage: %#v", item)
+		if item.ID == app {
+			found = true
+			if item.Usage.Users != 1 || item.Usage.Workspaces != 1 {
+				t.Fatalf("application usage: %#v", item)
+			}
 		}
+	}
+	if !found {
+		t.Fatal("application usage response omitted the authorized application")
 	}
 	for _, value := range []string{"secrets:anything", "users:"} {
 		w = httptest.NewRecorder()
