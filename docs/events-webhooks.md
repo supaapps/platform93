@@ -57,6 +57,16 @@ and data. `contract_source` is `platform93` for a built-in typed contract and
 `application` for application-defined JSON. Platform93 signs the exact raw body with the endpoint secret and retries
 failed delivery through the PostgreSQL-backed worker. Delivery history supports replay.
 
+Event timestamps are emitted as UTC RFC 3339 strings, preserving PostgreSQL timestamp
+precision. Delivery is at least once: consumers should deduplicate by event ID.
+Disabling an endpoint pauses its queued and retryable deliveries without consuming
+attempts; re-enabling it resumes eligible deliveries. A delivery already selected by
+a worker may finish after disabling. Events dispatched while an endpoint is disabled are not
+automatically backfilled. Dead-letter deliveries still require explicit replay.
+
+Email is processed before webhooks within each delivery sweep. An error in either
+channel is returned for job retry without skipping the other channel's sweep.
+
 ## Consumer Packages
 
 The TypeScript events package exposes `KnownPlatform93Event`,

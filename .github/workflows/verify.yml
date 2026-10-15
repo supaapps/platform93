@@ -46,11 +46,13 @@ jobs:
       - run: go test -race -coverprofile=coverage.out -count=1 -p 1 ./...
       - name: Prove PostgreSQL and MinIO integration suites executed
         run: |
-          go test -json -count=1 ./internal/httpapi ./internal/objectstorage | tee /tmp/integration-tests.json
+          go test -json -count=1 ./internal/httpapi ./internal/objectstorage ./internal/jobs | tee /tmp/integration-tests.json
           jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceOwnershipAndClientScopeInvariants")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestExternalIdentityRegistrationPolicyAndLinking")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestExternalEmailEnrollmentResendCooldownIsAtomic/successful_enrollment_persists_email_metadata_and_rejects_replay")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestMinIODirectTransferAndVisibility")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestWebhookDeliveryReadsPostgresTimestampAndSignsBody")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestWebhookScanErrorDoesNotSkipNotification")' /tmp/integration-tests.json >/dev/null
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - run: go run ./cmd/platform93 migrate
       - run: go run github.com/pressly/goose/v3/cmd/goose@v3.24.3 -dir migrations postgres "$PLATFORM93_DATABASE_URL" down
