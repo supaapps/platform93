@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -170,17 +171,19 @@ type deliverySweepWorker struct {
 }
 
 func (w *deliverySweepWorker) Work(ctx context.Context, _ *river.Job[deliverySweepArgs]) error {
+	return runDeliverySweeps(ctx, w.runner.deliverNotification, w.runner.deliverWebhook)
+}
+
+func runDeliverySweeps(ctx context.Context, notification, webhook func(context.Context) (bool, error)) error {
+	// Process email first so slow or broken webhooks cannot consume its job budget.
+	notificationErr := sweepDeliveries(ctx, notification)
+	webhookErr := sweepDeliveries(ctx, webhook)
+	return errors.Join(notificationErr, webhookErr)
+}
+
+func sweepDeliveries(ctx context.Context, deliver func(context.Context) (bool, error)) error {
 	for range 25 {
-		delivered, err := w.runner.deliverWebhook(ctx)
-		if err != nil {
-			return err
-		}
-		if !delivered {
-			break
-		}
-	}
-	for range 25 {
-		delivered, err := w.runner.deliverNotification(ctx)
+		delivered, err := deliver(ctx)
 		if err != nil {
 			return err
 		}
@@ -214,9 +217,11 @@ func (r *Runner) dispatchOne(ctx context.Context) (bool, error) {
 		endpointIDs := []string{}
 		for rows.Next() {
 			var endpointID string
-			if rows.Scan(&endpointID) == nil {
-				endpointIDs = append(endpointIDs, endpointID)
+			if err = rows.Scan(&endpointID); err != nil {
+				rows.Close()
+				return false, err
 			}
+			endpointIDs = append(endpointIDs, endpointID)
 		}
 		err = rows.Err()
 		rows.Close()
@@ -247,12 +252,13 @@ func (r *Runner) deliverWebhook(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	defer tx.Rollback(ctx)
-	var deliveryID, endpointID, uri, secretCipher, eventID, eventType, schemaVersion, contractSource, applicationID, occurred string
+	var deliveryID, endpointID, uri, secretCipher, eventID, eventType, schemaVersion, contractSource, applicationID string
+	var occurred time.Time
 	var subject, correlationID, causationID *string
 	var actor, data []byte
 	err = tx.QueryRow(ctx, `SELECT d.id,w.id,w.uri,w.secret_ciphertext,e.id,e.event_type,e.schema_version,e.contract_source,e.application_id,e.occurred_at,e.subject,e.actor,e.correlation_id,e.causation_id,e.data
 FROM webhook_deliveries d JOIN webhook_endpoints w ON w.id=d.webhook_endpoint_id JOIN domain_events e ON e.id=d.event_id
-WHERE d.status IN ('pending','failed') AND d.next_attempt_at<=now() AND d.attempt_count<10
+WHERE w.disabled_at IS NULL AND d.status IN ('pending','failed') AND d.next_attempt_at<=now() AND d.attempt_count<10
 ORDER BY d.next_attempt_at,d.id FOR UPDATE OF d SKIP LOCKED LIMIT 1`).Scan(&deliveryID, &endpointID, &uri, &secretCipher, &eventID, &eventType, &schemaVersion, &contractSource, &applicationID, &occurred, &subject, &actor, &correlationID, &causationID, &data)
 	if err == pgx.ErrNoRows {
 		return false, nil
@@ -268,7 +274,7 @@ ORDER BY d.next_attempt_at,d.id FOR UPDATE OF d SKIP LOCKED LIMIT 1`).Scan(&deli
 	if err != nil {
 		return true, r.failDelivery(ctx, tx, deliveryID, "webhook secret is unavailable")
 	}
-	payload := webhookEventPayload(eventID, applicationID, eventType, schemaVersion, contractSource, occurred, subject, actor, correlationID, causationID, data)
+	payload := webhookEventPayload(eventID, applicationID, eventType, schemaVersion, contractSource, occurred.UTC().Format(time.RFC3339Nano), subject, actor, correlationID, causationID, data)
 	timestamp := time.Now().Unix()
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(fmt.Sprintf("%d.", timestamp)))
