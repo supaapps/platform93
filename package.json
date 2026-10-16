@@ -25,6 +25,7 @@
     "check:routes": "node scripts/check-route-contract.mjs",
     "check:contracts": "node scripts/check-openapi-contract-quality.mjs",
     "check:terminology": "node scripts/check-terminology.mjs",
+    "test:release": "node --test scripts/release-readiness.test.mjs",
     "lint": "pnpm build:packages && pnpm -r lint",
     "test": "pnpm build:packages && pnpm -r test",
     "typecheck": "pnpm build:packages && pnpm --filter @platform93/admin typecheck"
