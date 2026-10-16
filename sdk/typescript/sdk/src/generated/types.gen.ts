@@ -1422,9 +1422,12 @@ export type CreateWorkspace = {
     key: string;
     name: string;
     owner_user_id?: Uuid;
+    /**
+     * Workspace metadata defaults to an empty object when omitted or null.
+     */
     metadata?: {
         [key: string]: unknown;
-    };
+    } | null;
 };
 
 export type UpdateWorkspace = {

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -8,6 +9,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	platformauthz "github.com/supaapps/platform93/internal/authorization"
 	"github.com/supaapps/platform93/internal/kernel"
 )
@@ -174,6 +177,13 @@ func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "workspace_owner_required", "An active application user must own the workspace.")
 		return
 	}
+	if _, err := uuid.Parse(request.OwnerUserID); err != nil {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_workspace_owner", "The owner must be an active user in this application.")
+		return
+	}
+	if request.Metadata == nil {
+		request.Metadata = map[string]any{}
+	}
 	id := kernel.NewID()
 	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
@@ -186,6 +196,10 @@ func (s *Server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 (id,application_id,owner_user_id,key,name,metadata)
 SELECT $1,$2,$3,$4,$5,$6 WHERE EXISTS(SELECT 1 FROM users WHERE id=$3 AND application_id=$2 AND status='active') RETURNING id`,
 		id, chi.URLParam(r, "application_id"), request.OwnerUserID, request.Key, request.Name, request.Metadata).Scan(&createdID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_workspace_owner", "The owner must be an active user in this application.")
+		return
+	}
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `INSERT INTO billing_profiles(id,application_id,subject_type,subject_id)
 VALUES($1,$2,'workspace',$3)`, kernel.NewID(), chi.URLParam(r, "application_id"), id)
@@ -194,8 +208,16 @@ VALUES($1,$2,'workspace',$3)`, kernel.NewID(), chi.URLParam(r, "application_id")
 	if err == nil && parseErr == nil {
 		_, err = s.app.Emit(r.Context(), tx, &applicationID, "workspace.created", "workspace/"+id.String(), actor(r), map[string]any{"workspace_id": id, "owner_user_id": request.OwnerUserID, "key": request.Key, "name": request.Name, "status": "active"})
 	}
-	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
-		kernel.WriteProblem(w, r, http.StatusConflict, "workspace_conflict", "A workspace with this key already exists.")
+	if err == nil && parseErr == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err != nil || parseErr != nil {
+		var pgError *pgconn.PgError
+		if errors.As(err, &pgError) && pgError.Code == "23505" && pgError.ConstraintName == "workspaces_application_id_key_key" {
+			kernel.WriteProblem(w, r, http.StatusConflict, "workspace_conflict", "A workspace with this key already exists.")
+		} else {
+			kernel.WriteProblem(w, r, http.StatusInternalServerError, "workspace_creation_failed", "The workspace could not be created.")
+		}
 		return
 	}
 	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "owner_user_id": request.OwnerUserID, "key": request.Key, "name": request.Name, "metadata": request.Metadata, "version": 1})
