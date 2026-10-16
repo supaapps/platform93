@@ -10,8 +10,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ory/fosite"
+	"github.com/ory/fosite/storage"
 	"github.com/supaapps/platform93/internal/secure"
 )
 
@@ -22,6 +24,54 @@ type Store struct {
 }
 
 var _ fosite.Storage = (*Store)(nil)
+var _ storage.Transactional = (*Store)(nil)
+
+type transactionKey struct{ store *Store }
+
+type executor interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func (s *Store) executor(ctx context.Context) executor {
+	if tx, ok := ctx.Value(transactionKey{s}).(pgx.Tx); ok {
+		return tx
+	}
+	return s.DB
+}
+
+// Fosite brackets token consumption and successor persistence with these hooks.
+// Transactions belong to the request context, never to a shared Store field.
+func (s *Store) BeginTX(ctx context.Context) (context.Context, error) {
+	if _, ok := ctx.Value(transactionKey{s}).(pgx.Tx); ok {
+		return nil, errors.New("OAuth transaction is already active")
+	}
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return context.WithValue(ctx, transactionKey{s}, tx), nil
+}
+
+func (s *Store) Commit(ctx context.Context) error {
+	tx, ok := ctx.Value(transactionKey{s}).(pgx.Tx)
+	if !ok {
+		return errors.New("OAuth transaction is missing")
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) Rollback(ctx context.Context) error {
+	tx, ok := ctx.Value(transactionKey{s}).(pgx.Tx)
+	if !ok {
+		return errors.New("OAuth transaction is missing")
+	}
+	err := tx.Rollback(ctx)
+	if errors.Is(err, pgx.ErrTxClosed) {
+		return nil
+	}
+	return err
+}
 
 type persistedRequest struct {
 	ID                string     `json:"id"`
@@ -39,7 +89,7 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (fosite.Client, 
 	var secret []byte
 	var clientType string
 	var redirects, grants, scopes []string
-	err := s.DB.QueryRow(ctx, `SELECT client_type,redirect_uris,allowed_grants,allowed_scopes,secret_digest
+	err := s.executor(ctx).QueryRow(ctx, `SELECT client_type,redirect_uris,allowed_grants,allowed_scopes,secret_digest
 FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, s.ApplicationID, clientID).
 		Scan(&clientType, &redirects, &grants, &scopes, &secret)
 	if err != nil {
@@ -66,7 +116,7 @@ FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, 
 
 func (s *Store) ClientAssertionJWTValid(ctx context.Context, jti string) error {
 	var known bool
-	err := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM oauth_client_assertion_jtis
+	err := s.executor(ctx).QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM oauth_client_assertion_jtis
 WHERE application_id=$1 AND jti_digest=$2 AND expires_at>now())`, s.ApplicationID, s.Vault.Digest(jti)).Scan(&known)
 	if err != nil {
 		return err
@@ -78,8 +128,8 @@ WHERE application_id=$1 AND jti_digest=$2 AND expires_at>now())`, s.ApplicationI
 }
 
 func (s *Store) SetClientAssertionJWT(ctx context.Context, jti string, expiresAt time.Time) error {
-	_, _ = s.DB.Exec(ctx, `DELETE FROM oauth_client_assertion_jtis WHERE application_id=$1 AND expires_at<=now()`, s.ApplicationID)
-	_, err := s.DB.Exec(ctx, `INSERT INTO oauth_client_assertion_jtis(application_id,jti_digest,expires_at)
+	_, _ = s.executor(ctx).Exec(ctx, `DELETE FROM oauth_client_assertion_jtis WHERE application_id=$1 AND expires_at<=now()`, s.ApplicationID)
+	_, err := s.executor(ctx).Exec(ctx, `INSERT INTO oauth_client_assertion_jtis(application_id,jti_digest,expires_at)
 VALUES ($1,$2,$3)`, s.ApplicationID, s.Vault.Digest(jti), expiresAt)
 	if err != nil {
 		return fosite.ErrJTIKnown
@@ -171,18 +221,30 @@ func (s *Store) DeleteRefreshTokenSession(ctx context.Context, signature string)
 }
 
 func (s *Store) RevokeRefreshToken(ctx context.Context, requestID string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
+	_, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
 WHERE application_id=$1 AND request_id=$2 AND kind IN ('refresh','access')`, s.ApplicationID, requestID)
 	return err
 }
 
 func (s *Store) RevokeAccessToken(ctx context.Context, requestID string) error {
-	_, err := s.DB.Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
+	_, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
 WHERE application_id=$1 AND request_id=$2 AND kind='access'`, s.ApplicationID, requestID)
 	return err
 }
 
-func (s *Store) RotateRefreshToken(ctx context.Context, requestID, _ string) error {
+func (s *Store) RotateRefreshToken(ctx context.Context, requestID, signature string) error {
+	if _, ok := ctx.Value(transactionKey{s}).(pgx.Tx); !ok {
+		return errors.New("refresh rotation requires a transaction")
+	}
+	result, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
+WHERE application_id=$1 AND request_id=$2 AND kind='refresh' AND signature_digest=$3 AND active AND expires_at>now()`,
+		s.ApplicationID, requestID, s.Vault.Digest(signature))
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() != 1 {
+		return fosite.ErrInactiveToken
+	}
 	return s.RevokeRefreshToken(ctx, requestID)
 }
 
@@ -195,7 +257,7 @@ func (s *Store) create(ctx context.Context, kind, signature, accessSignature str
 	if accessSignature != "" {
 		accessDigest = s.Vault.Digest(accessSignature)
 	}
-	_, err = s.DB.Exec(ctx, `INSERT INTO oauth_sessions
+	_, err = s.executor(ctx).Exec(ctx, `INSERT INTO oauth_sessions
 (id,application_id,signature_digest,kind,request_id,request_payload,access_signature_digest,expires_at)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, uuid.Must(uuid.NewV7()), s.ApplicationID, s.Vault.Digest(signature), kind,
 		request.GetID(), payload, accessDigest, expiresAt)
@@ -205,7 +267,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, uuid.Must(uuid.NewV7()), s.ApplicationID, s.V
 func (s *Store) get(ctx context.Context, kind, signature string) (fosite.Requester, bool, error) {
 	var payload []byte
 	var active bool
-	err := s.DB.QueryRow(ctx, `SELECT request_payload,active FROM oauth_sessions
+	err := s.executor(ctx).QueryRow(ctx, `SELECT request_payload,active FROM oauth_sessions
 WHERE application_id=$1 AND kind=$2 AND signature_digest=$3 AND expires_at>now()`,
 		s.ApplicationID, kind, s.Vault.Digest(signature)).Scan(&payload, &active)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -219,8 +281,8 @@ WHERE application_id=$1 AND kind=$2 AND signature_digest=$3 AND expires_at>now()
 }
 
 func (s *Store) deactivate(ctx context.Context, kind, signature string) error {
-	result, err := s.DB.Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
-WHERE application_id=$1 AND kind=$2 AND signature_digest=$3`, s.ApplicationID, kind, s.Vault.Digest(signature))
+	result, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
+WHERE application_id=$1 AND kind=$2 AND signature_digest=$3 AND active`, s.ApplicationID, kind, s.Vault.Digest(signature))
 	if err != nil {
 		return err
 	}
@@ -231,7 +293,7 @@ WHERE application_id=$1 AND kind=$2 AND signature_digest=$3`, s.ApplicationID, k
 }
 
 func (s *Store) delete(ctx context.Context, kind, signature string) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM oauth_sessions WHERE application_id=$1 AND kind=$2 AND signature_digest=$3`,
+	_, err := s.executor(ctx).Exec(ctx, `DELETE FROM oauth_sessions WHERE application_id=$1 AND kind=$2 AND signature_digest=$3`,
 		s.ApplicationID, kind, s.Vault.Digest(signature))
 	return err
 }

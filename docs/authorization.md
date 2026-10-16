@@ -37,6 +37,33 @@ The `scope` field must be present as a string, including when empty; do not
 substitute `null`, a list, or a default wildcard. OAuth protocol scopes such as
 `openid`, `profile`, and `email` do not grant application permissions.
 
+## OAuth sessions and delegation
+
+OAuth authorization-code and refresh exchanges require an active application user,
+an unexpired, unrevoked session belonging to that user and application, an enabled
+client, and active consent for that client. Revoking the session prevents new OAuth
+tokens from being issued; ordinary offline JWT verification still cannot observe
+revocation before an already-issued access token expires.
+
+Delegated support sessions remain short-lived and non-renewable. They can use their
+explicitly restricted application API permissions, but cannot authorize a new OAuth
+grant. Existing OAuth grants bound to delegated sessions are also rejected during
+exchange, refresh, introspection and userinfo; they cannot shed their restrictions
+by becoming ordinary user tokens. Personal API keys cannot authorize OAuth grants.
+
+Refresh-token consumption and successor persistence share a PostgreSQL transaction.
+Only one overlapping rotation can succeed for the same credential. A persistence
+failure rolls back consumption; later replay of a consumed credential revokes the
+related OAuth token family. Clients should coordinate refresh requests rather than
+retrying a consumed credential after an uncertain successful response.
+
+Token-endpoint rate budgets separate failed authentication from verified issuance.
+Invalid requests are accounted by client and peer address, while verified issuance
+is accounted by client and authenticated subject. Failed requests cannot consume
+the valid issuance budget, even behind a shared proxy. Forwarding headers are not
+trusted as caller addresses; deployments must still apply appropriate ingress abuse
+controls. These budgets do not replace client-secret entropy or ingress capacity limits.
+
 ## Default-role onboarding
 
 There is currently no application setting that automatically assigns a role to
