@@ -13363,7 +13363,10 @@ components:
           $ref: '#/components/schemas/UUID'
         metadata:
           type: object
+          description: Workspace metadata defaults to an empty object when omitted or null.
+          default: {}
           additionalProperties: true
+          nullable: true
       additionalProperties: false
     UpdateWorkspace:
       type: object
