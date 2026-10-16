@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -112,6 +113,12 @@ func (s *Server) oauthAuthorizeDecision(w http.ResponseWriter, r *http.Request) 
 	request.GrantAudience(s.app.ApplicationAudience(applicationID))
 
 	current := actor(r)
+	// Delegation is deliberately short-lived and non-renewable. It must not be
+	// converted into an ordinary OAuth grant or recorded as the user's consent.
+	if current.DelegatedBy != "" || current.Type != "user" {
+		provider.OAuth.WriteAuthorizeError(r.Context(), w, request, fosite.ErrAccessDenied)
+		return
+	}
 	var email, firstName, lastName, locale string
 	var emailVerified, orgVerified bool
 	var authenticatedAt time.Time
@@ -124,7 +131,7 @@ FROM users WHERE id=$1 AND application_id=$2 AND status='active'`, current.ID, c
 		return
 	}
 	err = s.app.DB.QueryRow(r.Context(), `SELECT authenticated_at,amr FROM user_sessions
-WHERE id=$1 AND application_id=$2 AND user_id=$3 AND revoked_at IS NULL`, current.SessionID, chi.URLParam(r, "application_id"), current.ID).
+WHERE id=$1 AND application_id=$2 AND user_id=$3 AND revoked_at IS NULL AND expires_at>now() AND delegation_id IS NULL`, current.SessionID, chi.URLParam(r, "application_id"), current.ID).
 		Scan(&authenticatedAt, &amr)
 	if err != nil {
 		provider.OAuth.WriteAuthorizeError(r.Context(), w, request, fosite.ErrLoginRequired)
@@ -140,9 +147,6 @@ WHERE id=$1 AND application_id=$2 AND user_id=$3 AND revoked_at IS NULL`, curren
 	if accessErr != nil {
 		provider.OAuth.WriteAuthorizeError(r.Context(), w, request, fosite.ErrServerError)
 		return
-	}
-	if current.DelegatedBy != "" {
-		effective.Roles = emptyRoleClaims()
 	}
 	session.AccessClaims.Extra = map[string]any{
 		"application_id": chi.URLParam(r, "application_id"), "client_id": request.GetClient().GetID(),
@@ -217,9 +221,6 @@ func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 	if basicClientID, _, ok := r.BasicAuth(); ok && basicClientID != "" {
 		clientID = basicClientID
 	}
-	if !s.allowAuthAttempt(w, r, "oauth_token", clientID, 30, 10*time.Minute) {
-		return
-	}
 	if managementClient, ok := managementClientFromContext(r.Context()); ok {
 		s.issueManagementToken(w, r, managementClient)
 		return
@@ -231,6 +232,9 @@ func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 	session := oauthserver.NewSession("", "", provider.KID, s.app.Now().UTC())
 	request, err := provider.OAuth.NewAccessRequest(r.Context(), r, session)
 	if err != nil {
+		if !s.allowOAuthTokenAttempt(w, r, clientID, "", false) {
+			return
+		}
 		provider.OAuth.WriteAccessError(r.Context(), w, request, err)
 		return
 	}
@@ -261,10 +265,7 @@ func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 			provider.OAuth.WriteAccessError(r.Context(), w, request, fosite.ErrInvalidGrant)
 			return
 		}
-		var active bool
-		err = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users
-WHERE id=$1 AND application_id=$2 AND status='active')`, storedSession.Subject, applicationID).Scan(&active)
-		if err != nil || !active {
+		if !s.oauthSubjectLive(r, request) {
 			provider.OAuth.WriteAccessError(r.Context(), w, request, fosite.ErrInvalidGrant)
 			return
 		}
@@ -292,12 +293,31 @@ WHERE id=$1 AND application_id=$2 AND status='active')`, storedSession.Subject, 
 		storedSession.IDClaims.Extra["roles"] = effective.Roles
 		request.SetSession(storedSession)
 	}
+	if !s.allowOAuthTokenAttempt(w, r, clientID, request.GetSession().GetSubject(), true) {
+		return
+	}
 	response, err := provider.OAuth.NewAccessResponse(r.Context(), request)
 	if err != nil {
 		provider.OAuth.WriteAccessError(r.Context(), w, request, err)
 		return
 	}
 	provider.OAuth.WriteAccessResponse(r.Context(), w, request, response)
+}
+
+func (s *Server) allowOAuthTokenAttempt(w http.ResponseWriter, r *http.Request, clientID, subject string, authenticated bool) bool {
+	// Classify only after Fosite validates credentials/the grant. Public client IDs
+	// and failed attempts must never consume a valid caller's issuance budget,
+	// including callers sharing the same NAT or reverse proxy.
+	flow := "oauth_token_authenticated"
+	if !authenticated {
+		flow = "oauth_token_invalid"
+		// Forwarding headers are deliberately not trusted for abuse accounting.
+		subject, _ = requestIPAddress(r).(string)
+	}
+	// The generic limiter normalizes email-like subjects to lowercase; OAuth
+	// identifiers are case-sensitive, so preserve them in a lowercase digest.
+	key := hex.EncodeToString(s.app.Vault.Digest(clientID + "\x00" + subject))
+	return s.allowAuthAttempt(w, r, flow, key, 30, 10*time.Minute)
 }
 
 func (s *Server) oauthRevoke(w http.ResponseWriter, r *http.Request) {
@@ -393,13 +413,17 @@ WHERE client_id=$1 AND application_id=$2 AND disabled_at IS NULL)`, session.Subj
 		return err == nil && live
 	}
 	sessionID, _ := session.AccessClaims.Extra["sid"].(string)
-	if sessionID == "" || session.Subject == "" {
+	if sessionID == "" || session.Subject == "" || session.AccessClaims.Extra["act"] != nil {
 		return false
 	}
 	var live bool
 	err := s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM user_sessions s JOIN users u ON u.id=s.user_id
-WHERE s.id=$1 AND s.user_id=$2 AND s.application_id=$3 AND s.revoked_at IS NULL AND s.expires_at>now() AND u.status='active')`,
-		sessionID, session.Subject, chi.URLParam(r, "application_id")).Scan(&live)
+JOIN oauth_consents c ON c.application_id=s.application_id AND c.user_id=s.user_id
+JOIN clients cl ON cl.id=c.client_id AND cl.application_id=c.application_id
+WHERE s.id=$1 AND s.user_id=$2 AND s.application_id=$3 AND s.revoked_at IS NULL AND s.expires_at>now()
+AND u.application_id=s.application_id AND u.status='active' AND s.delegation_id IS NULL
+AND c.revoked_at IS NULL AND cl.client_id=$4 AND cl.disabled_at IS NULL)`,
+		sessionID, session.Subject, chi.URLParam(r, "application_id"), request.GetClient().GetID()).Scan(&live)
 	return err == nil && live
 }
 

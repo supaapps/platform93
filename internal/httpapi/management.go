@@ -54,8 +54,14 @@ func (s *Server) issueManagementToken(w http.ResponseWriter, r *http.Request, re
 JOIN installations i ON i.management_api_enabled
 WHERE c.id=$1 AND c.client_id=$2 AND c.disabled_at IS NULL`, resolved.ID, clientID).Scan(&id, &digest, &allowedScopes)
 	if err != nil || secret == "" || !hmac.Equal(digest, s.app.Vault.Digest(secret)) {
+		if !s.allowOAuthTokenAttempt(w, r, clientID, "", false) {
+			return
+		}
 		w.Header().Set("WWW-Authenticate", `Basic realm="platform93-management"`)
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_management_client", "The management client credentials are invalid or the management API is disabled.")
+		return
+	}
+	if !s.allowOAuthTokenAttempt(w, r, clientID, id, true) {
 		return
 	}
 	requested := uniqueStrings(strings.Fields(r.FormValue("scope")))
