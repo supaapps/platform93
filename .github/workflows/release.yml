@@ -214,9 +214,14 @@ jobs:
           for PACKAGE in sdk auth expo react server events; do
             pnpm --dir "sdk/typescript/${PACKAGE}" pack --pack-destination "$RUNNER_TEMP/platform93-npm"
           done
+          : > "$RUNNER_TEMP/platform93-npm-manifest.jsonl"
           for TARBALL in "$RUNNER_TEMP"/platform93-npm/*.tgz; do
             NAME="$(tar -xOf "$TARBALL" package/package.json | jq -r .name)"
+            PACKAGE_VERSION="$(tar -xOf "$TARBALL" package/package.json | jq -r .version)"
+            test "$PACKAGE_VERSION" = "$VERSION" || { echo "Packed package version does not match the release tag." >&2; exit 1; }
             LOCAL_INTEGRITY="sha512-$(openssl dgst -sha512 -binary "$TARBALL" | openssl base64 -A)"
+            jq -nc --arg name "$NAME" --arg version "$VERSION" --arg integrity "$LOCAL_INTEGRITY" \
+              '{name: $name, version: $version, integrity: $integrity}' >> "$RUNNER_TEMP/platform93-npm-manifest.jsonl"
             if REMOTE_INTEGRITY="$(npm view "${NAME}@${VERSION}" dist.integrity 2>/dev/null)"; then
               test "$LOCAL_INTEGRITY" = "$REMOTE_INTEGRITY" || {
                 echo "Published ${NAME}@${VERSION} does not match the release tarball." >&2
@@ -226,6 +231,12 @@ jobs:
             fi
             npx --yes npm@11.5.1 publish "$TARBALL" --access public --provenance --tag "$PUBLISH_TAG"
           done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-release-manifest
+          path: ${{ runner.temp }}/platform93-npm-manifest.jsonl
+          if-no-files-found: error
+          overwrite: true
 
   pypi:
     needs: [verify, security, tag]
@@ -274,6 +285,7 @@ jobs:
   finalize:
     needs: [artifacts, image, npm, pypi, helm]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions: { contents: write, packages: read }
     steps:
       - uses: actions/checkout@v4
@@ -285,25 +297,18 @@ jobs:
         with: { version: v3.17.3 }
       - uses: imjasonh/setup-crane@v0.4
       - run: python -m pip install packaging
-      - env:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-release-manifest
+          path: ${{ runner.temp }}/platform93-npm-readiness
+      - name: Verify published artifacts and finalize release
+        env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          for PACKAGE in sdk auth expo react server events; do
-            NAME="@supaapps/platform93-${PACKAGE}"
-            if [[ "$PACKAGE" = sdk ]]; then NAME="@supaapps/platform93-sdk"; fi
-            npm view "${NAME}@${VERSION}" version >/dev/null
-          done
-          python - <<'PY'
-          import json, urllib.request
-          from packaging.version import Version
-          version = str(Version("${{ github.ref_name }}"[1:]))
-          for project in ("supaapps-platform93-auth", "supaapps-platform93-webhooks"):
-              with urllib.request.urlopen(f"https://pypi.org/pypi/{project}/{version}/json") as response:
-                  json.load(response)
-          PY
-          helm show chart "oci://ghcr.io/supaapps/charts/platform93" --version "$VERSION" >/dev/null
-          crane manifest "ghcr.io/supaapps/platform93:${VERSION}" >/dev/null
+          PY_VERSION="$(python -c 'import sys; from packaging.version import Version; print(Version(sys.argv[1]))' "$VERSION")"
+          node scripts/release-readiness.mjs --version "$VERSION" --python-version "$PY_VERSION" \
+            --npm-manifest "$RUNNER_TEMP/platform93-npm-readiness/platform93-npm-manifest.jsonl"
           gh release download "$GITHUB_REF_NAME" --dir /tmp/release
           (cd /tmp/release && sha256sum --check SHA256SUMS)
           if [[ "$VERSION" == *-* ]]; then

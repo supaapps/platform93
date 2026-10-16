@@ -47,3 +47,30 @@ directly to `latest` because npm trusted-publisher credentials authorize `npm pu
 not a later `npm dist-tag` command. The workflow publishes the GitHub release only after
 npm, PyPI, Composer source tags, GHCR image, Helm chart, checksums, SBOM/provenance,
 signatures, and GitHub release assets are all available.
+
+## Registry Readiness And Finalization
+
+A successful publish command means the registry accepted the artifact, not that
+every registry reader can immediately download it. Finalization waits for all six
+npm packages, both Python packages, the Helm chart and the OCI image using one
+ten-minute deadline with capped backoff. Individual HTTP/CLI probes are limited to
+fifteen seconds, with npm metadata/download sharing that probe budget. Ready
+artifacts are not repeatedly downloaded during subsequent retry rounds.
+
+The npm job uploads a safe package/version/SHA-512 manifest calculated from its
+packed artifacts. Finalization checks the exact npm versions, registry integrity
+and downloaded tarball bytes against that manifest. It also checks the exact Python
+versions and listed distribution files, Helm chart/application versions, and OCI
+image-index availability before checking GitHub asset checksums and publishing
+the draft release. Python metadata visibility is not a full consumer-install test.
+
+Post-publication 404s, throttling and temporary server/network failures are retried
+within the deadline. Authorization/configuration errors, malformed metadata and
+integrity/version mismatches fail immediately. Probe output identifies pending
+artifacts and timeout reasons without dumping registry credentials. Finalization
+never republishes packages or moves tags. A finalization-only rerun reuses the
+uploaded manifest from the successful npm job; rerunning npm replaces that manifest
+only after its normal immutable-package checks and publishing step succeed.
+
+Run the network-free regression suite with `pnpm test:release`. It is also required
+by the reusable contracts verification job on pull requests and release tags.
