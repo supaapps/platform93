@@ -209,8 +209,9 @@ test("CLI timeouts receive the remaining budget, capped at fifteen seconds", asy
 test("registry set validates Helm and OCI and never invokes a publishing command", async () => {
   const commands = [];
   const fetcher = async (url) => {
-    if (url.startsWith("https://pypi.org")) {
-      const name = url.split("/")[4];
+    const target = new URL(url);
+    if (target.origin === "https://pypi.org") {
+      const name = target.pathname.split("/")[2];
       return json({ info: { name, version: "0.5.0rc1" }, urls: [{}] });
     }
     if (url.endsWith(".tgz")) return new Response(tarball);
