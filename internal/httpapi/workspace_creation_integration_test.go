@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -149,7 +151,11 @@ func TestWorkspaceCreationRejectsInvalidOwnersAndTrueConflicts(t *testing.T) {
 func TestWorkspaceCreationEventFailureRollsBackAndIsNotConflict(t *testing.T) {
 	f := newWorkspaceHTTPFixture(t)
 	f.exec(`UPDATE event_type_definitions SET status='archived' WHERE application_id IS NULL AND name='workspace.created'`)
-	w := f.create(map[string]any{"owner_user_id": f.user, "key": "rollback", "name": "Rollback", "metadata": map[string]any{}})
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previousLogger) })
+	w := f.create(map[string]any{"owner_user_id": f.user, "key": "rollback", "name": "Private workspace name", "metadata": map[string]any{"private": "must-not-be-logged"}})
 	if w.Code != http.StatusInternalServerError || !strings.Contains(w.Body.String(), "workspace_creation_failed") {
 		t.Fatalf("storage failure was misreported: %d %s", w.Code, w.Body.String())
 	}
@@ -159,6 +165,24 @@ func TestWorkspaceCreationEventFailureRollsBackAndIsNotConflict(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatal("failed creation left partial state")
+	}
+	foundDiagnostic := false
+	for _, line := range bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n")) {
+		var entry map[string]any
+		if err := json.Unmarshal(line, &entry); err != nil {
+			t.Fatal(err)
+		}
+		if entry["msg"] == "workspace creation failed" {
+			foundDiagnostic = entry["level"] == "ERROR" && entry["stage"] == "event_emission" && entry["request_id"] == w.Header().Get("X-Request-ID") && entry["request_id"] != ""
+		}
+	}
+	if !foundDiagnostic {
+		t.Fatal("missing request-correlated workspace failure diagnostic")
+	}
+	for _, privateValue := range []string{"Private workspace name", "must-not-be-logged", f.controlToken, f.user, f.controlUser} {
+		if strings.Contains(logs.String(), privateValue) {
+			t.Fatal("workspace diagnostic exposed private request data")
+		}
 	}
 }
 

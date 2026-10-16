@@ -55,6 +55,11 @@ jobs:
           jq -e 'select(.Action == "pass" and .Test == "TestWebhookDeliveryReadsPostgresTimestampAndSignsBody")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestWebhookScanErrorDoesNotSkipNotification")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceCreationDashboardMetadataAndEvents")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceCreationRejectsInvalidOwnersAndTrueConflicts")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceCreationEventFailureRollsBackAndIsNotConflict")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceMetadataNilBindingReproducesNotNullViolation")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceCreationPreservesControlAuthorization")' /tmp/integration-tests.json >/dev/null
+          jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceCreationBindsUserOwnerToAuthenticatedApplication")' /tmp/integration-tests.json >/dev/null
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - run: go run ./cmd/platform93 migrate
       - run: go run github.com/pressly/goose/v3/cmd/goose@v3.24.3 -dir migrations postgres "$PLATFORM93_DATABASE_URL" down
