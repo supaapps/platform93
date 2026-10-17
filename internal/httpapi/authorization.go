@@ -35,7 +35,7 @@ func (s *Server) createRole(w http.ResponseWriter, r *http.Request) {
 	_, err := s.app.DB.Exec(r.Context(), `INSERT INTO roles
 (id,application_id,key,name,scope,permissions) VALUES ($1,$2,$3,$4,$5,$6)`, id, chi.URLParam(r, "application_id"), request.Key, request.Name, request.Scope, request.Permissions)
 	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusConflict, "role_conflict", "A role with this key already exists.")
+		writeCreationProblem(w, r, err, "role_conflict", "A role with this key already exists.", "role_creation_failed", "roles_application_id_key_key")
 		return
 	}
 	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "key": request.Key, "name": request.Name, "scope": request.Scope, "permissions": request.Permissions, "built_in": false, "version": 1})

@@ -48,6 +48,8 @@ type createUserRequest struct {
 	CustomAttributes map[string]any `json:"custom_attributes,omitempty"`
 }
 
+var errInvalidUserInput = errors.New("invalid user input")
+
 func (s *Server) adminCreateUser(w http.ResponseWriter, r *http.Request) {
 	var request createUserRequest
 	if !kernel.DecodeJSON(w, r, &request) {
@@ -60,7 +62,11 @@ func (s *Server) adminCreateUser(w http.ResponseWriter, r *http.Request) {
 			kernel.WriteProblem(w, r, http.StatusConflict, "organization_user_limit_reached", limit.Error())
 			return
 		}
-		kernel.WriteProblem(w, r, http.StatusConflict, "user_creation_failed", err.Error())
+		if errors.Is(err, errInvalidUserInput) {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_user", err.Error())
+			return
+		}
+		writeCreationProblem(w, r, err, "user_creation_failed", "An account with this email already exists.", "user_creation_failed", "users_application_id_normalized_email_key")
 		return
 	}
 	kernel.WriteJSON(w, http.StatusCreated, created)
@@ -228,7 +234,11 @@ func (s *Server) passwordSignUp(w http.ResponseWriter, r *http.Request) {
 			kernel.WriteProblem(w, r, http.StatusConflict, "organization_user_limit_reached", limit.Error())
 			return
 		}
-		kernel.WriteProblem(w, r, http.StatusConflict, "account_unavailable", "An account cannot be created with these details.")
+		if errors.Is(err, errInvalidUserInput) {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "account_unavailable", "An account cannot be created with these details.")
+			return
+		}
+		writeCreationProblem(w, r, err, "account_unavailable", "An account cannot be created with these details.", "account_creation_failed", "users_application_id_normalized_email_key")
 		return
 	}
 	s.issueSession(w, r, created.ID, []string{"pwd"})
@@ -263,18 +273,21 @@ WHERE application_id=$1 AND normalized_email=$2`, chi.URLParam(r, "application_i
 func (s *Server) createUser(r *http.Request, request createUserRequest, administrative bool) (userResponse, error) {
 	applicationID, err := applicationID(r)
 	if err != nil {
-		return userResponse{}, fmt.Errorf("invalid application identifier")
+		return userResponse{}, fmt.Errorf("%w: invalid application identifier", errInvalidUserInput)
 	}
 	normalized := kernel.NormalizeEmail(request.Email)
 	if normalized == "" || !strings.Contains(normalized, "@") {
-		return userResponse{}, fmt.Errorf("a valid email is required")
+		return userResponse{}, fmt.Errorf("%w: a valid email is required", errInvalidUserInput)
 	}
 	request.Locale, err = normalizeNotificationLocale(request.Locale)
 	if err != nil {
-		return userResponse{}, err
+		return userResponse{}, fmt.Errorf("%w: %s", errInvalidUserInput, err)
 	}
 	var passwordHash *string
 	if request.Password != "" {
+		if len(request.Password) < 12 || len(request.Password) > 1024 {
+			return userResponse{}, fmt.Errorf("%w: password must contain between 12 and 1024 characters", errInvalidUserInput)
+		}
 		hash, err := identity.HashPassword(request.Password)
 		if err != nil {
 			return userResponse{}, err
@@ -285,7 +298,7 @@ func (s *Server) createUser(r *http.Request, request createUserRequest, administ
 		request.EmailVerified = false
 		request.IsOrgVerified = false
 	}
-	attributes, _ := json.Marshal(request.CustomAttributes)
+	attributes, _ := json.Marshal(objectOrEmpty(request.CustomAttributes))
 	id := kernel.NewID()
 	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
@@ -304,7 +317,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CASE WHEN $10 THEN now() END,$11,$12)`, id, a
 		_, err = s.app.Emit(r.Context(), tx, &applicationID, "user.created", "user/"+id.String(), actor(r), map[string]any{"user_id": id, "email_verified": request.EmailVerified, "is_org_verified": request.IsOrgVerified})
 	}
 	if err != nil {
-		return userResponse{}, fmt.Errorf("an account with this email already exists")
+		return userResponse{}, fmt.Errorf("create application user: %w", err)
 	}
 	if err = tx.Commit(r.Context()); err != nil {
 		return userResponse{}, err

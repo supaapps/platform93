@@ -204,13 +204,14 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 		kernel.WriteProblem(w, r, 422, "invalid_payment_methods", err.Error())
 		return
 	}
+	request.PaymentMethods = stringsOrEmpty(request.PaymentMethods)
 	policy := cloneMap(config)
 	policy["payment_methods"] = request.PaymentMethods
 	policyJSON, _ := json.Marshal(policy)
 	sessionID := kernel.NewID()
 	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO checkout_sessions (id,application_id,subject_type,subject_id,price_id,provider_connection_id,payment_methods,policy_snapshot,success_uri,cancel_uri,external_reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, sessionID, chi.URLParam(r, "application_id"), request.SubjectType, request.SubjectID, request.PriceID, providerConnectionID, request.PaymentMethods, policyJSON, request.SuccessURI, request.CancelURI, request.ExternalReference)
 	if err != nil {
-		kernel.WriteProblem(w, r, 409, "checkout_creation_failed", "The checkout record could not be created.")
+		writeCreationProblem(w, r, err, "", "", "checkout_creation_failed")
 		return
 	}
 	secret, err := s.app.Vault.Decrypt(secretCipher, "billing-provider:"+providerConnectionID+":secret")
