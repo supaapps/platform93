@@ -39,14 +39,18 @@ Email or identity collisions return `409`; no account is silently selected by
 email and no identity is reassigned. Use the explicit existing-user variant after
 verifying the intended target. Retry creation with the original idempotency key
 and identical body; using the key with different details is rejected. Keys follow
-the normal 24-hour idempotency retention policy.
+the normal 24-hour idempotency retention policy. Client errors (including conflicts)
+are cached too: after resolving a rejected request, use a fresh key. A `200`
+existing-user response can mean a new linkage or an already-present linkage;
+no-op linkage emits no additional domain events.
 
 ## Next sign-in
 
 The normal Google flow verifies the provider response and resolves the identity
 by application, provider, and subject, preserving the provisioned UUID even if
 the Google email changes. Linked users can sign in to invite-only applications.
-Google must be configured and enabled for the application. State, nonce, PKCE,
+Google must be configured and enabled for the application before sign-in, but
+identities may be provisioned before provider setup. State, nonce, PKCE,
 MFA, and active-account checks are unchanged. Provisioning does not log anyone in
 or bypass provider consent. Unrelated same-email accounts still require explicit
 linking.
