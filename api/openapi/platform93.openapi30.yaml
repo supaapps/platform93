@@ -4469,6 +4469,8 @@ paths:
       responses:
         '204':
           description: Product updated
+        '500':
+          $ref: '#/components/responses/Problem'
   /v1/control/applications/{application_id}/entitlements:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -7121,6 +7123,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationTemplate'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/installation/notification-templates/{template_id}/preview:
     parameters:
       - name: template_id
@@ -7284,6 +7292,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationTemplate'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/applications/{application_id}/notification-templates/{template_id}/preview:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'

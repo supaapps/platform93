@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	xhtml "golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
+
+var errInvalidTemplateAsset = errors.New("managed email assets must be ready public images from this template scope")
 
 var blockedEmailElements = map[string]bool{
 	"script": true, "iframe": true, "object": true, "embed": true, "form": true, "input": true, "button": true,
@@ -109,8 +112,22 @@ func validEmailLink(raw string) bool {
 
 func syncNotificationTemplateAssets(ctx context.Context, tx pgx.Tx, templateID string, assetIDs []string) error {
 	for _, assetID := range assetIDs {
+		var id string
+		err := tx.QueryRow(ctx, `SELECT o.id FROM storage_objects o
+JOIN notification_templates t ON t.id=$1
+WHERE o.id=$2 AND o.status='ready' AND o.visibility='public'
+AND o.content_type IN ('image/png','image/jpeg','image/gif')
+AND ((t.application_id IS NULL AND o.owner_type='installation') OR
+     (t.application_id IS NOT NULL AND ((o.application_id=t.application_id AND o.owner_type='application') OR o.owner_type='installation')))
+FOR SHARE OF o`, templateID, assetID).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errInvalidTemplateAsset
+		}
+		if err != nil {
+			return fmt.Errorf("load template asset: %w", err)
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO notification_template_assets(notification_template_id,storage_object_id) VALUES($1,$2)`, templateID, assetID); err != nil {
-			return err
+			return fmt.Errorf("store template asset: %w", err)
 		}
 	}
 	return nil

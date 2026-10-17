@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"html"
 	"net/http"
 	"regexp"
@@ -89,6 +90,10 @@ WHERE application_id IS NOT DISTINCT FROM $2 AND key=$3 AND locale=$4 RETURNING 
 		err = tx.Commit(r.Context())
 	}
 	if err != nil {
+		if errors.Is(err, errInvalidTemplateAsset) {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_notification_template_assets", errInvalidTemplateAsset.Error())
+			return
+		}
 		writeCreationProblem(w, r, err, "notification_template_version_conflict", "The template version was created concurrently. Retry the request.", "notification_template_creation_failed", "notification_templates_application_version", "notification_templates_installation_version")
 		return
 	}

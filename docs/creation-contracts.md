@@ -17,6 +17,11 @@ message. Invalid user input and catalog feature references return HTTP 422.
 Organization limits retain their existing 409 responses. Applications should
 inspect the HTTP status as well as the RFC 9457 problem code.
 
+Template creation and immutable-version updates reject missing, private,
+unready, non-image, or out-of-scope managed assets with
+`422 invalid_notification_template_assets`. Valid asset rows are locked while
+their references are added. Unexpected storage failures remain redacted 500s.
+
 In particular, an existing price key now returns `409 price_conflict` rather
 than the former generic `price_creation_failed`. The latter code is used for
 unexpected creation failures with HTTP 500. Concurrent template-version

@@ -4370,6 +4370,7 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateProduct'
       responses:
+        '500': {$ref: '#/components/responses/Problem'}
         '204':
           description: Product updated
   /v1/control/applications/{application_id}/entitlements:
@@ -7006,6 +7007,9 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateNotificationTemplate'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: New installation template draft version created
           content:
@@ -7166,6 +7170,9 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateNotificationTemplate'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: New immutable draft version created
           content:

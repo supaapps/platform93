@@ -7921,6 +7921,15 @@ export type UpdateProductData = {
     url: '/v1/control/applications/{application_id}/products/{product_id}';
 };
 
+export type UpdateProductErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    500: Problem;
+};
+
+export type UpdateProductError = UpdateProductErrors[keyof UpdateProductErrors];
+
 export type UpdateProductResponses = {
     /**
      * Product updated
@@ -10879,6 +10888,23 @@ export type UpdateInstallationNotificationTemplateData = {
     url: '/v1/control/installation/notification-templates/{template_id}';
 };
 
+export type UpdateInstallationNotificationTemplateErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type UpdateInstallationNotificationTemplateError = UpdateInstallationNotificationTemplateErrors[keyof UpdateInstallationNotificationTemplateErrors];
+
 export type UpdateInstallationNotificationTemplateResponses = {
     /**
      * New installation template draft version created
@@ -11041,6 +11067,23 @@ export type UpdateNotificationTemplateData = {
     query?: never;
     url: '/v1/control/applications/{application_id}/notification-templates/{template_id}';
 };
+
+export type UpdateNotificationTemplateErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type UpdateNotificationTemplateError = UpdateNotificationTemplateErrors[keyof UpdateNotificationTemplateErrors];
 
 export type UpdateNotificationTemplateResponses = {
     /**
