@@ -289,3 +289,68 @@ func TestGoogleProvisioningConcurrentAndAtomic(t *testing.T) {
 	}
 	requireProvisionStatus(t, f.provision(t, newProvisionBody("limited", "limited@example.test"), kernel.NewID().String()), 409)
 }
+
+func TestGoogleProvisioningProfileDefaultsAndConcurrentLink(t *testing.T) {
+	f := newGoogleProvisionFixture(t)
+	for _, attributes := range []any{nil, map[string]any{}, map[string]any{"source_id": "record-1", "enabled": true}} {
+		email := kernel.NewID().String() + "@example.test"
+		body := newProvisionBody("profile-"+email, email)
+		body["user"] = map[string]any{"email": email, "first_name": "Alex", "last_name": "Example", "locale": "de-ch", "custom_attributes": attributes}
+		response := f.provision(t, body, kernel.NewID().String())
+		requireProvisionStatus(t, response, 201)
+		var result provisionGoogleResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		if result.User.FirstName != "Alex" || result.User.LastName != "Example" || result.User.Locale != "de-CH" || result.User.Attributes == nil {
+			t.Fatalf("profile not preserved: %+v", result.User)
+		}
+		if attributes != nil && len(attributes.(map[string]any)) != len(result.User.Attributes) {
+			t.Fatal("custom attributes not preserved")
+		}
+	}
+	for _, forbidden := range []string{"password", "email_verified", "is_org_verified"} {
+		body := newProvisionBody("forbidden", "forbidden@example.test")
+		body["user"].(map[string]any)[forbidden] = true
+		requireProvisionStatus(t, f.provision(t, body, kernel.NewID().String()), 400)
+	}
+	userID := kernel.NewID().String()
+	if _, err := f.server.app.DB.Exec(t.Context(), `INSERT INTO users(id,application_id,email,normalized_email) VALUES($1,$2,'concurrent-link@example.test','concurrent-link@example.test')`, userID, f.app); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	statuses := make(chan int, 2)
+	for _, subject := range []string{"link-one", "link-two"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			statuses <- f.provision(t, map[string]any{"user_id": userID, "google_sub": subject, "reason": "Concurrent import"}, kernel.NewID().String()).Code
+		}()
+	}
+	wg.Wait()
+	close(statuses)
+	counts := map[int]int{}
+	for status := range statuses {
+		counts[status]++
+	}
+	if counts[200] != 1 || counts[409] != 1 {
+		t.Fatalf("concurrent linking results: %v", counts)
+	}
+}
+
+func TestGoogleProvisioningAuditFailureRollsBack(t *testing.T) {
+	f := newGoogleProvisionFixture(t)
+	if _, err := f.server.app.DB.Exec(t.Context(), `CREATE FUNCTION fail_google_provision_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.application_id='`+f.app+`'::uuid AND NEW.action='user.identity.provisioned' THEN RAISE EXCEPTION 'fixture failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_google_provision_audit BEFORE INSERT ON audit_records FOR EACH ROW EXECUTE FUNCTION fail_google_provision_audit()`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = f.server.app.DB.Exec(context.Background(), `DROP TRIGGER IF EXISTS fail_google_provision_audit ON audit_records; DROP FUNCTION IF EXISTS fail_google_provision_audit()`)
+	})
+	requireProvisionStatus(t, f.provision(t, newProvisionBody("audit-failure", "audit@example.test"), kernel.NewID().String()), 500)
+	for _, table := range []string{"users", "user_identities", "domain_events", "audit_records"} {
+		var count int
+		if err := f.server.app.DB.QueryRow(t.Context(), `SELECT count(*) FROM `+table+` WHERE application_id=$1`, f.app).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s partially persisted: %d %v", table, count, err)
+		}
+	}
+}
