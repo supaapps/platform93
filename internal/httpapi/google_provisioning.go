@@ -84,6 +84,17 @@ func (s *Server) provisionGoogleUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollback(tx, r.Context())
+	// Keep retirement/deletion from racing an import after middleware authorization.
+	var organizationID string
+	err = tx.QueryRow(r.Context(), `SELECT organization_id FROM applications WHERE id=$1 AND deleted_at IS NULL FOR SHARE`, applicationID).Scan(&organizationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		kernel.WriteProblem(w, r, http.StatusNotFound, "application_not_found", "The application was not found.")
+		return
+	}
+	if err != nil {
+		s.googleProvisioningError(w, r, err)
+		return
+	}
 	// Serialize imports of the same identity even when they target different users.
 	_, err = tx.Exec(r.Context(), `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "google-provision:"+applicationID.String()+":"+request.GoogleSub)
 	if err != nil {
@@ -149,8 +160,12 @@ VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8)`, userID, applicationID, u.Email, u.FirstName
 			_, err = s.app.Emit(r.Context(), tx, &applicationID, "user.identity.provisioned", "user/"+userID, actor(r), map[string]any{"user_id": userID, "identity_id": identityID, "provider": "google", "created_user": request.User != nil})
 		}
 		if err == nil {
-			_, err = tx.Exec(r.Context(), `INSERT INTO audit_records(id,organization_id,application_id,actor_type,actor_id,action,target_type,target_id,reason,request_id,changes)
-SELECT $1,organization_id,id,'control_user',$3,'user.identity.provisioned','user',$4,$5,$6,jsonb_build_object('identity_id',$7::text,'provider','google','created_user',$8::boolean) FROM applications WHERE id=$2`, kernel.NewID(), applicationID, actor(r).ID, userID, request.Reason, kernel.RequestID(r.Context()), identityID, request.User != nil)
+			var inserted pgconn.CommandTag
+			inserted, err = tx.Exec(r.Context(), `INSERT INTO audit_records(id,organization_id,application_id,actor_type,actor_id,action,target_type,target_id,reason,request_id,changes)
+VALUES($1,$2,$3,'control_user',$4,'user.identity.provisioned','user',$5,$6,$7,jsonb_build_object('identity_id',$8::text,'provider','google','created_user',$9::boolean))`, kernel.NewID(), organizationID, applicationID, actor(r).ID, userID, request.Reason, kernel.RequestID(r.Context()), identityID, request.User != nil)
+			if err == nil && inserted.RowsAffected() != 1 {
+				err = errors.New("provisioning audit was not persisted")
+			}
 		}
 		if err != nil {
 			s.googleProvisioningError(w, r, err)

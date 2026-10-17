@@ -340,17 +340,37 @@ func TestGoogleProvisioningProfileDefaultsAndConcurrentLink(t *testing.T) {
 
 func TestGoogleProvisioningAuditFailureRollsBack(t *testing.T) {
 	f := newGoogleProvisionFixture(t)
-	if _, err := f.server.app.DB.Exec(t.Context(), `CREATE FUNCTION fail_google_provision_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.application_id='`+f.app+`'::uuid AND NEW.action='user.identity.provisioned' THEN RAISE EXCEPTION 'fixture failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_google_provision_audit BEFORE INSERT ON audit_records FOR EACH ROW EXECUTE FUNCTION fail_google_provision_audit()`); err != nil {
+	if _, err := f.server.app.DB.Exec(t.Context(), `CREATE FUNCTION fail_google_provision_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.application_id='`+f.app+`'::uuid AND NEW.action='user.identity.provisioned' THEN IF NEW.reason='skip-audit-fixture' THEN RETURN NULL; END IF; RAISE EXCEPTION 'fixture failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER fail_google_provision_audit BEFORE INSERT ON audit_records FOR EACH ROW EXECUTE FUNCTION fail_google_provision_audit()`); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		_, _ = f.server.app.DB.Exec(context.Background(), `DROP TRIGGER IF EXISTS fail_google_provision_audit ON audit_records; DROP FUNCTION IF EXISTS fail_google_provision_audit()`)
 	})
 	requireProvisionStatus(t, f.provision(t, newProvisionBody("audit-failure", "audit@example.test"), kernel.NewID().String()), 500)
+	skipped := newProvisionBody("audit-skipped", "skipped@example.test")
+	skipped["reason"] = "skip-audit-fixture"
+	requireProvisionStatus(t, f.provision(t, skipped, kernel.NewID().String()), 500)
 	for _, table := range []string{"users", "user_identities", "domain_events", "audit_records"} {
 		var count int
 		if err := f.server.app.DB.QueryRow(t.Context(), `SELECT count(*) FROM `+table+` WHERE application_id=$1`, f.app).Scan(&count); err != nil || count != 0 {
 			t.Fatalf("%s partially persisted: %d %v", table, count, err)
 		}
+	}
+}
+
+func TestGoogleProvisioningRevalidatesActiveApplication(t *testing.T) {
+	f := newGoogleProvisionFixture(t)
+	if _, err := f.server.app.DB.Exec(t.Context(), `UPDATE applications SET deleted_at=now() WHERE id=$1`, f.app); err != nil {
+		t.Fatal(err)
+	}
+	// Model retirement after the control middleware has authorized the request.
+	r := requestWithRoute(t, http.MethodPost, "/", newProvisionBody("retired", "retired@example.test"), map[string]string{"application_id": f.app}, kernel.Actor{Type: "control_user", ID: f.control})
+	r.Header.Set("Idempotency-Key", kernel.NewID().String())
+	w := httptest.NewRecorder()
+	f.server.provisionGoogleUser(w, r)
+	requireProvisionStatus(t, w, 404)
+	var count int
+	if err := f.server.app.DB.QueryRow(t.Context(), `SELECT count(*) FROM users WHERE application_id=$1`, f.app).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("retired application imported a user: %d %v", count, err)
 	}
 }
