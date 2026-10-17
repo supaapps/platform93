@@ -63,6 +63,7 @@ PLATFORM_EVENT_VERSIONS = dict.fromkeys((
     "workspace.invitation_created", "workspace.invitation_accepted", "workspace.owner_transferred",
     "application_invitation.created", "application_invitation.resent", "application_invitation.revoked",
     "application_invitation.accepted", "application_invitation.expired", "user.updated",
+    "user.identity.provisioned",
     "workspace.created", "workspace.updated", "workspace.archived", "workspace.member_added",
     "workspace.member_updated", "workspace.member_removed", "entitlement.adjusted", "entitlement.revoked",
     "entitlement.restored", "entitlement.expired", "entitlement.effective_changed",

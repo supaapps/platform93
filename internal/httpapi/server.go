@@ -243,6 +243,7 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Get("/control/applications/{application_id}/invitations/{invitation_id}", s.getInvitation)
 			r.Delete("/control/applications/{application_id}/invitations/{invitation_id}", s.revokeInvitation)
 			r.Post("/control/applications/{application_id}/users", s.adminCreateUser)
+			r.With(s.idempotent).Post("/control/applications/{application_id}/users/provision-google", s.provisionGoogleUser)
 			r.Get("/control/applications/{application_id}/users", s.adminListUsers)
 			r.Get("/control/applications/{application_id}/users/{user_id}", s.adminGetUser)
 			r.Patch("/control/applications/{application_id}/users/{user_id}", s.adminUpdateUser)

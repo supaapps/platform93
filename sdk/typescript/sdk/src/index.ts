@@ -47,6 +47,11 @@ export class Platform93Client {
     return new ApplicationClient(this, id);
   }
 
+  /** Administrative control token required; never call with an application-user token. */
+  provisionGoogleUser(applicationId: string, input: ProvisionGoogleUser, idempotencyKey: string) {
+    return this.request<GoogleProvisioningResult>("POST", `/v1/control/applications/${encodeURIComponent(applicationId)}/users/provision-google`, input, { idempotencyKey });
+  }
+
   async request<T>(method: string, path: string, body?: unknown, options: { idempotencyKey?: string; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -159,6 +164,11 @@ export class ApplicationClient {
 }
 
 export type Page<T> = { items: T[]; next_cursor: string | null };
+export type ProvisionGoogleUser = { google_sub: string; reason: string } & (
+  | { user_id: string; user?: never }
+  | { user: { email: string; first_name?: string; last_name?: string; username?: string | null; locale?: string; custom_attributes?: Record<string, unknown> }; user_id?: never }
+);
+export type GoogleProvisioningResult = { user: User; identity_id: string; provider: "google"; created_user: boolean };
 export type ApplicationFlowConfig = { oauth_client_id: string; sign_in_redirect_uri: string; invitation_redirect_uri: string };
 export type RuntimeStorageConfig = { public_uploads_enabled: boolean; private_uploads_enabled: boolean; max_public_object_bytes?: number; max_private_object_bytes?: number; max_email_image_bytes?: number; public_provider_scope?: "installation" | "organization" | "application"; private_provider_scope?: "installation" | "organization" | "application" };
 export type RuntimeConfig = { schema_version: string; api_base: string; issuer: string; application_id: string; public_config: Record<string, unknown>; auth: { registration_mode: "public" | "invite_only"; registration_enabled: boolean; password_enabled: boolean; passwordless_enabled: boolean; flows?: ApplicationFlowConfig }; storage: RuntimeStorageConfig };

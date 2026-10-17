@@ -82,6 +82,7 @@ export interface Platform93EventDataMap {
   "storage.provider.disabled": StorageProviderData;
   "user.created": UserIDData & { email_verified: boolean; is_org_verified: boolean };
   "user.updated": UserIDData & { changed_fields: string[] };
+  "user.identity.provisioned": UserIDData & { identity_id: ID; provider: "google"; created_user: boolean };
   "user.email_verified": VerificationData<true>;
   "user.email_unverified": VerificationData<false>;
   "user.organization_verified": VerificationData<true>;
@@ -136,6 +137,7 @@ export const platform93EventVersions: Readonly<Record<Platform93EventType, strin
   "workspace.invitation_accepted": "1.0", "workspace.owner_transferred": "1.0",
   "application_invitation.created": "1.0", "application_invitation.resent": "1.0",
   "application_invitation.revoked": "1.0", "application_invitation.accepted": "1.0", "application_invitation.expired": "1.0",
+  "user.identity.provisioned": "1.0",
   "user.updated": "1.0", "workspace.created": "1.0", "workspace.updated": "1.0", "workspace.archived": "1.0",
   "workspace.member_added": "1.0", "workspace.member_updated": "1.0", "workspace.member_removed": "1.0",
   "entitlement.adjusted": "1.0", "entitlement.revoked": "1.0", "entitlement.restored": "1.0",
