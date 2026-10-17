@@ -65,10 +65,16 @@ func (s *Server) createNotificationTemplateForScope(w http.ResponseWriter, r *ht
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_template_variables", err.Error())
 		return
 	}
+	request.VariableSchema = objectOrEmpty(request.VariableSchema)
 	schema, _ := json.Marshal(request.VariableSchema)
 	id := kernel.NewID()
 	var version int
 	tx, err := s.app.DB.Begin(r.Context())
+	if err != nil {
+		writeCreationProblem(w, r, err, "", "", "notification_template_creation_failed")
+		return
+	}
+	defer rollback(tx, r.Context())
 	if err == nil {
 		err = tx.QueryRow(r.Context(), `INSERT INTO notification_templates
 (id,application_id,key,locale,category,version,subject_template,text_template,html_template,variable_schema)
@@ -81,11 +87,9 @@ WHERE application_id IS NOT DISTINCT FROM $2 AND key=$3 AND locale=$4 RETURNING 
 	}
 	if err == nil {
 		err = tx.Commit(r.Context())
-	} else if tx != nil {
-		_ = tx.Rollback(r.Context())
 	}
 	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusConflict, "notification_template_creation_failed", "The template version could not be created.")
+		writeCreationProblem(w, r, err, "notification_template_version_conflict", "The template version was created concurrently. Retry the request.", "notification_template_creation_failed", "notification_templates_application_version", "notification_templates_installation_version")
 		return
 	}
 	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "key": request.Key, "locale": request.Locale, "category": request.Category, "version": version, "status": "draft"})

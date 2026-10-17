@@ -175,8 +175,14 @@ VALUES($1,$2,$3,$4,$5,$6,'queued')`, notificationID, applicationID, templateID, 
 		_, err = s.app.Emit(r.Context(), tx, &parsedApplicationID, "application_invitation.created", "application_invitation/"+id.String(), current,
 			map[string]any{"invitation_id": id, "workspace_id": workspace, "application_role_keys": request.ApplicationRoleKeys, "workspace_role_keys": request.WorkspaceRoleKeys, "onboarding_method": request.OnboardingMethod, "status": "pending"})
 	}
-	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
-		kernel.WriteProblem(w, r, http.StatusConflict, "invitation_conflict", "A pending invitation already exists or could not be created.")
+	if err == nil {
+		err = parseErr
+	}
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err != nil {
+		writeCreationProblem(w, r, err, "invitation_conflict", "A pending invitation already exists.", "invitation_creation_failed", "application_invitations_pending_email")
 		return
 	}
 	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "application_id": applicationID, "email": normalized, "workspace_id": workspace, "application_role_keys": request.ApplicationRoleKeys,

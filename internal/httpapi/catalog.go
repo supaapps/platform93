@@ -42,10 +42,11 @@ func (s *Server) createFeature(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := kernel.NewID()
+	request.Metadata = objectOrEmpty(request.Metadata)
 	metadata, _ := json.Marshal(request.Metadata)
 	_, err := s.app.DB.Exec(r.Context(), `INSERT INTO features (id,application_id,key,name,value_type,free_form_format,metadata) VALUES ($1,$2,$3,$4,$5,$6,$7)`, id, chi.URLParam(r, "application_id"), request.Key, request.Name, request.ValueType, nullableString(request.FreeFormFormat), metadata)
 	if err != nil {
-		kernel.WriteProblem(w, r, 409, "feature_conflict", "A feature with this key already exists.")
+		writeCreationProblem(w, r, err, "feature_conflict", "A feature with this key already exists.", "feature_creation_failed", "features_application_id_key_key")
 		return
 	}
 	kernel.WriteJSON(w, 201, map[string]any{"id": id, "key": request.Key, "name": request.Name, "value_type": request.ValueType, "free_form_format": nullableString(request.FreeFormFormat), "metadata": request.Metadata})
@@ -105,6 +106,7 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 	if request.Listable != nil {
 		listable = *request.Listable
 	}
+	request.Metadata = objectOrEmpty(request.Metadata)
 	metadata, _ := json.Marshal(request.Metadata)
 	description := ""
 	if request.Description != nil {
@@ -131,7 +133,7 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_product_features", err.Error())
 			return
 		}
-		kernel.WriteProblem(w, r, 409, "product_conflict", "A product with this key already exists.")
+		writeCreationProblem(w, r, err, "product_conflict", "A product with this key already exists.", "product_creation_failed", "products_application_id_key_key")
 		return
 	}
 	if tx.Commit(r.Context()) != nil {
@@ -295,6 +297,7 @@ func (s *Server) createPrice(w http.ResponseWriter, r *http.Request) {
 			request.TaxBehavior = "unspecified"
 		}
 	}
+	request.CheckoutConfig = objectOrEmpty(request.CheckoutConfig)
 	if err := validateCheckoutPolicy(request.Mode, request.Currency, request.CheckoutConfig); err != nil {
 		kernel.WriteProblem(w, r, 422, "invalid_checkout_policy", err.Error())
 		return
@@ -303,6 +306,7 @@ func (s *Server) createPrice(w http.ResponseWriter, r *http.Request) {
 	id := kernel.NewID()
 	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
+		writeCreationProblem(w, r, err, "", "", "price_creation_failed")
 		return
 	}
 	defer rollback(tx, r.Context())
@@ -327,8 +331,11 @@ SELECT $1,feature_id,boolean_value,quantity_value,free_form_value FROM product_f
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_price_features", err.Error())
 		return
 	}
-	if err != nil || tx.Commit(r.Context()) != nil {
-		kernel.WriteProblem(w, r, 409, "price_creation_failed", "The immutable price could not be created.")
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err != nil {
+		writeCreationProblem(w, r, err, "price_conflict", "A price with this key already exists.", "price_creation_failed", "prices_application_id_key_key")
 		return
 	}
 	kernel.WriteJSON(w, 201, map[string]any{"id": id, "key": request.Key, "mode": request.Mode, "amount_minor": request.AmountMinor, "currency": request.Currency, "currency_exponent": exponent, "tax_behavior": request.TaxBehavior, "checkout_config": request.CheckoutConfig, "entitlement_config": decodeMap(entitlement), "features": catalogFeatureValues(r.Context(), s.app.DB, "price", id.String()), "active": true})

@@ -13289,23 +13289,32 @@ components:
             - confidential
         redirect_uris:
           type: array
+          description: Omitted or null redirect URIs default to an empty array at creation.
+          default: []
           uniqueItems: true
           items:
             type: string
             format: uri
+          nullable: true
         allowed_grants:
           type: array
+          description: Omitted or null grant types default to an empty array at creation.
+          default: []
           uniqueItems: true
           items:
             enum:
               - authorization_code
               - refresh_token
               - client_credentials
+          nullable: true
         allowed_scopes:
           type: array
+          description: Omitted or null OAuth scopes default to an empty array at creation.
+          default: []
           uniqueItems: true
           items:
             type: string
+          nullable: true
       additionalProperties: false
     UpdateClient:
       type: object
@@ -13464,7 +13473,10 @@ components:
           type: boolean
         custom_attributes:
           type: object
+          description: Omitted or null custom attributes default to an empty object at creation.
+          default: {}
           additionalProperties: true
+          nullable: true
       additionalProperties: false
     UpdateUser:
       type: object
@@ -14074,7 +14086,10 @@ components:
           maxLength: 200000
         variable_schema:
           type: object
+          description: Omitted or null variable schemas default to an empty object at creation.
+          default: {}
           additionalProperties: true
+          nullable: true
       additionalProperties: false
     UpdateNotificationTemplate:
       type: object
@@ -15719,7 +15734,10 @@ components:
           description: Required when value_type is free_form and forbidden otherwise.
         metadata:
           type: object
+          description: Omitted or null feature metadata defaults to an empty object at creation.
+          default: {}
           additionalProperties: true
+          nullable: true
       additionalProperties: false
     FeatureValue:
       type: object
@@ -15793,6 +15811,10 @@ components:
             - archived
         metadata:
           type: object
+          description: Omitted or null product metadata defaults to an empty object at creation.
+          default: {}
+          additionalProperties: true
+          nullable: true
         entitlement_config:
           type: object
           additionalProperties: true
@@ -15874,6 +15896,10 @@ components:
             - unspecified
         checkout_config:
           type: object
+          description: Omitted or null checkout configuration defaults to an empty object at creation.
+          default: {}
+          additionalProperties: true
+          nullable: true
         entitlement_config:
           type: object
           additionalProperties: true
@@ -15946,10 +15972,12 @@ components:
           $ref: '#/components/schemas/UUID'
         payment_methods:
           type: array
+          description: Omitted, null, or empty methods use the price policy; without configured methods Stripe chooses its defaults.
           items:
             enum:
               - card
               - twint
+          nullable: true
         success_uri:
           type: string
           format: uri

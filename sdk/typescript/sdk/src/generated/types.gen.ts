@@ -1403,9 +1403,18 @@ export type CreateClient = {
     client_id: string;
     name: string;
     client_type: 'public' | 'confidential';
-    redirect_uris?: Array<string>;
-    allowed_grants?: Array<'authorization_code' | 'refresh_token' | 'client_credentials'>;
-    allowed_scopes?: Array<string>;
+    /**
+     * Omitted or null redirect URIs default to an empty array at creation.
+     */
+    redirect_uris?: Array<string> | null;
+    /**
+     * Omitted or null grant types default to an empty array at creation.
+     */
+    allowed_grants?: Array<'authorization_code' | 'refresh_token' | 'client_credentials'> | null;
+    /**
+     * Omitted or null OAuth scopes default to an empty array at creation.
+     */
+    allowed_scopes?: Array<string> | null;
 };
 
 export type UpdateClient = {
@@ -1462,9 +1471,12 @@ export type CreateUser = {
     locale?: Locale;
     email_verified?: boolean;
     is_org_verified?: boolean;
+    /**
+     * Omitted or null custom attributes default to an empty object at creation.
+     */
     custom_attributes?: {
         [key: string]: unknown;
-    };
+    } | null;
 };
 
 export type UpdateUser = {
@@ -1678,9 +1690,12 @@ export type CreateNotificationTemplate = {
     subject_template: string;
     text_template: string;
     html_template?: string;
+    /**
+     * Omitted or null variable schemas default to an empty object at creation.
+     */
     variable_schema?: {
         [key: string]: unknown;
-    };
+    } | null;
 };
 
 export type UpdateNotificationTemplate = {
@@ -2268,9 +2283,12 @@ export type CreateFeature = {
      * Required when value_type is free_form and forbidden otherwise.
      */
     free_form_format?: 'text' | 'csv' | 'json';
+    /**
+     * Omitted or null feature metadata defaults to an empty object at creation.
+     */
     metadata?: {
         [key: string]: unknown;
-    };
+    } | null;
 };
 
 export type FeatureValue = {
@@ -2307,9 +2325,12 @@ export type CreateProduct = {
     description?: string;
     listable?: boolean;
     status?: 'draft' | 'active' | 'archived';
+    /**
+     * Omitted or null product metadata defaults to an empty object at creation.
+     */
     metadata?: {
         [key: string]: unknown;
-    };
+    } | null;
     entitlement_config?: {
         [key: string]: unknown;
     };
@@ -2341,9 +2362,12 @@ export type CreatePrice = {
     validity_seconds?: number;
     grace_seconds?: number;
     tax_behavior?: 'inclusive' | 'exclusive' | 'unspecified';
+    /**
+     * Omitted or null checkout configuration defaults to an empty object at creation.
+     */
     checkout_config?: {
         [key: string]: unknown;
-    };
+    } | null;
     entitlement_config?: {
         [key: string]: unknown;
     };
@@ -2372,7 +2396,10 @@ export type CreateCheckout = {
     provider_id?: Uuid;
     subject_type?: 'user' | 'workspace';
     subject_id?: Uuid;
-    payment_methods?: Array<'card' | 'twint'>;
+    /**
+     * Omitted, null, or empty methods use the price policy; without configured methods Stripe chooses its defaults.
+     */
+    payment_methods?: Array<'card' | 'twint'> | null;
     success_uri: string;
     cancel_uri: string;
     external_reference?: string;
@@ -2610,9 +2637,12 @@ export type CreateUserWritable = {
     locale?: Locale;
     email_verified?: boolean;
     is_org_verified?: boolean;
+    /**
+     * Omitted or null custom attributes default to an empty object at creation.
+     */
     custom_attributes?: {
         [key: string]: unknown;
-    };
+    } | null;
 };
 
 export type PasswordResetVerifyWritable = {
