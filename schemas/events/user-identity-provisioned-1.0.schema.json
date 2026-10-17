@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform93.dev/schemas/events/user-identity-provisioned/1.0",
+  "title": "Platform93 User Identity Provisioned Event Data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["user_id", "identity_id", "provider", "created_user"],
+  "properties": {
+    "user_id": { "type": "string", "format": "uuid" },
+    "identity_id": { "type": "string", "format": "uuid" },
+    "provider": { "const": "google" },
+    "created_user": { "type": "boolean" }
+  }
+}
