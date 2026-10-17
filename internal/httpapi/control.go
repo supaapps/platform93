@@ -409,9 +409,9 @@ func (s *Server) createClient(w http.ResponseWriter, r *http.Request) {
 	_, err := s.app.DB.Exec(r.Context(), `INSERT INTO clients
 (id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,secret_digest,authorization_ui,pkce_required,initiate_login_uri)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, chi.URLParam(r, "application_id"), request.ClientID, request.Name,
-		request.ClientType, request.RedirectURIs, request.AllowedGrants, request.AllowedScopes, digest, request.AuthorizationUI, required, request.InitiateLoginURI)
+		request.ClientType, stringsOrEmpty(request.RedirectURIs), stringsOrEmpty(request.AllowedGrants), stringsOrEmpty(request.AllowedScopes), digest, request.AuthorizationUI, required, request.InitiateLoginURI)
 	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusConflict, "client_conflict", "The client could not be created.")
+		writeCreationProblem(w, r, err, "client_conflict", "A client with this ID already exists.", "client_creation_failed", "clients_client_id_key")
 		return
 	}
 	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "client_id": request.ClientID, "name": request.Name, "client_type": request.ClientType, "client_secret": optionalSecret(secret), "authorization_ui": request.AuthorizationUI, "pkce_required": required})

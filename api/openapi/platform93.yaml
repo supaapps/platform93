@@ -2224,6 +2224,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateClient'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Client created and secret returned once when applicable
           content:
@@ -2335,6 +2338,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateRole'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Role created
           content:
@@ -2947,6 +2952,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Invitation created and email queued
           content:
@@ -3200,6 +3208,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Application or workspace invitation created and email queued
           content:
@@ -3297,6 +3308,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateUser'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: User created
           content:
@@ -3622,6 +3636,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateFeature'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Feature created
           content:
@@ -3645,6 +3661,9 @@ paths:
             schema:
               $ref: '#/components/schemas/PasswordSignUp'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '200':
           $ref: '#/components/responses/Tokens'
         '403':
@@ -4261,6 +4280,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateProduct'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Product created
           content:
@@ -4303,6 +4325,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreatePrice'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Immutable price created
           content:
@@ -4345,6 +4370,7 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateProduct'
       responses:
+        '500': {$ref: '#/components/responses/Problem'}
         '204':
           description: Product updated
   /v1/control/applications/{application_id}/entitlements:
@@ -4769,6 +4795,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateCheckout'
       responses:
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Provider checkout created
           content:
@@ -5943,6 +5971,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Workspace invitation created and email queued
           content:
@@ -6917,6 +6948,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateNotificationTemplate'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Installation template draft created
           content:
@@ -6973,6 +7007,9 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateNotificationTemplate'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: New installation template draft version created
           content:
@@ -7071,6 +7108,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateNotificationTemplate'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Immutable draft template version created
           content:
@@ -7130,6 +7170,9 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateNotificationTemplate'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: New immutable draft version created
           content:
@@ -9022,6 +9065,18 @@ components:
                 type: string
                 writeOnly: true
   responses:
+    CreationConflict:
+      description: A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    CreationFailure:
+      description: An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Problem:
       description: RFC 9457 problem
       content:
@@ -13023,13 +13078,17 @@ components:
             - public
             - confidential
         redirect_uris:
-          type: array
+          type: [array, 'null']
+          description: Omitted or null redirect URIs default to an empty array at creation.
+          default: []
           uniqueItems: true
           items:
             type: string
             format: uri
         allowed_grants:
-          type: array
+          type: [array, 'null']
+          description: Omitted or null grant types default to an empty array at creation.
+          default: []
           uniqueItems: true
           items:
             enum:
@@ -13037,7 +13096,9 @@ components:
               - refresh_token
               - client_credentials
         allowed_scopes:
-          type: array
+          type: [array, 'null']
+          description: Omitted or null OAuth scopes default to an empty array at creation.
+          default: []
           uniqueItems: true
           items:
             type: string
@@ -13191,7 +13252,9 @@ components:
         is_org_verified:
           type: boolean
         custom_attributes:
-          type: object
+          type: [object, 'null']
+          description: Omitted or null custom attributes default to an empty object at creation.
+          default: {}
           additionalProperties: true
       additionalProperties: false
     UpdateUser:
@@ -13787,7 +13850,9 @@ components:
           type: string
           maxLength: 200000
         variable_schema:
-          type: object
+          type: [object, 'null']
+          description: Omitted or null variable schemas default to an empty object at creation.
+          default: {}
           additionalProperties: true
       additionalProperties: false
     UpdateNotificationTemplate:
@@ -15439,7 +15504,9 @@ components:
             - json
           description: Required when value_type is free_form and forbidden otherwise.
         metadata:
-          type: object
+          type: [object, 'null']
+          description: Omitted or null feature metadata defaults to an empty object at creation.
+          default: {}
           additionalProperties: true
       additionalProperties: false
     FeatureValue:
@@ -15504,7 +15571,10 @@ components:
             - active
             - archived
         metadata:
-          type: object
+          type: [object, 'null']
+          description: Omitted or null product metadata defaults to an empty object at creation.
+          default: {}
+          additionalProperties: true
         entitlement_config:
           type: object
           additionalProperties: true
@@ -15585,7 +15655,10 @@ components:
             - exclusive
             - unspecified
         checkout_config:
-          type: object
+          type: [object, 'null']
+          description: Omitted or null checkout configuration defaults to an empty object at creation.
+          default: {}
+          additionalProperties: true
         entitlement_config:
           type: object
           additionalProperties: true
@@ -15655,7 +15728,8 @@ components:
         subject_id:
           $ref: '#/components/schemas/UUID'
         payment_methods:
-          type: array
+          type: [array, 'null']
+          description: Omitted, null, or empty methods use the price policy; without configured methods Stripe chooses its defaults.
           items:
             enum:
               - card
