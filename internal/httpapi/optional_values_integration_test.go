@@ -229,8 +229,12 @@ func TestCheckoutProviderDefaultMethodsPostgres(t *testing.T) {
 			if err := json.Unmarshal(policy, &snapshot); err != nil {
 				t.Fatal(err)
 			}
-			if snapshot["payment_methods"] == nil {
-				t.Fatal("policy snapshot contains null methods")
+			wantPolicy := make([]any, len(want))
+			for index, method := range want {
+				wantPolicy[index] = method
+			}
+			if !reflect.DeepEqual(snapshot["payment_methods"], wantPolicy) {
+				t.Fatalf("policy snapshot methods: %#v", snapshot["payment_methods"])
 			}
 		})
 	}
@@ -383,5 +387,77 @@ func TestOptionalObjectMigrationPostgres(t *testing.T) {
 	}
 	if err := database.Migrate(dsn); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCatalogFeatureCreationErrorsPostgres(t *testing.T) {
+	for _, owner := range []string{"product", "price"} {
+		t.Run(owner, func(t *testing.T) {
+			f := newWorkspaceHTTPFixture(t)
+			feature, parent := kernel.NewID().String(), kernel.NewID().String()
+			f.exec(`INSERT INTO features(id,application_id,key,name,value_type) VALUES($1,$2,'flag','Flag','boolean')`, feature, f.application)
+			f.exec(`INSERT INTO products(id,application_id,key,name) VALUES($1,$2,'parent','Parent')`, parent, f.application)
+			path := "/products"
+			body := func(key string, features []map[string]any) map[string]any {
+				b := map[string]any{"key": key, "name": "Feature errors", "features": features}
+				if owner == "price" {
+					delete(b, "name")
+					b["mode"] = "one_time"
+					b["amount_minor"] = 100
+					b["currency"] = "EUR"
+				}
+				return b
+			}
+			if owner == "price" {
+				path = "/products/" + parent + "/prices"
+			}
+			for _, test := range []struct {
+				key      string
+				features []map[string]any
+			}{
+				{"malformed", []map[string]any{{"feature_id": "not-a-uuid", "boolean_value": true}}},
+				{"missing", []map[string]any{{"feature_id": kernel.NewID().String(), "boolean_value": true}}},
+				{"wrong_type", []map[string]any{{"feature_id": feature, "quantity_value": 3}}},
+				{"duplicate", []map[string]any{{"feature_id": feature, "boolean_value": true}, {"feature_id": feature, "boolean_value": true}}},
+			} {
+				w := f.controlJSON("POST", path, body(test.key, test.features))
+				if w.Code != 422 {
+					t.Fatalf("%s: %d %s", test.key, w.Code, w.Body.String())
+				}
+			}
+			features := []map[string]any{{"feature_id": feature, "boolean_value": true}}
+			f.exec(`ALTER TABLE features RENAME TO temporarily_unavailable_features`)
+			w := f.controlJSON("POST", path, body("lookup_failure", features))
+			if w.Code != 500 {
+				t.Fatalf("lookup error disguised as input: %d %s", w.Code, w.Body.String())
+			}
+			f.exec(`ALTER TABLE temporarily_unavailable_features RENAME TO features`)
+			f.exec(`CREATE FUNCTION reject_test_feature() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION USING ERRCODE='23505', CONSTRAINT='unrelated_unique_key', MESSAGE='invalid feature private-provider-detail'; END $$`)
+			f.exec(fmt.Sprintf(`CREATE TRIGGER reject_test_feature BEFORE INSERT ON %s_features FOR EACH ROW EXECUTE FUNCTION reject_test_feature()`, owner))
+			w = f.controlJSON("POST", path, body("storage_failure", features))
+			if w.Code != 500 || strings.Contains(w.Body.String(), "private-provider-detail") {
+				t.Fatalf("storage error disguised as input: %d %s", w.Code, w.Body.String())
+			}
+			if owner == "product" {
+				w = f.controlJSON("PATCH", "/products/"+parent, map[string]any{"features": features})
+				if w.Code != 500 {
+					t.Fatalf("update storage failure disguised as version conflict: %d %s", w.Code, w.Body.String())
+				}
+				var version int
+				if err := f.app.DB.QueryRow(context.Background(), `SELECT version FROM products WHERE id=$1`, parent).Scan(&version); err != nil {
+					t.Fatal(err)
+				}
+				if version != 1 {
+					t.Fatal("failed product update was not rolled back")
+				}
+			}
+			var partial int
+			if err := f.app.DB.QueryRow(context.Background(), fmt.Sprintf(`SELECT count(*) FROM %ss WHERE application_id=$1 AND key!='parent'`, owner), f.application).Scan(&partial); err != nil {
+				t.Fatal(err)
+			}
+			if partial != 0 {
+				t.Fatal("failed feature creation left partial catalog records")
+			}
+		})
 	}
 }

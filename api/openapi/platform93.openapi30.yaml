@@ -2282,6 +2282,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAuthClient'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/applications/{application_id}/clients/{client_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -2393,8 +2399,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Role'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
         '422':
           $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/applications/{application_id}/roles/{role_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3005,6 +3015,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationInvitation'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/applications/{application_id}/invitations/{invitation_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3258,6 +3274,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationInvitation'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/applications/{application_id}/invitations/{invitation_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3355,6 +3377,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/applications/{application_id}/users/{user_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3680,8 +3708,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Feature'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
         '422':
           $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/applications/{application_id}/auth/password/sign-up:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3701,6 +3733,12 @@ paths:
           $ref: '#/components/responses/Tokens'
         '403':
           $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/applications/{application_id}/auth/password/sign-in:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -4339,6 +4377,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Product'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/applications/{application_id}/products/{product_id}/prices:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -4381,6 +4425,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Price'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/applications/{application_id}/products/{product_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -4847,6 +4897,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CheckoutSession'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/applications/{application_id}/billing/checkout-sessions/{session_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -6025,6 +6079,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApplicationInvitation'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/applications/{application_id}/workspaces/{workspace_id}/invitations/{invitation_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -6999,6 +7059,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationTemplate'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/installation/notification-template-variables:
     get:
       operationId: listInstallationNotificationTemplateVariables
@@ -7153,6 +7219,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationTemplate'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
   /v1/control/applications/{application_id}/notification-template-variables:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -9127,6 +9199,20 @@ components:
                 type: string
                 writeOnly: true
   responses:
+    CreationConflict:
+      description: >-
+        A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation.
+        Unexpected storage failures use 500 instead.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    CreationFailure:
+      description: An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Problem:
       description: RFC 9457 problem
       content:

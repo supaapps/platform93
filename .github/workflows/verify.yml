@@ -60,7 +60,7 @@ jobs:
           jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceMetadataNilBindingReproducesNotNullViolation")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceCreationPreservesControlAuthorization")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceCreationBindsUserOwnerToAuthenticatedApplication")' /tmp/integration-tests.json >/dev/null
-          for TEST in TestOptionalClientArraysPostgres TestOptionalObjectDefaultsPostgres TestCheckoutProviderDefaultMethodsPostgres TestCreationErrorClassificationPostgres TestOptionalUpdatesPreserveExistingValuesPostgres TestOptionalObjectMigrationPostgres; do
+          for TEST in TestOptionalClientArraysPostgres TestOptionalObjectDefaultsPostgres TestCheckoutProviderDefaultMethodsPostgres TestCreationErrorClassificationPostgres TestOptionalUpdatesPreserveExistingValuesPostgres TestOptionalObjectMigrationPostgres TestCatalogFeatureCreationErrorsPostgres; do
             jq -e --arg test "$TEST" 'select(.Action == "pass" and .Test == $test)' /tmp/integration-tests.json >/dev/null
           done
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...

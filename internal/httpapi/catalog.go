@@ -4,15 +4,19 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/kernel"
 )
+
+var errInvalidCatalogFeature = errors.New("invalid feature")
 
 func (s *Server) createFeature(w http.ResponseWriter, r *http.Request) {
 	var request struct {
@@ -129,7 +133,7 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 		err = insertCatalogFeatureValues(r.Context(), tx, chi.URLParam(r, "application_id"), "product", id.String(), *request.Features)
 	}
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "invalid feature") {
+		if errors.Is(err, errInvalidCatalogFeature) {
 			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_product_features", err.Error())
 			return
 		}
@@ -240,11 +244,15 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 			err = insertCatalogFeatureValues(r.Context(), tx, chi.URLParam(r, "application_id"), "product", chi.URLParam(r, "product_id"), *request.Features)
 		}
 	}
-	if err != nil && strings.HasPrefix(err.Error(), "invalid feature") {
+	if errors.Is(err, errInvalidCatalogFeature) {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_product_features", err.Error())
 		return
 	}
-	if err != nil || result.RowsAffected() != 1 {
+	if err != nil {
+		kernel.WriteProblem(w, r, http.StatusInternalServerError, "product_update_failed", "The product could not be updated. Retry the request.")
+		return
+	}
+	if result.RowsAffected() != 1 {
 		kernel.WriteProblem(w, r, http.StatusConflict, "product_version_conflict", "The product changed concurrently.")
 		return
 	}
@@ -327,7 +335,7 @@ SELECT $1,feature_id,boolean_value,quantity_value,free_form_value FROM product_f
 	} else if err == nil {
 		err = insertCatalogFeatureValues(r.Context(), tx, chi.URLParam(r, "application_id"), "price", id.String(), *request.Features)
 	}
-	if err != nil && strings.HasPrefix(err.Error(), "invalid feature") {
+	if errors.Is(err, errInvalidCatalogFeature) {
 		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_price_features", err.Error())
 		return
 	}
@@ -423,10 +431,16 @@ func insertCatalogFeatureValues(ctx context.Context, tx pgx.Tx, applicationID, o
 		table, ownerColumn = "price_features", "price_id"
 	}
 	for _, feature := range values {
+		if _, err := uuid.Parse(feature.FeatureID); err != nil {
+			return fmt.Errorf("%w: identifier must be a UUID", errInvalidCatalogFeature)
+		}
 		var valueType string
 		var freeFormFormat *string
-		if err := tx.QueryRow(ctx, `SELECT value_type,free_form_format FROM features WHERE id=$1 AND application_id=$2`, feature.FeatureID, applicationID).Scan(&valueType, &freeFormFormat); err != nil {
-			return fmt.Errorf("invalid feature %q: it does not belong to this application", feature.FeatureID)
+		if err := tx.QueryRow(ctx, `SELECT value_type,free_form_format FROM features WHERE id=$1 AND application_id=$2 FOR SHARE`, feature.FeatureID, applicationID).Scan(&valueType, &freeFormFormat); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("%w %q: it does not belong to this application", errInvalidCatalogFeature, feature.FeatureID)
+			}
+			return fmt.Errorf("load catalog feature: %w", err)
 		}
 		valid := false
 		switch valueType {
@@ -438,7 +452,7 @@ func insertCatalogFeatureValues(ctx context.Context, tx pgx.Tx, applicationID, o
 			valid = feature.BooleanValue == nil && feature.QuantityValue == nil && feature.FreeFormValue != nil && freeFormFormat != nil && validateFreeFormValue(*freeFormFormat, feature.FreeFormValue) == nil
 		}
 		if !valid {
-			return fmt.Errorf("invalid feature %q: expected a %s value", feature.FeatureID, valueType)
+			return fmt.Errorf("%w %q: expected a %s value", errInvalidCatalogFeature, feature.FeatureID, valueType)
 		}
 		var freeFormValue any
 		if feature.FreeFormValue != nil {
@@ -447,7 +461,10 @@ func insertCatalogFeatureValues(ctx context.Context, tx pgx.Tx, applicationID, o
 		_, err := tx.Exec(ctx, fmt.Sprintf(`INSERT INTO %s(%s,feature_id,boolean_value,quantity_value,free_form_value)
 VALUES($1,$2,$3,$4,$5)`, table, ownerColumn), ownerID, feature.FeatureID, feature.BooleanValue, feature.QuantityValue, freeFormValue)
 		if err != nil {
-			return fmt.Errorf("invalid feature %q: it is duplicated or malformed", feature.FeatureID)
+			if uniqueConstraint(err, "product_features_pkey", "price_features_pkey") {
+				return fmt.Errorf("%w %q: it is duplicated", errInvalidCatalogFeature, feature.FeatureID)
+			}
+			return fmt.Errorf("store catalog feature: %w", err)
 		}
 	}
 	return nil

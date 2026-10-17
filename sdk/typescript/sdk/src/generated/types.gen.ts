@@ -5380,6 +5380,23 @@ export type CreateClientData = {
     url: '/v1/control/applications/{application_id}/clients';
 };
 
+export type CreateClientErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateClientError = CreateClientErrors[keyof CreateClientErrors];
+
 export type CreateClientResponses = {
     /**
      * Client created and secret returned once when applicable
@@ -5504,9 +5521,17 @@ export type CreateRoleData = {
 
 export type CreateRoleErrors = {
     /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
      * RFC 9457 problem
      */
     422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
 };
 
 export type CreateRoleError = CreateRoleErrors[keyof CreateRoleErrors];
@@ -6296,6 +6321,23 @@ export type CreateApplicationInvitationMachineData = {
     url: '/v1/applications/{application_id}/invitations';
 };
 
+export type CreateApplicationInvitationMachineErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateApplicationInvitationMachineError = CreateApplicationInvitationMachineErrors[keyof CreateApplicationInvitationMachineErrors];
+
 export type CreateApplicationInvitationMachineResponses = {
     /**
      * Invitation created and email queued
@@ -6613,6 +6655,23 @@ export type CreateApplicationInvitationControlData = {
     url: '/v1/control/applications/{application_id}/invitations';
 };
 
+export type CreateApplicationInvitationControlErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateApplicationInvitationControlError = CreateApplicationInvitationControlErrors[keyof CreateApplicationInvitationControlErrors];
+
 export type CreateApplicationInvitationControlResponses = {
     /**
      * Application or workspace invitation created and email queued
@@ -6724,6 +6783,23 @@ export type CreateUserData = {
     query?: never;
     url: '/v1/control/applications/{application_id}/users';
 };
+
+export type CreateUserErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateUserError = CreateUserErrors[keyof CreateUserErrors];
 
 export type CreateUserResponses = {
     /**
@@ -7010,9 +7086,17 @@ export type CreateFeatureData = {
 
 export type CreateFeatureErrors = {
     /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
      * RFC 9457 problem
      */
     422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
 };
 
 export type CreateFeatureError = CreateFeatureErrors[keyof CreateFeatureErrors];
@@ -7040,6 +7124,18 @@ export type PasswordSignUpErrors = {
      * RFC 9457 problem
      */
     403: Problem;
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
 };
 
 export type PasswordSignUpError = PasswordSignUpErrors[keyof PasswordSignUpErrors];
@@ -7715,6 +7811,23 @@ export type CreateProductData = {
     url: '/v1/control/applications/{application_id}/products';
 };
 
+export type CreateProductErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateProductError = CreateProductErrors[keyof CreateProductErrors];
+
 export type CreateProductResponses = {
     /**
      * Product created
@@ -7752,6 +7865,23 @@ export type CreatePriceData = {
     query?: never;
     url: '/v1/control/applications/{application_id}/products/{product_id}/prices';
 };
+
+export type CreatePriceErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreatePriceError = CreatePriceErrors[keyof CreatePriceErrors];
 
 export type CreatePriceResponses = {
     /**
@@ -8241,6 +8371,19 @@ export type CreateCheckoutSessionData = {
     query?: never;
     url: '/v1/applications/{application_id}/billing/checkout-sessions';
 };
+
+export type CreateCheckoutSessionErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateCheckoutSessionError = CreateCheckoutSessionErrors[keyof CreateCheckoutSessionErrors];
 
 export type CreateCheckoutSessionResponses = {
     /**
@@ -9539,6 +9682,23 @@ export type CreateMyWorkspaceInvitationData = {
     url: '/v1/applications/{application_id}/workspaces/{workspace_id}/invitations';
 };
 
+export type CreateMyWorkspaceInvitationErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateMyWorkspaceInvitationError = CreateMyWorkspaceInvitationErrors[keyof CreateMyWorkspaceInvitationErrors];
+
 export type CreateMyWorkspaceInvitationResponses = {
     /**
      * Workspace invitation created and email queued
@@ -10650,6 +10810,23 @@ export type CreateInstallationNotificationTemplateData = {
     url: '/v1/control/installation/notification-templates';
 };
 
+export type CreateInstallationNotificationTemplateErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateInstallationNotificationTemplateError = CreateInstallationNotificationTemplateErrors[keyof CreateInstallationNotificationTemplateErrors];
+
 export type CreateInstallationNotificationTemplateResponses = {
     /**
      * Installation template draft created
@@ -10791,6 +10968,23 @@ export type CreateNotificationTemplateData = {
     query?: never;
     url: '/v1/control/applications/{application_id}/notification-templates';
 };
+
+export type CreateNotificationTemplateErrors = {
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateNotificationTemplateError = CreateNotificationTemplateErrors[keyof CreateNotificationTemplateErrors];
 
 export type CreateNotificationTemplateResponses = {
     /**

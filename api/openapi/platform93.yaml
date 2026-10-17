@@ -2224,6 +2224,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateClient'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Client created and secret returned once when applicable
           content:
@@ -2335,6 +2338,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateRole'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Role created
           content:
@@ -2947,6 +2952,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Invitation created and email queued
           content:
@@ -3200,6 +3208,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Application or workspace invitation created and email queued
           content:
@@ -3297,6 +3308,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateUser'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: User created
           content:
@@ -3622,6 +3636,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateFeature'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Feature created
           content:
@@ -3645,6 +3661,9 @@ paths:
             schema:
               $ref: '#/components/schemas/PasswordSignUp'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '200':
           $ref: '#/components/responses/Tokens'
         '403':
@@ -4261,6 +4280,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateProduct'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Product created
           content:
@@ -4303,6 +4325,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreatePrice'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Immutable price created
           content:
@@ -4769,6 +4794,8 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateCheckout'
       responses:
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Provider checkout created
           content:
@@ -5943,6 +5970,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Workspace invitation created and email queued
           content:
@@ -6917,6 +6947,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateNotificationTemplate'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Installation template draft created
           content:
@@ -7071,6 +7104,9 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateNotificationTemplate'
       responses:
+        '409': {$ref: '#/components/responses/CreationConflict'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
           description: Immutable draft template version created
           content:
@@ -9022,6 +9058,18 @@ components:
                 type: string
                 writeOnly: true
   responses:
+    CreationConflict:
+      description: A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    CreationFailure:
+      description: An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Problem:
       description: RFC 9457 problem
       content:
