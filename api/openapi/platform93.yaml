@@ -3317,6 +3317,51 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+  /v1/control/applications/{application_id}/users/provision-google:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    post:
+      operationId: provisionGoogleUser
+      summary: Provision a Google identity without sending an email or invitation
+      description: Requires administrative control access. Never matches accounts by email or returns authentication credentials.
+      tags:
+        - Identity
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvisionGoogleUser'
+      responses:
+        '200':
+          description: Existing user linked, or linkage already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleProvisioningResult'
+        '201':
+          description: User and identity created atomically.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleProvisioningResult'
+        '409':
+          description: Conflicting account, identity, organization limit, or idempotency key.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: Invalid provisioning details.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /v1/control/applications/{application_id}/users/{user_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -13256,6 +13301,65 @@ components:
           description: Omitted or null custom attributes default to an empty object at creation.
           default: {}
           additionalProperties: true
+      additionalProperties: false
+    ProvisionGoogleUser:
+      type: object
+      required: [google_sub, reason]
+      oneOf:
+        - required: [user_id]
+        - required: [user]
+      properties:
+        google_sub:
+          type: string
+          minLength: 1
+          maxLength: 255
+          writeOnly: true
+          description: Opaque Google subject from a trusted administrative source. No whitespace or control characters; at most 255 UTF-8 bytes.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        user:
+          $ref: '#/components/schemas/GoogleProvisionedUser'
+      additionalProperties: false
+    GoogleProvisionedUser:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        first_name:
+          type: string
+          maxLength: 200
+        last_name:
+          type: string
+          maxLength: 200
+        username:
+          type: [string, 'null']
+          maxLength: 200
+        locale:
+          $ref: '#/components/schemas/Locale'
+        custom_attributes:
+          type: object
+          additionalProperties: true
+      additionalProperties: false
+    GoogleProvisioningResult:
+      type: object
+      required: [user, identity_id, provider, created_user]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        identity_id:
+          $ref: '#/components/schemas/UUID'
+        provider:
+          type: string
+          enum: [google]
+        created_user:
+          type: boolean
       additionalProperties: false
     UpdateUser:
       type: object

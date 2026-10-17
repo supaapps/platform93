@@ -1479,6 +1479,30 @@ export type CreateUser = {
     } | null;
 };
 
+export type ProvisionGoogleUser = unknown & {
+    reason: string;
+    user_id?: Uuid;
+    user?: GoogleProvisionedUser;
+};
+
+export type GoogleProvisionedUser = {
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    username?: string | null;
+    locale?: Locale;
+    custom_attributes?: {
+        [key: string]: unknown;
+    };
+};
+
+export type GoogleProvisioningResult = {
+    user: User;
+    identity_id: Uuid;
+    provider: 'google';
+    created_user: boolean;
+};
+
 export type UpdateUser = {
     first_name?: string;
     last_name?: string;
@@ -2643,6 +2667,16 @@ export type CreateUserWritable = {
     custom_attributes?: {
         [key: string]: unknown;
     } | null;
+};
+
+export type ProvisionGoogleUserWritable = unknown & {
+    /**
+     * Opaque Google subject from a trusted administrative source. No whitespace or control characters; at most 255 UTF-8 bytes.
+     */
+    google_sub: string;
+    reason: string;
+    user_id?: Uuid;
+    user?: GoogleProvisionedUser;
 };
 
 export type PasswordResetVerifyWritable = {
@@ -6809,6 +6843,44 @@ export type CreateUserResponses = {
 };
 
 export type CreateUserResponse = CreateUserResponses[keyof CreateUserResponses];
+
+export type ProvisionGoogleUserData = {
+    body: ProvisionGoogleUserWritable;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/users/provision-google';
+};
+
+export type ProvisionGoogleUserErrors = {
+    /**
+     * Conflicting account, identity, organization limit, or idempotency key.
+     */
+    409: Problem;
+    /**
+     * Invalid provisioning details.
+     */
+    422: Problem;
+};
+
+export type ProvisionGoogleUserError = ProvisionGoogleUserErrors[keyof ProvisionGoogleUserErrors];
+
+export type ProvisionGoogleUserResponses = {
+    /**
+     * Existing user linked, or linkage already exists.
+     */
+    200: GoogleProvisioningResult;
+    /**
+     * User and identity created atomically.
+     */
+    201: GoogleProvisioningResult;
+};
+
+export type ProvisionGoogleUserResponse = ProvisionGoogleUserResponses[keyof ProvisionGoogleUserResponses];
 
 export type GetUserData = {
     body?: never;
