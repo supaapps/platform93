@@ -2340,12 +2340,16 @@ paths:
             schema:
               $ref: '#/components/schemas/UpdateOAuthResource'
       responses:
-        '204':
+        '200':
           description: OAuth resource updated.
           headers:
             ETag:
               schema:
                 type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResource'
         '403':
           $ref: '#/components/responses/Problem'
         '404':

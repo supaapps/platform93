@@ -26,10 +26,10 @@ func newResourceLoginBoundaryFixture(t *testing.T) *resourceLoginBoundaryFixture
 	f := &resourceLoginBoundaryFixture{resourceOAuthFixture: newResourceOAuthFixture(t), shadowID: kernel.NewID().String(), redirect: "https://external-resource-client.example.test/callback", published: "https://metadata.example.test/login-client.json"}
 	f.shadowClient = "p93_resource_" + f.shadowID
 	f.exec(`UPDATE clients SET client_type='public',secret_digest=NULL,pkce_required=true,authorization_ui='hosted',initiate_login_uri='https://client.example.test/login' WHERE id=$1`, f.client)
-	f.exec(`INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,pkce_required,authorization_ui,initiate_login_uri,resource_only)
-VALUES($1,$2,$3,'Metadata shadow','public',ARRAY[$4],ARRAY['authorization_code','refresh_token'],ARRAY['openid','email','profile','offline_access'],true,'hosted','https://external-resource-client.example.test/login',true)`, f.shadowID, f.application, f.shadowClient, f.redirect)
+	f.exec(`INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,pkce_required,authorization_ui,resource_only,disabled_at)
+VALUES($1,$2,$3,'Metadata shadow','public','{}','{}','{}',true,'hosted',true,now())`, f.shadowID, f.application, f.shadowClient)
 	f.exec(`UPDATE oauth_resources SET allow_client_metadata=true,client_ids=ARRAY[$2] WHERE id=$1`, f.resource, f.published)
-	f.exec(`INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest) VALUES($1,$2,$3,$4,$5)`, f.application, f.resource, f.published, f.shadowID, []byte("login-boundary-metadata"))
+	f.exec(`INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest,name,redirect_uris,allowed_grants) VALUES($1,$2,$3,$4,$5,'Metadata shadow',ARRAY[$6],ARRAY['authorization_code','refresh_token'])`, f.application, f.resource, f.published, f.shadowID, []byte("login-boundary-metadata"), f.redirect)
 	return f
 }
 
@@ -263,7 +263,7 @@ func TestResourceOAuthPostgresShadowAdminMutations(t *testing.T) {
 			if clientType == "confidential" {
 				// Rotation already rejects public clients. A legacy confidential
 				// shadow verifies the independent resource-only boundary as well.
-				f.exec(`UPDATE clients SET client_type='confidential',secret_digest=$2 WHERE id=$1`, f.shadowID, f.app.Vault.Digest("shadow-secret"))
+				f.exec(`UPDATE clients SET client_type='confidential' WHERE id=$1`, f.shadowID)
 			}
 			bearer := f.controlBearer()
 			call := func(method, path string, body any) *httptest.ResponseRecorder {

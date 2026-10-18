@@ -305,12 +305,12 @@ func TestResourceRegistryPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	shadowID := kernel.NewID()
-	exec(`INSERT INTO clients(id,application_id,client_id,name,client_type,resource_only,authorization_ui,pkce_required,redirect_uris,allowed_grants,allowed_scopes) VALUES($1,$2,$3,'Metadata client','public',true,'hosted',true,ARRAY['https://client.example.test/callback'],ARRAY['authorization_code'],ARRAY['openid'])`, shadowID, app, "p93_resource_"+shadowID.String())
-	exec(`INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest) VALUES($1,$2,$3,$4,$5)`, app, metadataResource.ID, metadataID, shadowID, []byte("metadata digest"))
+	exec(`INSERT INTO clients(id,application_id,client_id,name,client_type,resource_only,authorization_ui,pkce_required,redirect_uris,allowed_grants,allowed_scopes,disabled_at) VALUES($1,$2,$3,'Metadata client','public',true,'hosted',true,'{}','{}','{}',now())`, shadowID, app, "p93_resource_"+shadowID.String())
+	exec(`INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest,name,redirect_uris,allowed_grants) VALUES($1,$2,$3,$4,$5,'Metadata client',ARRAY['https://client.example.test/callback'],ARRAY['authorization_code'])`, app, metadataResource.ID, metadataID, shadowID, []byte("metadata digest"))
 	metadataConnection := kernel.NewID()
 	exec(`INSERT INTO oauth_connections(id,application_id,resource_id,resource_version,user_id,client_id,session_id,capabilities,personal_access,expires_at) VALUES($1,$2,$3,1,$4,$5,$6,ARRAY['documents:read'],true,now()+interval '1 day')`, metadataConnection, app, metadataResource.ID, user, metadataID, session)
 	unlistedID := "https://client.example.test/unlisted/" + app.String()
-	exec(`INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest) VALUES($1,$2,$3,$4,$5)`, app, metadataResource.ID, unlistedID, shadowID, []byte("metadata digest"))
+	exec(`INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest,name,redirect_uris) VALUES($1,$2,$3,$4,$5,'Metadata client',ARRAY['https://client.example.test/callback'])`, app, metadataResource.ID, unlistedID, shadowID, []byte("metadata digest"))
 	if _, err = db.Exec(ctx, `UPDATE oauth_connections SET client_id=$1 WHERE id=$2`, unlistedID, metadataConnection); err == nil {
 		t.Fatal("metadata binding bypassed resource allowlist")
 	}

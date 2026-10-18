@@ -16,7 +16,7 @@ import (
 )
 
 func TestResourceOAuthHostedPostgresJourney(t *testing.T) {
-	for _, reset := range []string{"", "restart", "switch_account", "logout"} {
+	for _, reset := range []string{"", "restart", "switch_account", "logout", "metadata"} {
 		name := reset
 		if name == "" {
 			name = "password consent"
@@ -30,6 +30,12 @@ func TestResourceOAuthHostedPostgresJourney(t *testing.T) {
 			}
 			f.exec(`UPDATE users SET password_hash=$2 WHERE id=$1`, f.user, hash)
 			f.exec(`UPDATE clients SET authorization_ui='hosted',pkce_required=true WHERE id=$1`, f.client)
+			if reset == "metadata" {
+				published := "https://hosted-client.example.test/client.json"
+				f.exec(`UPDATE oauth_resources SET allow_client_metadata=true,client_ids=ARRAY[$2] WHERE id=$1`, f.resource, published)
+				enrollAuditMetadataClient(t, f, published, "https://client.example.test/callback")
+				f.client = published
+			}
 			f.exec(`UPDATE oauth_resources SET capabilities='[
 				{"key":"billing:read","name":"Read personal billing","context":"personal","permissions":["billing:read"]},
 				{"key":"billing:write","name":"Write personal billing","context":"personal","permissions":["billing:write"]},
@@ -197,7 +203,13 @@ func TestResourceOAuthHostedPostgresJourney(t *testing.T) {
 			if err != nil || callback.Query().Get("code") == "" || callback.Query().Get("error") != "" || callback.Query().Get("state") != params.Get("state") || callback.Query().Get("iss") != f.app.Issuer() {
 				t.Fatalf("hosted resource approval did not issue a bound code: %s", redirect)
 			}
-			w = f.tokenCall(f.exchangeForm(callback.Query().Get("code")))
+			if reset == "metadata" {
+				body := f.exchangeForm(callback.Query().Get("code"))
+				body.Set("client_id", f.client)
+				w = f.call("POST", "/oidc/token", body, "", "192.0.2.10")
+			} else {
+				w = f.tokenCall(f.exchangeForm(callback.Query().Get("code")))
+			}
 			if w.Code != http.StatusOK {
 				t.Fatalf("hosted resource exchange: %d %s", w.Code, w.Body)
 			}

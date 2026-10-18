@@ -60,15 +60,19 @@ func (s *Server) resolveResourceOAuth(w http.ResponseWriter, r *http.Request) (*
 		kernel.WriteProblem(w, r, 400, "invalid_target", "Resource authorization is unavailable for this application.")
 		return r, false
 	}
-	clientID := r.Form.Get("client_id")
-	if basic, _, ok := r.BasicAuth(); ok {
-		clientID = basic
-	}
+	clientID := oauthRequestClientID(r)
 	if !stringSliceContains(resource.ClientIDs, clientID) {
 		kernel.WriteProblem(w, r, 400, "invalid_client", "The client is not permitted for this resource.")
 		return r, false
 	}
-	if strings.HasPrefix(clientID, "https://") {
+	var registered, active bool
+	err = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND client_id=$2 AND NOT resource_only),
+EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND client_id=$2 AND NOT resource_only AND disabled_at IS NULL)`, appID, clientID).Scan(&registered, &active)
+	if err != nil || registered && !active {
+		kernel.WriteProblem(w, r, 400, "invalid_client", "The registered client is unavailable.")
+		return r, false
+	}
+	if !registered && strings.HasPrefix(clientID, "https://") {
 		if !resource.AllowClientMetadata || s.ensureResourceMetadataClient(r.Context(), &resource, clientID, r.Method == http.MethodGet && r.URL.Path == "/oidc/authorize") != nil {
 			kernel.WriteProblem(w, r, 400, "invalid_client", "The published client identity is unavailable or not permitted.")
 			return r, false
@@ -121,7 +125,7 @@ func validateResourceClientMetadata(expected string, metadata resourceClientMeta
 func (s *Server) ensureResourceMetadataClient(ctx context.Context, resource *OAuthResource, clientID string, refresh bool) error {
 	if refresh {
 		var fresh bool
-		err := s.app.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM oauth_resource_clients b JOIN clients c ON c.id=b.client_database_id WHERE b.resource_id=$1 AND b.client_id=$2 AND c.disabled_at IS NULL AND c.updated_at>now()-interval '5 minutes')`, resource.ID, clientID).Scan(&fresh)
+		err := s.app.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM oauth_resource_clients b JOIN clients c ON c.id=b.client_database_id WHERE b.resource_id=$1 AND b.client_id=$2 AND c.resource_only AND c.disabled_at IS NOT NULL AND b.fetched_at>now()-interval '5 minutes')`, resource.ID, clientID).Scan(&fresh)
 		if err != nil {
 			return err
 		}
@@ -131,7 +135,7 @@ func (s *Server) ensureResourceMetadataClient(ctx context.Context, resource *OAu
 	}
 	if !refresh {
 		var available bool
-		err := s.app.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM oauth_resource_clients b JOIN clients c ON c.id=b.client_database_id WHERE b.resource_id=$1 AND b.application_id=$2 AND b.client_id=$3 AND c.disabled_at IS NULL)`, resource.ID, resource.ApplicationID, clientID).Scan(&available)
+		err := s.app.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM oauth_resource_clients b JOIN clients c ON c.id=b.client_database_id WHERE b.resource_id=$1 AND b.application_id=$2 AND b.client_id=$3 AND c.resource_only AND c.disabled_at IS NOT NULL)`, resource.ID, resource.ApplicationID, clientID).Scan(&available)
 		if err != nil || !available {
 			return errors.New("published client is not enrolled")
 		}
@@ -165,6 +169,13 @@ func (s *Server) ensureResourceMetadataClient(ctx context.Context, resource *OAu
 		return err
 	}
 	digest := sha256.Sum256(raw)
+	return s.persistResourceMetadataClient(ctx, resource, clientID, metadata, digest[:])
+}
+
+func (s *Server) persistResourceMetadataClient(ctx context.Context, resource *OAuthResource, clientID string, metadata resourceClientMetadata, digest []byte) error {
+	if err := validateResourceClientMetadata(clientID, metadata); err != nil {
+		return err
+	}
 	grants := metadata.GrantTypes
 	if len(grants) == 0 {
 		grants = []string{"authorization_code"}
@@ -181,19 +192,12 @@ func (s *Server) ensureResourceMetadataClient(ctx context.Context, resource *OAu
 	err = tx.QueryRow(ctx, `SELECT client_database_id FROM oauth_resource_clients WHERE resource_id=$1 AND client_id=$2`, resource.ID, clientID).Scan(&databaseID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		databaseID = kernel.NewID().String()
-		_, err = tx.Exec(ctx, `INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,pkce_required,authorization_ui,resource_only) VALUES($1,$2,$3,$4,'public',$5,$6,ARRAY['openid','profile','email','offline_access'],true,'hosted',true)`, databaseID, resource.ApplicationID, "p93_resource_"+databaseID, metadata.ClientName, metadata.RedirectURIs, grants)
+		_, err = tx.Exec(ctx, `INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,pkce_required,authorization_ui,resource_only,disabled_at) VALUES($1,$2,$3,'Resource client anchor','public','{}','{}','{}',true,'hosted',true,now())`, databaseID, resource.ApplicationID, "p93_resource_"+databaseID)
 		if err == nil {
-			_, err = tx.Exec(ctx, `INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest) VALUES($1,$2,$3,$4,$5)`, resource.ApplicationID, resource.ID, clientID, databaseID, digest[:])
+			_, err = tx.Exec(ctx, `INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest,name,redirect_uris,allowed_grants) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, resource.ApplicationID, resource.ID, clientID, databaseID, digest, metadata.ClientName, metadata.RedirectURIs, grants)
 		}
 	} else if err == nil {
-		result, updateErr := tx.Exec(ctx, `UPDATE clients SET name=$1,redirect_uris=$2,allowed_grants=$5,updated_at=now() WHERE id=$3 AND application_id=$4 AND resource_only AND disabled_at IS NULL`, metadata.ClientName, metadata.RedirectURIs, databaseID, resource.ApplicationID, grants)
-		err = updateErr
-		if err == nil && result.RowsAffected() != 1 {
-			err = errors.New("published client disabled")
-		}
-		if err == nil {
-			_, err = tx.Exec(ctx, `UPDATE oauth_resource_clients SET metadata_digest=$3 WHERE resource_id=$1 AND client_id=$2`, resource.ID, clientID, digest[:])
-		}
+		_, err = tx.Exec(ctx, `UPDATE oauth_resource_clients SET metadata_digest=$3,name=$4,redirect_uris=$5,allowed_grants=$6,fetched_at=now() WHERE resource_id=$1 AND client_id=$2`, resource.ID, clientID, digest, metadata.ClientName, metadata.RedirectURIs, grants)
 	}
 	if err != nil {
 		return err
@@ -203,8 +207,18 @@ func (s *Server) ensureResourceMetadataClient(ctx context.Context, resource *OAu
 
 func (s *Server) resourceClientDatabaseID(ctx context.Context, resource *OAuthResource, clientID string) (string, error) {
 	var id string
-	err := s.app.DB.QueryRow(ctx, `SELECT c.id FROM clients c WHERE c.application_id=$1 AND c.client_id=$2 AND NOT c.resource_only AND c.disabled_at IS NULL
-UNION ALL SELECT c.id FROM oauth_resource_clients b JOIN clients c ON c.id=b.client_database_id WHERE b.application_id=$1 AND b.resource_id=$3 AND b.client_id=$2 AND c.disabled_at IS NULL LIMIT 1`, resource.ApplicationID, clientID, resource.ID).Scan(&id)
+	var active bool
+	err := s.app.DB.QueryRow(ctx, `SELECT id,disabled_at IS NULL FROM clients WHERE application_id=$1 AND client_id=$2 AND NOT resource_only`, resource.ApplicationID, clientID).Scan(&id, &active)
+	if err == nil {
+		if !active {
+			return "", pgx.ErrNoRows
+		}
+		return id, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) || !resource.AllowClientMetadata {
+		return "", err
+	}
+	err = s.app.DB.QueryRow(ctx, `SELECT c.id FROM oauth_resource_clients b JOIN clients c ON c.id=b.client_database_id WHERE b.application_id=$1 AND b.resource_id=$3 AND b.client_id=$2 AND c.resource_only AND c.disabled_at IS NOT NULL`, resource.ApplicationID, clientID, resource.ID).Scan(&id)
 	return id, err
 }
 
@@ -478,6 +492,7 @@ func (s *Server) authorizeResource(w http.ResponseWriter, r *http.Request, provi
 	}
 	session := oauthserver.NewSession(current.ID, "", provider.KID, s.app.Now().UTC())
 	setResourceScopes(request, granted)
+	session.ResourceScopes = append([]string(nil), granted...)
 	request.GrantAudience(resource.URI)
 	session.AccessClaims.Extra = map[string]any{"application_id": resource.ApplicationID, "actor_type": "user", "token_kind": "resource_access", "sid": current.SessionID, "client_id": request.GetClient().GetID(), "connection_id": connectionID, "roles": emptyRoleClaims(), "scope": strings.Join(granted, " "), "amr": amr}
 	session.IDClaims.Extra = map[string]any{"application_id": resource.ApplicationID, "actor_type": "user", "sid": current.SessionID, "roles": emptyRoleClaims()}
@@ -532,11 +547,10 @@ func (s *Server) prepareResourceToken(r *http.Request, request fosite.AccessRequ
 		return fosite.ErrInvalidGrant
 	}
 	granted := []string{}
-	persistedScope, _ := session.AccessClaims.Extra["scope"].(string)
-	if persistedScope == "" || platformauthz.ValidateScopeClaim(persistedScope, resource.ApplicationID.String()) != nil {
+	ceiling := session.ResourceScopes
+	if len(ceiling) == 0 || platformauthz.ValidateScopeClaim(strings.Join(ceiling, " "), resource.ApplicationID.String()) != nil {
 		return fosite.ErrInvalidScope
 	}
-	ceiling := strings.Split(persistedScope, " ")
 	requestedSubset := r.PostForm.Get("scope")
 	var subset map[string]bool
 	if request.GetGrantTypes().ExactOne("refresh_token") && requestedSubset != "" {
@@ -551,19 +565,33 @@ func (s *Server) prepareResourceToken(r *http.Request, request fosite.AccessRequ
 			subset[scope] = true
 		}
 	}
+	retained := []string{}
 	for _, scope := range ceiling {
 		if subset != nil && !subset[scope] {
 			continue
 		}
+		retained = append(retained, scope)
 		if scope == "openid" || scope == "profile" || scope == "email" || scope == "offline_access" {
 			granted = append(granted, scope)
 			continue
 		}
-		for _, capability := range connection.Capabilities {
-			if scope == resourceCapabilityScope(resource.ApplicationID.String(), capability) {
-				granted = append(granted, scope)
-				break
+		for _, capability := range resource.Capabilities {
+			if !stringSliceContains(connection.Capabilities, capability.Key) || scope != resourceCapabilityScope(resource.ApplicationID.String(), capability.Key) {
+				continue
 			}
+			allowed := capability.Context == "personal" && connection.PersonalAccess && s.resourceUserMay(r, resource.ApplicationID.String(), session.Subject, "", capability.Permissions)
+			if capability.Context == "workspace" {
+				for _, workspace := range connection.WorkspaceIDs {
+					if s.resourceUserMay(r, resource.ApplicationID.String(), session.Subject, workspace.String(), capability.Permissions) {
+						allowed = true
+						break
+					}
+				}
+			}
+			if allowed {
+				granted = append(granted, scope)
+			}
+			break
 		}
 	}
 	if len(granted) == 0 {
@@ -573,6 +601,7 @@ func (s *Server) prepareResourceToken(r *http.Request, request fosite.AccessRequ
 	request.GrantAudience(resource.URI)
 	session.AccessClaims.Extra["scope"] = strings.Join(granted, " ")
 	session.AccessClaims.Extra["roles"] = emptyRoleClaims()
+	session.ResourceScopes = retained
 	request.SetSession(session)
 	return nil
 }

@@ -78,7 +78,7 @@ func (f *resourceOAuthFixture) exchangeForm(code string) url.Values {
 func (f *resourceOAuthFixture) tokenCall(form url.Values) *httptest.ResponseRecorder {
 	r := httptest.NewRequest("POST", "/oidc/token", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.SetBasicAuth(f.client, "fixture-secret")
+	r.SetBasicAuth(url.QueryEscape(f.client), "fixture-secret")
 	r.RemoteAddr = "192.0.2.1:1234"
 	w := httptest.NewRecorder()
 	f.router.ServeHTTP(w, r)
@@ -251,8 +251,8 @@ func TestResourceOAuthPostgresPublishedClientAcrossApplications(t *testing.T) {
 			f.exec(`UPDATE oauth_resources SET allow_client_metadata=true,client_ids=ARRAY[$2] WHERE id=$1`, resourceID, published)
 		}
 		shadow := kernel.NewID().String()
-		f.exec(`INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,pkce_required,resource_only) VALUES($1,$2,$3,'Published client','public',ARRAY['https://client.example.test/callback'],ARRAY['authorization_code','refresh_token'],ARRAY['offline_access'],true,true)`, shadow, current.application, "p93_resource_"+shadow)
-		f.exec(`INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest) VALUES($1,$2,$3,$4,$5)`, current.application, resourceID, published, shadow, []byte("fixture-metadata"))
+		f.exec(`INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,pkce_required,resource_only,disabled_at) VALUES($1,$2,$3,'Published client','public','{}','{}','{}',true,true,now())`, shadow, current.application, "p93_resource_"+shadow)
+		f.exec(`INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest,name,redirect_uris,allowed_grants) VALUES($1,$2,$3,$4,$5,'Published client',ARRAY['https://client.example.test/callback'],ARRAY['authorization_code','refresh_token'])`, current.application, resourceID, published, shadow, []byte("fixture-metadata"))
 		rf := &resourceOAuthFixture{oauthSecurityFixture: current, resource: resourceID}
 		form := rf.authorizationForm("billing:read")
 		form.Set("client_id", published)
@@ -268,7 +268,7 @@ func TestResourceOAuthPostgresPublishedClientAcrossApplications(t *testing.T) {
 		}
 		// Stale metadata must not trigger outbound I/O during either POST.
 		// This .test metadata URL is deliberately not network-resolvable.
-		f.exec(`UPDATE clients SET updated_at=now()-interval '1 day' WHERE id=$1`, shadow)
+		f.exec(`UPDATE oauth_resource_clients SET fetched_at=now()-interval '1 day' WHERE client_database_id=$1`, shadow)
 		code := rf.resourceCode(form)
 		body := rf.exchangeForm(code)
 		body.Set("client_id", published)

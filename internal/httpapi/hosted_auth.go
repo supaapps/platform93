@@ -195,7 +195,9 @@ func (s *Server) startHostedAuthorization(w http.ResponseWriter, r *http.Request
 	if resource := resourceFromRequest(r); resource != nil {
 		id, e = s.resourceClientDatabaseID(r.Context(), resource, request.GetClient().GetID())
 		if e == nil {
-			e = s.app.DB.QueryRow(r.Context(), `SELECT name,authorization_ui FROM clients WHERE id=$1 AND application_id=$2 AND disabled_at IS NULL`, id, resource.ApplicationID).Scan(&name, &ui)
+			e = s.app.DB.QueryRow(r.Context(), `SELECT CASE WHEN c.resource_only THEN b.name ELSE c.name END,c.authorization_ui FROM clients c
+LEFT JOIN oauth_resource_clients b ON b.client_database_id=c.id AND b.resource_id=$3 AND b.client_id=$4
+WHERE c.id=$1 AND c.application_id=$2 AND ((NOT c.resource_only AND c.disabled_at IS NULL) OR (c.resource_only AND c.disabled_at IS NOT NULL AND b.client_id IS NOT NULL))`, id, resource.ApplicationID, resource.ID, request.GetClient().GetID()).Scan(&name, &ui)
 		}
 		required = true
 	}
@@ -272,9 +274,13 @@ func (s *Server) loadHostedInteraction(w http.ResponseWriter, r *http.Request, l
 	i := &hostedInteraction{ID: id}
 	var params []byte
 	var cipher string
-	query := `SELECT h.application_id,COALESCE(h.authorization_parameters->'client_id'->>0,c.client_id),c.name,h.authorization_parameters,h.private_state_ciphertext,h.created_at,h.expires_at,h.session_id
+	query := `SELECT h.application_id,COALESCE(h.authorization_parameters->'client_id'->>0,c.client_id),CASE WHEN c.resource_only THEN b.name ELSE c.name END,h.authorization_parameters,h.private_state_ciphertext,h.created_at,h.expires_at,h.session_id
  FROM hosted_auth_interactions h JOIN clients c ON c.id=h.client_id JOIN applications a ON a.id=h.application_id
- WHERE h.id=$1 AND h.browser_digest=$2 AND h.consumed_at IS NULL AND h.expires_at>now() AND c.disabled_at IS NULL AND c.authorization_ui='hosted' AND a.deleted_at IS NULL`
+ LEFT JOIN oauth_resources rs ON rs.application_id=h.application_id AND rs.uri=h.authorization_parameters->'resource'->>0
+ LEFT JOIN oauth_resource_clients b ON b.resource_id=rs.id AND b.application_id=h.application_id AND b.client_database_id=c.id AND b.client_id=h.authorization_parameters->'client_id'->>0
+ WHERE h.id=$1 AND h.browser_digest=$2 AND h.consumed_at IS NULL AND h.expires_at>now()
+ AND ((NOT c.resource_only AND c.disabled_at IS NULL) OR (c.resource_only AND c.disabled_at IS NOT NULL AND b.client_id IS NOT NULL))
+ AND c.authorization_ui='hosted' AND a.deleted_at IS NULL`
 	e := s.app.DB.QueryRow(r.Context(), query, id, s.app.Vault.Digest(browser)).Scan(&i.ApplicationID, &i.ClientID, &i.ClientName, &params, &cipher, &i.CreatedAt, &i.ExpiresAt, &i.SessionID)
 	if e == nil {
 		e = json.Unmarshal(params, &i.Params)

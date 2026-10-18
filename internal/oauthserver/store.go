@@ -97,19 +97,25 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (fosite.Client, 
 	var secret []byte
 	var clientType string
 	var redirects, grants, scopes []string
-	lookupID := clientID
-	if s.ResourceURI != "" {
-		var boundID string
-		err := s.executor(ctx).QueryRow(ctx, `SELECT c.client_id FROM oauth_resource_clients b JOIN oauth_resources r ON r.id=b.resource_id JOIN clients c ON c.id=b.client_database_id WHERE b.application_id=$1 AND r.uri=$2 AND b.client_id=$3`, s.ApplicationID, s.ResourceURI, clientID).Scan(&boundID)
-		if err == nil {
-			lookupID = boundID
-		} else if !errors.Is(err, pgx.ErrNoRows) {
+	err := s.executor(ctx).QueryRow(ctx, `SELECT client_type,redirect_uris,allowed_grants,allowed_scopes,secret_digest
+FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`, s.ApplicationID, clientID).
+		Scan(&clientType, &redirects, &grants, &scopes, &secret)
+	if errors.Is(err, pgx.ErrNoRows) && s.ResourceURI != "" {
+		// Registration, even disabled, must never be downgraded to public metadata.
+		var registered bool
+		if e := s.executor(ctx).QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND client_id=$2 AND NOT resource_only)`, s.ApplicationID, clientID).Scan(&registered); e != nil || registered {
 			return nil, fosite.ErrNotFound
 		}
+		err = s.executor(ctx).QueryRow(ctx, `SELECT b.redirect_uris,b.allowed_grants FROM oauth_resource_clients b
+JOIN oauth_resources r ON r.id=b.resource_id AND r.application_id=b.application_id
+JOIN clients c ON c.id=b.client_database_id AND c.application_id=b.application_id
+WHERE b.application_id=$1 AND r.uri=$2 AND b.client_id=$3 AND r.enabled AND r.allow_client_metadata
+AND b.client_id=ANY(r.client_ids) AND c.resource_only AND c.disabled_at IS NOT NULL`, s.ApplicationID, s.ResourceURI, clientID).Scan(&redirects, &grants)
+		clientType = "public"
+		if len(grants) == 0 {
+			grants = []string{"authorization_code"}
+		}
 	}
-	err := s.executor(ctx).QueryRow(ctx, `SELECT client_type,redirect_uris,allowed_grants,allowed_scopes,secret_digest
-FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND (NOT resource_only OR $3)`, s.ApplicationID, lookupID, s.ResourceURI != "").
-		Scan(&clientType, &redirects, &grants, &scopes, &secret)
 	if err != nil {
 		return nil, fosite.ErrNotFound
 	}

@@ -13,13 +13,15 @@ import (
 // Session carries both OAuth access-token and OpenID Connect ID-token claims.
 // Keeping one serializable type lets Fosite safely restore a grant on any pod.
 type Session struct {
-	AccessClaims  *jwt.JWTClaims                 `json:"access_claims"`
-	IDClaims      *jwt.IDTokenClaims             `json:"id_claims"`
-	AccessHeaders *jwt.Headers                   `json:"access_headers"`
-	IDHeaders     *jwt.Headers                   `json:"id_headers"`
-	ExpiresAt     map[fosite.TokenType]time.Time `json:"expires_at"`
-	Username      string                         `json:"username"`
-	Subject       string                         `json:"subject"`
+	// ResourceScopes is the private consent ceiling, not the current JWT scopes.
+	ResourceScopes []string                       `json:"resource_scopes,omitempty"`
+	AccessClaims   *jwt.JWTClaims                 `json:"access_claims"`
+	IDClaims       *jwt.IDTokenClaims             `json:"id_claims"`
+	AccessHeaders  *jwt.Headers                   `json:"access_headers"`
+	IDHeaders      *jwt.Headers                   `json:"id_headers"`
+	ExpiresAt      map[fosite.TokenType]time.Time `json:"expires_at"`
+	Username       string                         `json:"username"`
+	Subject        string                         `json:"subject"`
 }
 
 var _ oauth2.JWTSessionContainer = (*Session)(nil)

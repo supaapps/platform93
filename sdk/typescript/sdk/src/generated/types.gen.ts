@@ -5760,7 +5760,7 @@ export type UpdateOAuthResourceResponses = {
     /**
      * OAuth resource updated.
      */
-    204: void;
+    200: OAuthResource;
 };
 
 export type UpdateOAuthResourceResponse = UpdateOAuthResourceResponses[keyof UpdateOAuthResourceResponses];

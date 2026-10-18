@@ -276,6 +276,15 @@ func (s *Server) validateResourceClients(w http.ResponseWriter, r *http.Request,
 	registered := make([]string, 0, len(ids))
 	for _, id := range ids {
 		if allowMetadata && strings.HasPrefix(id, "https://") {
+			var present bool
+			if err := tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND client_id=$2 AND NOT resource_only)`, appID, id).Scan(&present); err != nil {
+				resourceDatabaseProblem(w, r)
+				return false
+			}
+			if present {
+				registered = append(registered, id)
+				continue
+			}
 			if _, err := canonicalOAuthResourceURI(id); err != nil {
 				kernel.WriteProblem(w, r, 422, "invalid_resource_clients", "Metadata client IDs must be valid HTTPS URLs.")
 				return false

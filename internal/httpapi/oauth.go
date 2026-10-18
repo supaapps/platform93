@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -14,6 +15,17 @@ import (
 	"github.com/supaapps/platform93/internal/kernel"
 	"github.com/supaapps/platform93/internal/oauthserver"
 )
+
+func oauthRequestClientID(r *http.Request) string {
+	if encoded, _, ok := r.BasicAuth(); ok {
+		id, err := url.QueryUnescape(encoded)
+		if err != nil {
+			return ""
+		}
+		return id
+	}
+	return r.FormValue("client_id")
+}
 
 func (s *Server) resolveOAuthApplication(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,10 +37,7 @@ func (s *Server) resolveOAuthApplication(next http.Handler) http.Handler {
 			}
 			return
 		}
-		clientID := strings.TrimSpace(r.FormValue("client_id"))
-		if basicClientID, _, ok := r.BasicAuth(); ok && basicClientID != "" {
-			clientID = basicClientID
-		}
+		clientID := oauthRequestClientID(r)
 		application := ""
 		if clientID != "" {
 			_ = s.app.DB.QueryRow(r.Context(), `SELECT application_id FROM clients
@@ -235,10 +244,7 @@ func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusBadRequest, "invalid_oauth_request", "The token request could not be parsed.")
 		return
 	}
-	clientID := r.FormValue("client_id")
-	if basicClientID, _, ok := r.BasicAuth(); ok && basicClientID != "" {
-		clientID = basicClientID
-	}
+	clientID := oauthRequestClientID(r)
 	if managementClient, ok := managementClientFromContext(r.Context()); ok {
 		s.issueManagementToken(w, r, managementClient)
 		return
@@ -500,10 +506,7 @@ func (s *Server) oauthProvider(w http.ResponseWriter, r *http.Request) (*oauthse
 		kernel.WriteProblem(w, r, http.StatusNotFound, "application_not_found", "The application was not found.")
 		return nil, false
 	}
-	clientID := r.FormValue("client_id")
-	if basicID, _, ok := r.BasicAuth(); ok {
-		clientID = basicID
-	}
+	clientID := oauthRequestClientID(r)
 	resourceURI := ""
 	if resource := resourceFromRequest(r); resource != nil {
 		resourceURI = resource.URI

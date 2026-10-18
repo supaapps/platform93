@@ -1,5 +1,10 @@
 -- +goose Up
 ALTER TABLE clients ADD COLUMN resource_only boolean NOT NULL DEFAULT false;
+-- Legacy binaries ignore resource_only: anchors must remain unusable even there.
+ALTER TABLE clients ADD CONSTRAINT resource_client_anchor_inert CHECK (
+    NOT resource_only OR (disabled_at IS NOT NULL AND cardinality(redirect_uris)=0
+    AND cardinality(allowed_grants)=0 AND cardinality(allowed_scopes)=0 AND secret_digest IS NULL)
+);
 
 -- +goose StatementBegin
 CREATE FUNCTION valid_oauth_resource_uri(value text) RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $$
@@ -81,6 +86,10 @@ CREATE TABLE oauth_resource_clients (
     client_id text NOT NULL CHECK (length(client_id) BETWEEN 1 AND 2048 AND client_id ~ '^https://'),
     client_database_id uuid NOT NULL,
     metadata_digest bytea NOT NULL,
+    name text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 200),
+    redirect_uris text[] NOT NULL CHECK (cardinality(redirect_uris) BETWEEN 1 AND 16),
+    allowed_grants text[] NOT NULL DEFAULT ARRAY['authorization_code'],
+    fetched_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY(resource_id,client_id),
     FOREIGN KEY(application_id,resource_id) REFERENCES oauth_resources(application_id,id),
     FOREIGN KEY(application_id,client_database_id) REFERENCES clients(application_id,id)
@@ -130,7 +139,7 @@ BEGIN
     END IF;
     IF NOT (NEW.client_id=ANY(resource.client_ids) AND EXISTS(SELECT 1 FROM clients WHERE application_id=NEW.application_id AND client_id=NEW.client_id AND NOT resource_only AND disabled_at IS NULL))
        AND NOT (resource.allow_client_metadata AND NEW.client_id=ANY(resource.client_ids) AND EXISTS(SELECT 1 FROM oauth_resource_clients b JOIN clients c ON c.id=b.client_database_id
-         WHERE b.application_id=NEW.application_id AND b.resource_id=NEW.resource_id AND b.client_id=NEW.client_id AND c.resource_only AND c.disabled_at IS NULL)) THEN
+         WHERE b.application_id=NEW.application_id AND b.resource_id=NEW.resource_id AND b.client_id=NEW.client_id AND c.resource_only AND c.disabled_at IS NOT NULL)) THEN
         RAISE EXCEPTION 'resource connection client is not allowed';
     END IF;
     IF cardinality(NEW.capabilities) <> (SELECT count(DISTINCT c) FROM unnest(NEW.capabilities) c)
@@ -158,6 +167,8 @@ FROM (VALUES ('resource.created','resource','resource_id'),('resource.updated','
              ('connection.approved','connection','connection_id'),('connection.revoked','connection','connection_id')) events(event_name,subject_type,id_field);
 
 -- +goose Down
+-- Keep anchors quarantined even after the distinguishing column is removed.
+UPDATE clients SET disabled_at=COALESCE(disabled_at,now()),redirect_uris='{}',allowed_grants='{}',allowed_scopes='{}',secret_digest=NULL WHERE resource_only;
 DELETE FROM event_type_definitions WHERE application_id IS NULL AND source='platform93' AND name IN ('resource.created','resource.updated','connection.approved','connection.revoked');
 DROP TABLE oauth_connections;
 DROP FUNCTION enforce_oauth_connection();
@@ -166,4 +177,5 @@ DROP TABLE oauth_resources;
 DROP FUNCTION valid_resource_capabilities(jsonb);
 DROP FUNCTION valid_oauth_resource_uri(text);
 ALTER TABLE user_sessions DROP CONSTRAINT user_sessions_resource_identity;
+ALTER TABLE clients DROP CONSTRAINT resource_client_anchor_inert;
 ALTER TABLE clients DROP COLUMN resource_only;

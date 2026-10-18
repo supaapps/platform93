@@ -151,6 +151,10 @@ on the resource and are never registered through an unrestricted DCR endpoint.
 Metadata fetches are size/time bounded, reject redirects and non-public network
 targets, and are cached for five minutes. Metadata credentials are not supported.
 
+Administrator-registered clients take precedence, including HTTPS client IDs.
+Their registered redirects and confidential-client authentication remain in force.
+A disabled registration never falls back to a public metadata identity.
+
 Published metadata clients are resource-only. Their redirect URIs do not become
 ordinary application sign-in callbacks, invitation destinations, billing return
 URLs, or trusted application CORS origins. Resource login uses the hosted
@@ -160,6 +164,12 @@ Manage published clients through the resource's allowed client identifiers, not
 the ordinary OAuth client editor. Internal metadata records cannot be edited,
 disabled, assigned roles, or granted direct permissions through normal client
 administration; removing a client from the resource blocks its live checks.
+Published redirects and grants are stored separately from ordinary clients. The
+hosted-flow anchor in the ordinary registry is permanently disabled, has no
+redirects, grants, scopes or secret, and is protected by a database constraint.
+Older binaries therefore cannot admit it during mixed-version operation or
+rollback. Migration rollback retains only these inert anchors, never active
+ordinary credentials. Resource connections themselves are removed by rollback.
 
 The callback includes `code`, `state`, and `iss`; validate state and the exact
 expected issuer before exchanging the code. Public clients submit:
@@ -176,6 +186,13 @@ also use PKCE. Refresh requests retain the same `resource` and client binding,
 use `grant_type=refresh_token`, and send the latest rotating refresh token.
 An optional `scope` may reduce the previous grant, never expand it. Subsequent
 refreshes retain that reduction. Refresh-token reuse invalidates the family.
+Each exchange and refresh also recomputes effective capability scopes from current
+permissions. Temporary permission or workspace-access loss does not change the
+private consent ceiling; restored authority can re-enable only previously
+consented, non-reduced capabilities. A workspace capability is emitted only when
+at least one explicitly selected workspace currently qualifies; every operation
+still checks its exact workspace live. If no capability currently qualifies,
+only retained protocol scopes may remain; no resource operation is authorized.
 
 Headless consent clients read the resource `version` from the JSON authorization
 interaction and submit `resource_version`, JSON-encoded `approved_capabilities`

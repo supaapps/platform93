@@ -73,6 +73,9 @@ jobs:
           for TEST in TestResourceRegistryPostgres TestResourceOAuthPostgresIsolation TestResourceOAuthPostgresConsentVersion TestResourceOAuthPostgresRefreshNarrowing TestResourceOAuthPostgresResourceBinding TestResourceOAuthPostgresLiveInvalidation TestResourceOAuthPostgresRevocationAndReplay TestResourceOAuthPostgresRevokeRacesRefresh TestResourceOAuthPostgresWorkspaceOwner TestResourceOAuthPostgresIdentityOnlyPersonalCapability TestResourceOAuthPostgresIdentityOnlyWorkspaceCapability TestResourceOAuthHostedPostgresJourney; do
             jq -e --arg test "$TEST" 'select(.Action == "pass" and .Test == $test)' /tmp/integration-tests.json >/dev/null
           done
+          for TEST in TestResourceOAuthPostgresPopulatedRollback TestResourceOAuthPostgresRegisteredURLClient TestResourceOAuthPostgresRefreshEffectivePermissions TestResourceOAuthPostgresRefreshWorkspaceContexts TestResourceOAuthPostgresPatchResponseContract; do
+            jq -e --arg test "$TEST" 'select(.Action == "pass" and .Test == $test)' /tmp/integration-tests.json >/dev/null
+          done
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - run: go run ./cmd/platform93 migrate
       - run: go run github.com/pressly/goose/v3/cmd/goose@v3.24.3 -dir migrations postgres "$PLATFORM93_DATABASE_URL" down
