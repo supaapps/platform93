@@ -1,0 +1,15 @@
+[extend]
+useDefault = true
+
+# Exact public compressed-OpenAPI bytes, not credentials. Match both the source
+# path and complete value so unrelated generated code remains scanned, including
+# after squash/rebase changes the introducing commit's fingerprint.
+[[allowlists]]
+description = "Verified public embedded OpenAPI values"
+condition = "AND"
+paths = ['''^internal/generated/openapi\.gen\.go$''']
+regexTarget = "secret"
+regexes = [
+  '''^s8lkYIuCGcDV1sNjheNSA7nTl9\+eniimy988P7FXtU8IKLl/gKPkGWnmwZsci7dn6wRsL17Myfv8VYm2$''',
+  '''^EfxjOkg0qn/MAasipFB4MvJyG0iDDb6zwQwajq9myboUYGF7HhfNHZmsumCvhvhq2sQbEFlJlmOvQ2s\+$''',
+]
