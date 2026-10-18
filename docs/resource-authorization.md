@@ -1,5 +1,11 @@
 # Resource authorization
 
+Development databases that applied an earlier, unreleased revision of migration
+00008 must be recreated before testing this version. Previously issued preview
+resource refresh credentials must be reauthorized. Released migrations and
+ordinary application sessions are unchanged; no released resource credentials
+exist to migrate.
+
 Resource authorization is an explicit, application-local opt-in. Set
 `internal_config.resource_authorization_enabled` to `true` under application
 Settings, Runtime and access policy. The default is `false`. Ordinary application

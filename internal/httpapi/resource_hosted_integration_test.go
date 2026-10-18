@@ -240,6 +240,12 @@ func TestResourceOAuthHostedPostgresJourney(t *testing.T) {
 			f.assertCheck(token, "billing:write", nil, false)
 			f.assertCheck(token, "billing:workspace_read", &selected, true)
 			f.assertCheck(token, "billing:workspace_read", &unselected, false)
+			if reset == "metadata" {
+				var ordinaryConsents int
+				if err := f.app.DB.QueryRow(context.Background(), `SELECT count(*) FROM oauth_consents WHERE application_id=$1`, f.application).Scan(&ordinaryConsents); err != nil || ordinaryConsents != 0 {
+					t.Fatalf("resource flow polluted ordinary consent views: %d %v", ordinaryConsents, err)
+				}
+			}
 		})
 	}
 }
