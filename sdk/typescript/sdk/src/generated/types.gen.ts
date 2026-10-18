@@ -765,6 +765,11 @@ export type PortalSession = {
     portal_uri: string;
 };
 
+export type ResolveCheckoutNotCreated = {
+    confirm_no_provider_session: true;
+    reason: string;
+};
+
 export type SubjectBillingSummary = {
     subject_type: 'user' | 'workspace';
     subject_id: Uuid;
@@ -9667,6 +9672,41 @@ export type ServiceCancelSubjectBillingResponses = {
 };
 
 export type ServiceCancelSubjectBillingResponse = ServiceCancelSubjectBillingResponses[keyof ServiceCancelSubjectBillingResponses];
+
+export type ResolveCheckoutNotCreatedData = {
+    body: ResolveCheckoutNotCreated;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+        session_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/billing/checkout-sessions/{session_id}/resolve-not-created';
+};
+
+export type ResolveCheckoutNotCreatedErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+};
+
+export type ResolveCheckoutNotCreatedError = ResolveCheckoutNotCreatedErrors[keyof ResolveCheckoutNotCreatedErrors];
+
+export type ResolveCheckoutNotCreatedResponses = {
+    /**
+     * Uncreated checkout resolved after administrator confirmation
+     */
+    204: void;
+};
+
+export type ResolveCheckoutNotCreatedResponse = ResolveCheckoutNotCreatedResponses[keyof ResolveCheckoutNotCreatedResponses];
 
 export type ListMySubscriptionsData = {
     body?: never;

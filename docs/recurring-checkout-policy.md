@@ -32,6 +32,19 @@ checkout fails closed pending administrative reconciliation. Pre-upgrade unknown
 requests are never assumed safe to repeat. Recovery may return HTTP 200 instead
 of the initial HTTP 201. Failed and expired attempts do not consume trials.
 
+For an unresolved request with no provider session ID, a Platform administrator
+must investigate the provider account/customer and checkout correlation first.
+If investigation confirms no provider session was created, POST
+`/v1/control/applications/{application_id}/billing/checkout-sessions/{session_id}/resolve-not-created`
+with `Idempotency-Key` and
+`{"confirm_no_provider_session":true,"reason":"Describe the provider investigation"}`.
+Only pending attempts older than 25 hours without provider session IDs qualify;
+the confirmation, reason and state change are audited atomically. This changes
+the attempt to failed, not completed, and creates no payment or entitlement.
+Never attest absence from age alone or while a provider purchase may exist.
+Known sessions must be reconciled/expired normally. Retry any pending subject
+cancellation afterwards to clear its temporary checkout block.
+
 The user-facing `POST /v1/applications/{application_id}/billing/subscriptions/{subscription_id}/cancel`
 requires an active user session and verifies the subscription's subject. Workspace
 billing management is required for workspace subscriptions. The body supports

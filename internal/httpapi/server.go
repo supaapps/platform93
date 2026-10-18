@@ -291,6 +291,7 @@ func New(app *platform.App, adminAssets string) http.Handler {
 			r.Post("/control/applications/{application_id}/billing/providers/{provider_id}/verify", s.verifyBillingProvider)
 			r.Delete("/control/applications/{application_id}/billing/providers/{provider_id}", s.disableBillingProvider)
 			r.Get("/control/applications/{application_id}/billing/subscriptions", s.listSubscriptions)
+			r.With(s.idempotent).Post("/control/applications/{application_id}/billing/checkout-sessions/{session_id}/resolve-not-created", s.resolveCheckoutNotCreated)
 			r.Get("/control/applications/{application_id}/billing/subscriptions/{subscription_id}", s.getSubscription)
 			r.With(s.idempotent).Post("/control/applications/{application_id}/billing/subscriptions/{subscription_id}/cancel", s.cancelSubscription)
 			r.With(s.idempotent).Post("/control/applications/{application_id}/billing/subscriptions/{subscription_id}/resume", s.resumeSubscription)

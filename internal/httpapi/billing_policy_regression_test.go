@@ -387,3 +387,58 @@ func TestBillingPolicyPostgresCheckoutExpiration(t *testing.T) {
 		})
 	}
 }
+
+func TestBillingPolicyPostgresResolutionAndArchiveRaces(t *testing.T) {
+	b := newBillingReviewFixture(t)
+	id := kernel.NewID().String()
+	b.exec(`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri,created_at,provider_request) VALUES($1,$2,'workspace',$3,$4,$5,'pending','{}','https://client.example.test/callback','https://client.example.test/callback',now()-interval '26 hours','{"customer":["cus_workspace"]}')`, id, b.application, b.workspace, b.price, b.provider)
+	posts := 0
+	http.DefaultTransport = optionalCheckoutTransport(func(r *http.Request) (*http.Response, error) {
+		if r.Method == "POST" {
+			posts++
+			return billingProviderJSON(map[string]any{"id": "cs_new", "status": "open", "url": "https://checkout.stripe.com/new"}, 200), nil
+		}
+		return billingProviderJSON(map[string]any{"data": []any{}, "has_more": false}, 200), nil
+	})
+	w := b.jsonCall("/billing/checkout-sessions", b.checkoutBody(true), b.accessToken(false), "unknown-outcome")
+	if w.Code != 503 || posts != 0 {
+		t.Fatalf("old provider key was recreated: %d posts=%d", w.Code, posts)
+	}
+	path := "/billing/checkout-sessions/" + id + "/resolve-not-created"
+	if w = b.controlJSON("POST", path, map[string]any{"confirm_no_provider_session": false, "reason": "Provider investigation completed"}); w.Code != 422 {
+		t.Fatalf("unconfirmed resolution: %d", w.Code)
+	}
+	body := map[string]any{"confirm_no_provider_session": true, "reason": "Provider investigation confirmed no session was created"}
+	if w = b.controlJSON("POST", path, body); w.Code != 204 {
+		t.Fatalf("resolution: %d %s", w.Code, w.Body)
+	}
+	if w = b.controlJSON("POST", path, body); w.Code != 204 {
+		t.Fatalf("resolution retry: %d %s", w.Code, w.Body)
+	}
+	var audits int
+	if err := b.app.DB.QueryRow(context.Background(), `SELECT count(*) FROM audit_records WHERE application_id=$1 AND target_id=$2 AND action='billing.checkout.resolved_not_created'`, b.application, id).Scan(&audits); err != nil || audits != 1 {
+		t.Fatalf("resolution audit: %d %v", audits, err)
+	}
+	if w = b.jsonCall("/billing/checkout-sessions", b.checkoutBody(true), b.accessToken(false), "after-resolution"); w.Code != 201 {
+		t.Fatalf("checkout after resolution: %d %s", w.Code, w.Body)
+	}
+	// A completed checkout is still unsettled until its subscription is known.
+	b.exec(`UPDATE checkout_sessions SET status='completed' WHERE application_id=$1`, b.application)
+	if w = b.controlJSON("DELETE", "/workspaces/"+b.workspace, nil); w.Code != 409 {
+		t.Fatalf("archive before subscription webhook: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestBillingPolicyPostgresAbandonedPreparationCancellation(t *testing.T) {
+	b := newBillingReviewFixture(t)
+	id := kernel.NewID().String()
+	b.exec(`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri,created_at) VALUES($1,$2,'workspace',$3,$4,$5,'pending','{}','https://client.example.test/callback','https://client.example.test/callback',now()-interval '2 minutes')`, id, b.application, b.workspace, b.price, b.provider)
+	http.DefaultTransport = optionalCheckoutTransport(func(r *http.Request) (*http.Response, error) {
+		t.Error("abandoned preparation contacted provider")
+		return nil, fmt.Errorf("unexpected provider call")
+	})
+	w := b.jsonCall("/subjects/workspace/"+b.workspace+"/billing/cancel", map[string]any{}, b.machineToken(), "cancel-preparation")
+	if w.Code != 204 {
+		t.Fatalf("first cancellation of abandoned preparation: %d %s", w.Code, w.Body)
+	}
+}

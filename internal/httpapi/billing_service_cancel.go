@@ -172,7 +172,10 @@ WHERE c.application_id=$1 AND c.subject_type='workspace' AND c.subject_id=$2 AND
 				return e
 			}
 			if result.RowsAffected() != 1 {
-				return fmt.Errorf("checkout changed concurrently; retry")
+				var terminal bool
+				if e = s.app.DB.QueryRow(ctx, `SELECT status IN('failed','expired') FROM checkout_sessions WHERE id=$1 AND application_id=$2`, a.id, app).Scan(&terminal); e != nil || !terminal {
+					return fmt.Errorf("checkout changed concurrently; retry")
+				}
 			}
 			continue
 		}

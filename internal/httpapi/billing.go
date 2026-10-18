@@ -319,7 +319,7 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 		// A timeout may occur after Stripe created the session. Keep pending
 		// rather than authorizing another trial or duplicate purchase.
 		s.markRejectedCheckout(r.Context(), sessionID.String(), err)
-		kernel.WriteProblem(w, r, 502, "provider_checkout_failed", err.Error())
+		kernel.WriteProblem(w, r, 502, "provider_checkout_failed", fmt.Sprintf("Checkout %s: provider result could not be confirmed. Retry with the same idempotency key.", sessionID))
 		return
 	}
 	var stripeSession struct {

@@ -1283,7 +1283,7 @@ function ResourceRow({ item, resource, application, setMessage, onInspect, onCha
     setPendingAction(action.label);
     try {
       const result = await api.request<Record<string, unknown>>(action.method ?? "POST", `/v1/control/applications/${application.id}/${action.suffix}`, action.body ?? {}, { idempotencyKey: crypto.randomUUID(), headers: action.headers });
-      const returnedSecret = result?.secret ?? result?.client_secret;
+      const returnedSecret = result?.secret ?? result?.client_secret ?? result?.invitation_token;
       if (returnedSecret) showCredential(`Store this one-time credential now: ${String(returnedSecret)}`);
       else setMessage(resource === "products" ? `${action.label} completed.` : result ? JSON.stringify(result) : `${action.label} completed.`);
       onChanged();
@@ -3303,13 +3303,12 @@ function ControlTable({ title, items, renderActions }: { title: string; items: R
 
 function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   const failed = message.startsWith(errorMessagePrefix);
-  const persistent = failed;
   const dismissNotification = useEffectEvent(() => onDismiss());
   useEffect(() => {
-    if (persistent) return;
+    if (failed) return;
     const timeout = window.setTimeout(() => dismissNotification(), 4000);
     return () => window.clearTimeout(timeout);
-  }, [persistent, message]);
+  }, [failed, message]);
   return <div className={`toast ${failed ? "toast-error" : "toast-success"}`} role={failed ? "alert" : "status"} aria-live={failed ? "assertive" : "polite"}>
     <div><strong>{failed ? "Request failed" : "Completed"}</strong><span>{toastBody(message)}</span></div>
     <button onClick={onDismiss} aria-label="Dismiss notification">Dismiss</button>

@@ -268,7 +268,7 @@ func (s *Server) cancelSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.cancelProviderSubscription(r.Context(), chi.URLParam(r, "application_id"), providerID, providerSubscriptionID, secret, version, providerIdempotencyKey(r, "subscription-cancel"), atPeriodEnd); err != nil {
-		kernel.WriteProblem(w, r, 502, "subscription_cancel_failed", "Stripe could not cancel the subscription.")
+		kernel.WriteProblem(w, r, 502, "subscription_cancel_failed", "Cancellation or local reconciliation is pending. Retry with the same idempotency key.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

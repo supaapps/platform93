@@ -5579,6 +5579,34 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+  /v1/control/applications/{application_id}/billing/checkout-sessions/{session_id}/resolve-not-created:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - $ref: '#/components/parameters/SessionID'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema: {type: string, minLength: 8, maxLength: 255}
+    post:
+      operationId: resolveCheckoutNotCreated
+      tags: [Billing]
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      description: Administrative recovery only. After investigating the provider and confirming that no session was created, explicitly resolve a pending checkout older than 25 hours with no provider session ID. Never use this action for a known session or as evidence that a payment did not occur. The attestation reason and state change are audited atomically. This neither creates nor cancels a provider subscription or payment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveCheckoutNotCreated'
+      responses:
+        '204':
+          description: Uncreated checkout resolved after administrator confirmation
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
   /v1/applications/{application_id}/me/subscriptions:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -11302,6 +11330,18 @@ components:
           type: string
           format: uri
       additionalProperties: false
+    ResolveCheckoutNotCreated:
+      type: object
+      additionalProperties: false
+      required: [confirm_no_provider_session, reason]
+      properties:
+        confirm_no_provider_session:
+          type: boolean
+          enum: [true]
+        reason:
+          type: string
+          minLength: 10
+          maxLength: 512
     SubjectBillingSummary:
       type: object
       additionalProperties: false
