@@ -194,7 +194,8 @@ export class Platform93MachineClient {
   getWorkspace(id: string) { return this.request<generated.Workspace>("GET", `/service/workspaces/${encodeURIComponent(id)}`); }
   getWorkspaceAccess(id: string) { return this.request<generated.WorkspaceAccessPage>("GET", `/service/workspaces/${encodeURIComponent(id)}/access`); }
   getEntitlements(subjectType: "user" | "workspace", subjectId: string) { return this.request<generated.EntitlementGrantPage>("GET", `/subjects/${subjectType}/${encodeURIComponent(subjectId)}/entitlements`); }
-  getBilling(subjectType: "user" | "workspace", subjectId: string) { return this.request<generated.BillingSummary>("GET", `/subjects/${subjectType}/${encodeURIComponent(subjectId)}/billing`); }
+  getBilling(subjectType: "user" | "workspace", subjectId: string) { return this.request<generated.SubjectBillingSummary>("GET", `/subjects/${subjectType}/${encodeURIComponent(subjectId)}/billing`); }
+  cancelWorkspaceBilling(workspaceId: string, idempotencyKey: string, atPeriodEnd = true) { return this.request<void>("POST", `/subjects/workspace/${encodeURIComponent(workspaceId)}/billing/cancel`, { at_period_end: atPeriodEnd }, idempotencyKey); }
   publishEvent<T extends Record<string, unknown>>(input: PublishCustomEvent<T>, idempotencyKey: string) { return this.request<PublishedEvent<T>>("POST", "/events", input, idempotencyKey); }
 
   private async exchangeToken() {

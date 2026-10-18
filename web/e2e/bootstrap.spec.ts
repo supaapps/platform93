@@ -267,7 +267,8 @@ test("activates provisioning and applies installation-owned organization governa
   await page.getByPlaceholder("Provisioning service").fill("External provisioning");
   await page.getByRole("button", { name: "Create client" }).click();
   await expect.poll(() => createdClient).toEqual({ client_id: "external-provisioner", name: "External provisioning" });
-  await expect(page.locator(".toast-success")).toContainText("p93_mgmt_once");
+  await expect(page.locator(".credential-notice")).toContainText("p93_mgmt_once");
+  await page.getByRole("button", { name: "Dismiss credential notice" }).click();
 
   await chooseSelect(page.getByLabel("Access context"), `organization:${organizationID}`);
   await expect(page.locator(".context-picker small")).toHaveText("Organization");
@@ -749,7 +750,8 @@ test("bootstraps a clean installation and creates its first application", async 
   await installationAccess.getByLabel("Email", { exact: true }).fill("installation-admin@platform93.test");
   await chooseSelect(installationAccess.locator('select[name="role"]'), "admin");
   await installationAccess.getByRole("button", { name: "Invite Platform user" }).click();
-  await expect(page.locator(".toast-success")).toContainText("Platform user invitation created.");
+  await expect(page.locator(".credential-notice").filter({ hasText: "Platform user invitation created." })).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss credential notice" }).click();
   await expect(installationAccess.getByText("installation-admin@platform93.test", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Overview", exact: true }).click();
 
@@ -774,10 +776,12 @@ test("bootstraps a clean installation and creates its first application", async 
   await organizationAccess.getByLabel("Email", { exact: true }).fill("organization-admin@platform93.test");
   await chooseSelect(organizationAccess.locator('select[name="role"]'), "admin");
   await organizationAccess.getByRole("button", { name: "Invite Platform user" }).click();
-  await expect(page.locator(".toast-success")).toContainText("Invitation queued.");
-  const invitationResult = await page.locator(".toast-success").textContent();
+  const invitationNotice = page.locator(".credential-notice").filter({ hasText: "Invitation queued." });
+  await expect(invitationNotice).toBeVisible();
+  const invitationResult = await invitationNotice.textContent();
   const invitationCredential = invitationResult?.match(/p93_org_invite_[A-Za-z0-9_-]{43}/)?.[0];
   expect(invitationCredential).toBeTruthy();
+  await invitationNotice.getByRole("button", { name: "Dismiss credential notice" }).click();
   await chooseSelect(page.getByLabel("Access context"), { label: "Development" });
 
   await page.route("**/products", async (route) => {

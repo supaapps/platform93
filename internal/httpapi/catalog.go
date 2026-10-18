@@ -493,6 +493,13 @@ func validateFreeFormValue(format string, raw json.RawMessage) error {
 }
 
 func validateCheckoutPolicy(mode, currency string, config map[string]any) error {
+	for _, key := range []string{"single_subscription", "trial_once_per_subject"} {
+		if value, exists := config[key]; exists {
+			if _, ok := value.(bool); !ok || mode != "recurring" {
+				return fmt.Errorf("%s requires a boolean on a recurring price", key)
+			}
+		}
+	}
 	trialDays := int64Number(config["trial_period_days"])
 	if trialDays < 0 || trialDays > 730 || trialDays > 0 && mode != "recurring" {
 		return fmt.Errorf("trial_period_days must be between 1 and 730 for recurring prices")

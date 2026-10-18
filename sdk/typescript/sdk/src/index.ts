@@ -151,6 +151,7 @@ export class ApplicationClient {
   localCheckout(input: LocalCheckoutInput, idempotencyKey?: string) { return this.client.request<LocalEntitlementRequest>("POST", this.path("/local-entitlement-checkouts"), input, { idempotencyKey }); }
   checkout(input: CheckoutInput, idempotencyKey?: string) { return this.client.request<CheckoutSession>("POST", this.path("/billing/checkout-sessions"), input, { idempotencyKey }); }
   checkoutSession(sessionId: string) { return this.client.request<CheckoutSession>("GET", this.path(`/billing/checkout-sessions/${encodeURIComponent(sessionId)}`)); }
+  cancelMySubscription(subscriptionId: string, atPeriodEnd = true, idempotencyKey?: string) { return this.client.request<void>("POST", this.path(`/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`), { at_period_end: atPeriodEnd }, { idempotencyKey }); }
   portal(input: { provider_id: string; subject_type?: "user" | "workspace"; subject_id?: string; return_uri: string }, idempotencyKey?: string) { return this.client.request<{ portal_uri: string }>("POST", this.path("/billing/portal-sessions"), input, { idempotencyKey }); }
   billingSummary() { return this.client.request<Record<string, unknown>>("GET", this.path("/me/billing")); }
   listSubscriptions() { return this.client.request<Page<Record<string, unknown>>>("GET", this.path("/me/subscriptions")); }

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -143,6 +144,14 @@ func (s *Server) writeBillingProviderPage(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) createCheckoutSession(w http.ResponseWriter, r *http.Request) {
+	rawRequest, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		kernel.WriteProblem(w, r, 400, "invalid_request_body", "The request body could not be read.")
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(rawRequest))
+	requestHash := kernel.RequestHash(r, rawRequest)
+	requestKey := checkoutRequestKey(r)
 	var request struct {
 		PriceID           string   `json:"price_id"`
 		SubjectType       string   `json:"subject_type"`
@@ -184,7 +193,7 @@ func (s *Server) createCheckoutSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var mode, currency, secretCipher, apiVersion, providerConnectionID, productID string
 	var checkoutConfig []byte
-	err := s.app.DB.QueryRow(r.Context(), `SELECT pr.mode,pr.currency,pr.checkout_config,pc.secret_ciphertext,pc.api_version,pc.id,pr.product_id
+	err = s.app.DB.QueryRow(r.Context(), `SELECT pr.mode,pr.currency,pr.checkout_config,pc.secret_ciphertext,pc.api_version,pc.id,pr.product_id
 FROM prices pr JOIN products p ON p.id=pr.product_id JOIN applications a ON a.id=pr.application_id
 JOIN LATERAL (SELECT candidate.* FROM provider_connections candidate WHERE candidate.provider='stripe' AND candidate.status='active'
 AND ($2='' OR candidate.id::text=$2) AND (candidate.application_id=pr.application_id OR
@@ -207,15 +216,33 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 	request.PaymentMethods = stringsOrEmpty(request.PaymentMethods)
 	policy := cloneMap(config)
 	policy["payment_methods"] = request.PaymentMethods
+	resume, err := s.recoverCheckoutAttempts(r.Context(), chi.URLParam(r, "application_id"), request.SubjectType, request.SubjectID, productID, requestKey, requestHash, mode == "recurring" && (boolValue(policy["single_subscription"]) || boolValue(policy["trial_once_per_subject"])))
+	if err != nil {
+		kernel.WriteProblem(w, r, 503, "checkout_reconciliation_pending", "An earlier checkout needs reconciliation. Retry with the same idempotency key.")
+		return
+	}
+	if resume != nil {
+		kernel.WriteJSON(w, 200, resume)
+		return
+	}
+	tx, ok := s.guardRecurringCheckout(w, r, request.SubjectType, request.SubjectID, productID, request.PriceID, policy)
+	if !ok {
+		return
+	}
+	defer tx.Rollback(context.Background())
 	policyJSON, _ := json.Marshal(policy)
 	sessionID := kernel.NewID()
-	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO checkout_sessions (id,application_id,subject_type,subject_id,price_id,provider_connection_id,payment_methods,policy_snapshot,success_uri,cancel_uri,external_reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, sessionID, chi.URLParam(r, "application_id"), request.SubjectType, request.SubjectID, request.PriceID, providerConnectionID, request.PaymentMethods, policyJSON, request.SuccessURI, request.CancelURI, request.ExternalReference)
+	_, err = tx.Exec(r.Context(), `INSERT INTO checkout_sessions (id,application_id,subject_type,subject_id,price_id,provider_connection_id,payment_methods,policy_snapshot,success_uri,cancel_uri,external_reference,request_key,request_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NULLIF($12,''),$13)`, sessionID, chi.URLParam(r, "application_id"), request.SubjectType, request.SubjectID, request.PriceID, providerConnectionID, request.PaymentMethods, policyJSON, request.SuccessURI, request.CancelURI, request.ExternalReference, requestKey, requestHash)
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
 	if err != nil {
 		writeCreationProblem(w, r, err, "", "", "checkout_creation_failed")
 		return
 	}
 	secret, err := s.app.Vault.Decrypt(secretCipher, "billing-provider:"+providerConnectionID+":secret")
 	if err != nil {
+		_, _ = s.app.DB.Exec(r.Context(), "UPDATE checkout_sessions SET status='failed',updated_at=now() WHERE id=$1", sessionID)
 		kernel.WriteProblem(w, r, 500, "provider_secret_unavailable", "The billing provider cannot be used.")
 		return
 	}
@@ -234,6 +261,7 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 	form := url.Values{}
 	if mode == "recurring" {
 		form.Set("mode", "subscription")
+		form.Set("payment_method_collection", "always")
 	} else {
 		form.Set("mode", "payment")
 	}
@@ -279,14 +307,19 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 		form.Set(fmt.Sprintf("payment_method_types[%d]", index), method)
 	}
 	applyStripeCheckoutPolicy(form, policy)
-	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-	if idempotencyKey == "" {
-		idempotencyKey = sessionID.String()
+	if err = s.persistCheckoutRequest(r.Context(), chi.URLParam(r, "application_id"), request.SubjectType, request.SubjectID, sessionID.String(), form); err != nil {
+		kernel.WriteProblem(w, r, 409, "checkout_interrupted", "Checkout was interrupted by another billing operation. Retry shortly.")
+		return
 	}
+	// Provider keys are installation-wide: never trust a caller's key to be
+	// globally unique across applications sharing a Stripe connection.
+	idempotencyKey := "platform93-checkout-" + chi.URLParam(r, "application_id") + "-" + sessionID.String()
 	response, err := stripeRequest(r.Context(), "POST", "https://api.stripe.com/v1/checkout/sessions", string(secret), apiVersion, idempotencyKey, form)
 	if err != nil {
-		_, _ = s.app.DB.Exec(r.Context(), "UPDATE checkout_sessions SET status='failed',updated_at=now() WHERE id=$1", sessionID)
-		kernel.WriteProblem(w, r, 502, "provider_checkout_failed", err.Error())
+		// A timeout may occur after Stripe created the session. Keep pending
+		// rather than authorizing another trial or duplicate purchase.
+		s.markRejectedCheckout(r.Context(), sessionID.String(), err)
+		kernel.WriteProblem(w, r, 502, "provider_checkout_failed", fmt.Sprintf("Checkout %s: provider result could not be confirmed. Retry with the same idempotency key.", sessionID))
 		return
 	}
 	var stripeSession struct {
@@ -298,9 +331,13 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 		kernel.WriteProblem(w, r, 502, "invalid_provider_response", "Stripe returned an invalid checkout session.")
 		return
 	}
-	_, err = s.app.DB.Exec(r.Context(), `UPDATE checkout_sessions SET provider_session_id=$1,checkout_uri=$2,status='open',updated_at=now() WHERE id=$3`, stripeSession.ID, stripeSession.URL, sessionID)
+	result, err := s.app.DB.Exec(r.Context(), `UPDATE checkout_sessions SET provider_session_id=$1,checkout_uri=$2,status='open',updated_at=now() WHERE id=$3 AND status IN('pending','open')`, stripeSession.ID, stripeSession.URL, sessionID)
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "checkout_update_failed", "The provider checkout could not be saved.")
+		return
+	}
+	if result.RowsAffected() != 1 {
+		kernel.WriteProblem(w, r, 409, "checkout_already_settled", "Checkout completed or was expired concurrently. Inspect its current status before retrying.")
 		return
 	}
 	kernel.WriteJSON(w, 201, map[string]any{"id": sessionID, "status": "open", "checkout_uri": stripeSession.URL, "provider_session_id": stripeSession.ID, "external_reference": request.ExternalReference})
@@ -329,6 +366,7 @@ AND (pc.application_id IS NULL OR a.deleted_at IS NULL)`, publicID).Scan(&connec
 	}
 	var event struct {
 		ID         string `json:"id"`
+		Created    int64  `json:"created"`
 		Type       string `json:"type"`
 		APIVersion string `json:"api_version"`
 		Data       struct {
@@ -365,6 +403,9 @@ WHERE a.id=$1 AND a.deleted_at IS NULL AND (pc.application_id=a.id OR (pc.applic
 	if result.RowsAffected() == 0 {
 		w.WriteHeader(200)
 		return
+	}
+	if event.Created > 0 {
+		r = r.WithContext(context.WithValue(r.Context(), stripeObservationTime{}, time.Unix(event.Created, 0)))
 	}
 	if err = s.processStripeEvent(r, receiptID.String(), applicationID, connectionID, event.Type, event.Data.Object); err != nil {
 		_, _ = s.app.DB.Exec(r.Context(), "UPDATE provider_events SET status='failed',attempts=attempts+1,last_error=$1 WHERE id=$2", truncate(err.Error(), 1000), receiptID)
@@ -549,7 +590,7 @@ func stripeRequest(ctx context.Context, method, uri, secret, version, idempotenc
 	defer response.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("Stripe request failed with status %d", response.StatusCode)
+		return nil, stripeHTTPError{StatusCode: response.StatusCode}
 	}
 	return body, nil
 }

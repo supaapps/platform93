@@ -1,6 +1,11 @@
-# Public, flate-compressed OpenAPI specification emitted by oapi-codegen.
-# Exact historical finding only; generated code and all other history remain scanned.
+# Verified false positives inside deterministic flate/base64 OpenAPI documents.
+# Both embedded payloads decode to the public Platform93 OpenAPI schema.
+# Pin exact historical findings; do not exempt the generated file or future strings.
 39d27d922d3a994b39ace593ff53de4f52d459be:internal/generated/openapi.gen.go:generic-api-key:54739
 39b631578727bbcf1d29197616668d0fdc47dc96:internal/generated/openapi.gen.go:generic-api-key:54798
 f1e1cc7a28b548ddfbe442f18ec37fcff301faf9:internal/generated/openapi.gen.go:generic-api-key:56510
 d2d9170289fd4201bf9134c73e43427f5f429612:internal/generated/openapi.gen.go:generic-api-key:56656
+552751a57486ca740b4288115455f73c9e7e8883:internal/generated/openapi.gen.go:generic-api-key:58150
+552751a57486ca740b4288115455f73c9e7e8883:internal/generated/openapi.gen.go:generic-api-key:58603
+e2f8c128e1745431c69e697e7405a4bfbdb01bdf:internal/generated/openapi.gen.go:generic-api-key:60169
+e2f8c128e1745431c69e697e7405a4bfbdb01bdf:internal/generated/openapi.gen.go:generic-api-key:60189

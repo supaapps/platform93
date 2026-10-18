@@ -3517,7 +3517,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BillingSummary'
+                $ref: '#/components/schemas/SubjectBillingSummary'
         '403':
           $ref: '#/components/responses/Problem'
   /v1/control/applications/{application_id}/delegations/{delegation_id}/revoke:
@@ -5239,6 +5239,12 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateCheckout'
       responses:
+        '200':
+          description: Existing checkout recovered using the same idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSession'
         '201':
           description: Provider checkout created
           content:
@@ -5693,6 +5699,112 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BillingSummary'
+  /v1/applications/{application_id}/billing/subscriptions/{subscription_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - $ref: '#/components/parameters/SubscriptionID'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      operationId: cancelMySubscription
+      tags:
+        - Billing
+      description: Cancel an owned subscription or one belonging to a workspace the authenticated user can manage. Unrelated subscriptions are not disclosed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelSubscription'
+      responses:
+        '204':
+          description: Subscription cancellation scheduled or applied
+        '404':
+          description: Subscription unavailable to this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/applications/{application_id}/subjects/{subject_type}/{subject_id}/billing/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: subject_type
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+            - workspace
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 255
+    post:
+      operationId: serviceCancelSubjectBilling
+      tags:
+        - Billing
+      description: >-
+        Requires a machine client with application billing/write permission and Idempotency-Key. Reconciles or expires unfinished checkout, then cancels
+        workspace subscriptions without revoking independent manual grants. Partial failures temporarily block checkout and must be retried with the same
+        at_period_end value. Success permits later resubscription; it does not archive or permanently close the workspace.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelSubscription'
+      responses:
+        '204':
+          description: Cancellations scheduled or applied
+        '403':
+          description: Machine billing permission required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/control/applications/{application_id}/billing/checkout-sessions/{session_id}/resolve-not-created:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - $ref: '#/components/parameters/SessionID'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 255
+    post:
+      operationId: resolveCheckoutNotCreated
+      tags:
+        - Billing
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      description: >-
+        Administrative recovery only. After investigating the provider and confirming that no session was created, explicitly resolve a pending checkout older
+        than 25 hours with no provider session ID. Never use this action for a known session or as evidence that a payment did not occur. The attestation reason
+        and state change are audited atomically. This neither creates nor cancels a provider subscription or payment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveCheckoutNotCreated'
+      responses:
+        '204':
+          description: Uncreated checkout resolved after administrator confirmation
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
   /v1/applications/{application_id}/me/subscriptions:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -11894,6 +12006,43 @@ components:
           type: string
           format: uri
       additionalProperties: false
+    ResolveCheckoutNotCreated:
+      type: object
+      additionalProperties: false
+      required:
+        - confirm_no_provider_session
+        - reason
+      properties:
+        confirm_no_provider_session:
+          type: boolean
+          enum:
+            - true
+        reason:
+          type: string
+          minLength: 10
+          maxLength: 512
+    SubjectBillingSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - subject_type
+        - subject_id
+        - billing_profile
+        - subscriptions
+      properties:
+        subject_type:
+          type: string
+          enum:
+            - user
+            - workspace
+        subject_id:
+          $ref: '#/components/schemas/UUID'
+        billing_profile:
+          $ref: '#/components/schemas/BillingProfile'
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscription'
     Subscription:
       type: object
       required:
@@ -11925,6 +12074,23 @@ components:
           format: date-time
           nullable: true
         current_period_end:
+          type: string
+          format: date-time
+          nullable: true
+        past_due_since:
+          type: string
+          format: date-time
+          description: First observed transition into the current past-due episode; repeated events do not extend it. Cleared on recovery.
+          nullable: true
+        cancel_at:
+          type: string
+          format: date-time
+          nullable: true
+        canceled_at:
+          type: string
+          format: date-time
+          nullable: true
+        trial_end:
           type: string
           format: date-time
           nullable: true

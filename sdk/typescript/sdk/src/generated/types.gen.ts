@@ -765,6 +765,18 @@ export type PortalSession = {
     portal_uri: string;
 };
 
+export type ResolveCheckoutNotCreated = {
+    confirm_no_provider_session: true;
+    reason: string;
+};
+
+export type SubjectBillingSummary = {
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    billing_profile: BillingProfile;
+    subscriptions: Array<Subscription>;
+};
+
 export type Subscription = {
     id: Uuid;
     subject_type: 'user' | 'workspace';
@@ -775,6 +787,13 @@ export type Subscription = {
     status: string;
     current_period_start?: string | null;
     current_period_end?: string | null;
+    /**
+     * First observed transition into the current past-due episode; repeated events do not extend it. Cleared on recovery.
+     */
+    past_due_since?: string | null;
+    cancel_at?: string | null;
+    canceled_at?: string | null;
+    trial_end?: string | null;
     cancel_at_period_end?: boolean;
     external_reference?: string | null;
     created_at?: string;
@@ -7302,7 +7321,7 @@ export type ServiceGetSubjectBillingResponses = {
     /**
      * Subject billing profile and subscription summary
      */
-    200: BillingSummary;
+    200: SubjectBillingSummary;
 };
 
 export type ServiceGetSubjectBillingResponse = ServiceGetSubjectBillingResponses[keyof ServiceGetSubjectBillingResponses];
@@ -9132,6 +9151,10 @@ export type CreateCheckoutSessionError = CreateCheckoutSessionErrors[keyof Creat
 
 export type CreateCheckoutSessionResponses = {
     /**
+     * Existing checkout recovered using the same idempotency key
+     */
+    200: CheckoutSession;
+    /**
      * Provider checkout created
      */
     201: CheckoutSession;
@@ -9586,6 +9609,104 @@ export type GetMyBillingSummaryResponses = {
 };
 
 export type GetMyBillingSummaryResponse = GetMyBillingSummaryResponses[keyof GetMyBillingSummaryResponses];
+
+export type CancelMySubscriptionData = {
+    body: CancelSubscription;
+    headers?: {
+        'Idempotency-Key'?: string;
+    };
+    path: {
+        application_id: Uuid;
+        subscription_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/billing/subscriptions/{subscription_id}/cancel';
+};
+
+export type CancelMySubscriptionErrors = {
+    /**
+     * Subscription unavailable to this user
+     */
+    404: Problem;
+};
+
+export type CancelMySubscriptionError = CancelMySubscriptionErrors[keyof CancelMySubscriptionErrors];
+
+export type CancelMySubscriptionResponses = {
+    /**
+     * Subscription cancellation scheduled or applied
+     */
+    204: void;
+};
+
+export type CancelMySubscriptionResponse = CancelMySubscriptionResponses[keyof CancelMySubscriptionResponses];
+
+export type ServiceCancelSubjectBillingData = {
+    body: CancelSubscription;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+        subject_type: 'workspace';
+        subject_id: string;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/subjects/{subject_type}/{subject_id}/billing/cancel';
+};
+
+export type ServiceCancelSubjectBillingErrors = {
+    /**
+     * Machine billing permission required
+     */
+    403: Problem;
+};
+
+export type ServiceCancelSubjectBillingError = ServiceCancelSubjectBillingErrors[keyof ServiceCancelSubjectBillingErrors];
+
+export type ServiceCancelSubjectBillingResponses = {
+    /**
+     * Cancellations scheduled or applied
+     */
+    204: void;
+};
+
+export type ServiceCancelSubjectBillingResponse = ServiceCancelSubjectBillingResponses[keyof ServiceCancelSubjectBillingResponses];
+
+export type ResolveCheckoutNotCreatedData = {
+    body: ResolveCheckoutNotCreated;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+        session_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/billing/checkout-sessions/{session_id}/resolve-not-created';
+};
+
+export type ResolveCheckoutNotCreatedErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+};
+
+export type ResolveCheckoutNotCreatedError = ResolveCheckoutNotCreatedErrors[keyof ResolveCheckoutNotCreatedErrors];
+
+export type ResolveCheckoutNotCreatedResponses = {
+    /**
+     * Uncreated checkout resolved after administrator confirmation
+     */
+    204: void;
+};
+
+export type ResolveCheckoutNotCreatedResponse = ResolveCheckoutNotCreatedResponses[keyof ResolveCheckoutNotCreatedResponses];
 
 export type ListMySubscriptionsData = {
     body?: never;

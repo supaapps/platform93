@@ -1,6 +1,7 @@
 "use client";
 import { Toggle } from "./ui/toggle";
 import { SelectControl } from "./ui/select";
+import { CredentialNoticeProvider, useCredentialNotice, clearCredentialNotices } from "./credential-notice";
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Platform93Client, Platform93Error } from "@supaapps/platform93-sdk";
@@ -218,7 +219,7 @@ const resources: Record<string, Resource[]> = {
 };
 
 export default function Home() {
-  return <><NetworkActivity /><PlatformAdmin /></>;
+  return <CredentialNoticeProvider><NetworkActivity /><PlatformAdmin /></CredentialNoticeProvider>;
 }
 
 function NetworkActivity() {
@@ -304,7 +305,7 @@ function PlatformAdmin() {
       .catch((error) => setMessage(readError(error)));
   }, []);
   useEffect(() => {
-    const requireLogin = () => setNeedsLogin(true);
+    const requireLogin = () => { clearCredentialNotices(); setNeedsLogin(true); };
     globalThis.addEventListener?.(controlUserSessionExpiredEvent, requireLogin);
     return () => globalThis.removeEventListener?.(controlUserSessionExpiredEvent, requireLogin);
   }, []);
@@ -412,6 +413,7 @@ function PlatformAdmin() {
   async function logout() {
     try {
       await api.request("POST", "/v1/control/auth/logout", {});
+      clearCredentialNotices();
       setOrganization(null);
       setApplication(null);
       setOrganizations([]);
@@ -1165,6 +1167,7 @@ function Workspace({
 }
 
 function CreateResource({ application, resource, setMessage, onCreated }: { application: Application; resource: Resource; setMessage: (value: string) => void; onCreated: () => void }) {
+  const showCredential = useCredentialNotice();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
@@ -1187,7 +1190,8 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
     try {
       const result = await api.request<Record<string, unknown>>("POST", `/v1/control/applications/${application.id}/${resource.path}`, body, { idempotencyKey: crypto.randomUUID() });
       const returnedSecret = result?.secret ?? result?.client_secret ?? result?.invitation_token;
-      setMessage(returnedSecret ? `Created. Store this one-time credential now: ${String(returnedSecret)}` : `${resource.create!.label} completed.`);
+      if (returnedSecret) showCredential(`Created. Store this one-time credential now: ${String(returnedSecret)}`);
+      else setMessage(`${resource.create!.label} completed.`);
       target.reset();
       setFieldValues({});
       setOpen(false);
@@ -1228,6 +1232,7 @@ return <ReferencePicker key={`${field.name}-${fieldValues._subject_type ?? "user
 }
 
 function ResourceRow({ item, resource, application, setMessage, onInspect, onChanged }: { item: Record<string, unknown>; resource: string; application: Application; setMessage: (value: string) => void; onInspect: () => Promise<void>; onChanged: () => void }) {
+  const showCredential = useCredentialNotice();
   const [pendingAction, setPendingAction] = useState("");
   const id = String(item.id ?? "");
   const actions: { label: string; icon?: AdminIconName; tone?: "default" | "danger" | "success"; method?: "POST" | "PATCH" | "DELETE"; suffix: string; body?: unknown; headers?: Record<string, string> }[] = [];
@@ -1278,8 +1283,9 @@ function ResourceRow({ item, resource, application, setMessage, onInspect, onCha
     setPendingAction(action.label);
     try {
       const result = await api.request<Record<string, unknown>>(action.method ?? "POST", `/v1/control/applications/${application.id}/${action.suffix}`, action.body ?? {}, { idempotencyKey: crypto.randomUUID(), headers: action.headers });
-      const returnedSecret = result?.secret ?? result?.client_secret;
-      setMessage(returnedSecret ? `Store this one-time credential now: ${String(returnedSecret)}` : resource === "products" ? `${action.label} completed.` : result ? JSON.stringify(result) : `${action.label} completed.`);
+      const returnedSecret = result?.secret ?? result?.client_secret ?? result?.invitation_token;
+      if (returnedSecret) showCredential(`Store this one-time credential now: ${String(returnedSecret)}`);
+      else setMessage(resource === "products" ? `${action.label} completed.` : result ? JSON.stringify(result) : `${action.label} completed.`);
       onChanged();
     } catch (error) { setMessage(readError(error)); }
     finally { setPendingAction(""); }
@@ -1604,6 +1610,7 @@ function EventFilterSelector({ definitions, initial = [] }: { definitions: Event
 }
 
 function WebhookCreator({ application, setMessage, onCreated }: { application: Application; setMessage: (value: string) => void; onCreated: () => void }) {
+  const showCredential = useCredentialNotice();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const { definitions, loading } = useEventTypes(application, setMessage);
@@ -1618,7 +1625,7 @@ function WebhookCreator({ application, setMessage, onCreated }: { application: A
       });
       target.reset();
       setOpen(false);
-      setMessage(`Webhook created. Store this one-time secret now: ${String(result.secret)}`);
+      showCredential(`Webhook created. Store this one-time secret now: ${String(result.secret)}`);
       onCreated();
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(false); }
@@ -1797,12 +1804,16 @@ function PriceCreator({ productID, application, setMessage, onChanged }: { produ
     const form = new FormData(target);
     const mode = String(form.get("mode"));
     try {
+      const checkoutConfig: unknown = JSON.parse(String(form.get("checkout_config") ?? "{}"));
+      if (checkoutConfig === null || typeof checkoutConfig !== "object" || Array.isArray(checkoutConfig)) {
+        throw new Error("Checkout configuration must be a JSON object.");
+      }
       await api.request("POST", `/v1/control/applications/${application.id}/products/${productID}/prices`, {
         key: form.get("key"), mode, amount_minor: Number(form.get("amount_minor")), currency: form.get("currency"),
         currency_exponent: 2, interval_unit: mode === "recurring" ? form.get("interval_unit") : undefined,
         interval_count: mode === "recurring" ? Number(form.get("interval_count")) : undefined,
         validity_seconds: mode === "local" ? Number(form.get("validity_seconds")) : undefined,
-        grace_seconds: 0, tax_behavior: form.get("tax_behavior"), checkout_config: {},
+        grace_seconds: 0, tax_behavior: form.get("tax_behavior"), checkout_config: checkoutConfig,
       });
       target.reset();
       setMode("recurring");
@@ -1810,7 +1821,22 @@ function PriceCreator({ productID, application, setMessage, onChanged }: { produ
       onChanged();
     } catch (error) { setMessage(readError(error)); }
   }
-  return <form className="detail-form" onSubmit={(event) => void submit(event)}><strong>Create immutable price</strong><p className="full-field">This price will snapshot the product entitlement defaults above.</p><label><span>Price key</span><input required name="key" placeholder="e.g. monthly-standard" /></label><label><span>Price mode</span><SelectControl label="Price mode" name="mode" value={mode} onValueChange={(value) => setMode(value)}><option value="recurring">Recurring</option><option value="one_time">One time</option><option value="local">Local entitlement</option></SelectControl></label><label><span>Amount in minor units</span><input required name="amount_minor" min="0" type="number" placeholder="e.g. 1990" /><small>For EUR, 1990 means EUR 19.90.</small></label><label><span>Currency</span><input required name="currency" minLength={3} maxLength={3} defaultValue="EUR" /></label><label><span>Tax behavior</span><SelectControl label="Tax behavior" name="tax_behavior" defaultValue="inclusive"><option value="inclusive">Tax inclusive</option><option value="exclusive">Tax exclusive</option><option value="unspecified">Unspecified</option></SelectControl></label>{mode === "recurring" && <><label><span>Billing interval</span><SelectControl label="Billing interval" name="interval_unit" defaultValue="month"><option>day</option><option>week</option><option>month</option><option>year</option></SelectControl></label><label><span>Interval count</span><input name="interval_count" min="1" type="number" defaultValue="1" /></label></>}{mode === "local" && <label><span>Local validity in seconds</span><input required name="validity_seconds" min="1" type="number" placeholder="e.g. 2592000" /></label>}<button>Create price</button></form>;
+  return <form className="detail-form" onSubmit={(event) => void submit(event)}>
+    <strong>Create immutable price</strong>
+    <p className="full-field">This price will snapshot the product entitlement defaults above.</p>
+    <label><span>Price key</span><input required name="key" placeholder="e.g. monthly-standard" /></label>
+    <label><span>Price mode</span><SelectControl label="Price mode" name="mode" value={mode} onValueChange={(value) => setMode(value)}><option value="recurring">Recurring</option><option value="one_time">One time</option><option value="local">Local entitlement</option></SelectControl></label>
+    <label><span>Amount in minor units</span><input required name="amount_minor" min="0" type="number" placeholder="e.g. 1990" /><small>For EUR, 1990 means EUR 19.90.</small></label>
+    <label><span>Currency</span><input required name="currency" minLength={3} maxLength={3} defaultValue="EUR" /></label>
+    <label><span>Tax behavior</span><SelectControl label="Tax behavior" name="tax_behavior" defaultValue="inclusive"><option value="inclusive">Tax inclusive</option><option value="exclusive">Tax exclusive</option><option value="unspecified">Unspecified</option></SelectControl></label>
+    {mode === "recurring" && <>
+      <label><span>Billing interval</span><SelectControl label="Billing interval" name="interval_unit" defaultValue="month"><option>day</option><option>week</option><option>month</option><option>year</option></SelectControl></label>
+      <label><span>Interval count</span><input name="interval_count" min="1" type="number" defaultValue="1" /></label>
+    </>}
+    {mode === "local" && <label><span>Local validity in seconds</span><input required name="validity_seconds" min="1" type="number" placeholder="e.g. 2592000" /></label>}
+    <label className="full-field"><span>Checkout configuration (JSON)</span><textarea name="checkout_config" defaultValue="{}" /><small>Recurring example: {`{"trial_period_days":14,"single_subscription":true,"trial_once_per_subject":true}`}. Tax/address example: {`{"automatic_tax":true,"billing_address_required":true}`}. Each price keeps its own immutable policy.</small></label>
+    <button>Create price</button>
+  </form>;
 }
 
 function ProviderTest({ providerID, application, setMessage }: { providerID: string; application: Application; setMessage: (value: string) => void }) {
@@ -2608,6 +2634,7 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
   installationRole: OrganizationPage["installation_role"];
   setMessage: (value: string) => void;
 }) {
+  const showCredential = useCredentialNotice();
   const [members, setMembers] = useState<Record<string, unknown>[]>([]);
   const [invitations, setInvitations] = useState<Record<string, unknown>[]>([]);
   const [sessions, setSessions] = useState<Record<string, unknown>[]>([]);
@@ -2663,7 +2690,7 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
     const form = new FormData(target);
     try {
       const result = await api.request<Record<string, unknown>>("POST", `/v1/control/organizations/${organization.id}/invitations`, { email: form.get("email"), role: form.get("role"), onboarding_method: form.get("onboarding_method"), expires_in: 604800 });
-      setMessage(`Invitation queued. One-time credential: ${String(result.invitation_token)}`);
+      showCredential(`Invitation queued. One-time credential: ${String(result.invitation_token)}`);
       target.reset();
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
@@ -2672,7 +2699,8 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
   async function action(method: "POST" | "DELETE" | "PATCH", path: string, body?: unknown) {
     try {
       const result = await api.request<Record<string, unknown> | undefined>(method, path, body);
-      setMessage(result?.invitation_token ? `New one-time credential: ${String(result.invitation_token)}` : `Operation completed (${method}).`);
+      if (result?.invitation_token) showCredential(`New one-time credential: ${String(result.invitation_token)}`);
+      else setMessage(`Operation completed (${method}).`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
@@ -2684,7 +2712,7 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
     try {
       const result = await api.request<Record<string, unknown>>("POST", "/v1/control/installation/invitations", { email: form.get("email"), role: form.get("role"), onboarding_method: form.get("onboarding_method"), expires_in: 604800 });
       target.reset();
-      setMessage(`Platform user invitation created. One-time credential: ${String(result.invitation_token)}`);
+      showCredential(`Platform user invitation created. One-time credential: ${String(result.invitation_token)}`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
@@ -2771,6 +2799,7 @@ function OrganizationPolicySettings({ organization, installationRole, setMessage
 }
 
 function ManagementAPISettings({ setMessage }: { setMessage: (value: string) => void }) {
+  const showCredential = useCredentialNotice();
   const [status, setStatus] = useState<ManagementAPIStatus | null>(null);
   const [clients, setClients] = useState<Record<string, unknown>[]>([]);
   const [busy, setBusy] = useState("");
@@ -2800,7 +2829,7 @@ function ManagementAPISettings({ setMessage }: { setMessage: (value: string) => 
     try {
       const result = await api.request<Record<string, unknown>>("POST", "/v1/control/installation/management-clients", { client_id: form.get("client_id"), name: form.get("name") });
       target.reset();
-      setMessage(`Management client created. Store this secret now; it is shown once: ${String(result.client_secret)}`);
+      showCredential(`Management client created. Store this secret now; it is shown once: ${String(result.client_secret)}`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
@@ -2809,7 +2838,8 @@ function ManagementAPISettings({ setMessage }: { setMessage: (value: string) => 
     setBusy(clientID);
     try {
       const result = await api.request<Record<string, unknown> | undefined>(method, `/v1/control/installation/management-clients/${clientID}${method === "POST" ? "/rotate-secret" : ""}`, method === "POST" ? {} : undefined);
-      setMessage(result?.client_secret ? `Management secret rotated. Store it now; it is shown once: ${String(result.client_secret)}` : "Management client disabled. Its tokens are rejected immediately.");
+      if (result?.client_secret) showCredential(`Management secret rotated. Store it now; it is shown once: ${String(result.client_secret)}`);
+      else setMessage("Management client disabled. Its tokens are rejected immediately.");
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
