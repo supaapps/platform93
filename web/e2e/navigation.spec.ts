@@ -22,6 +22,7 @@ test("one-time client credentials stay visible until explicitly dismissed", asyn
   await page.getByLabel("Grants, comma separated", { exact: true }).fill("client_credentials");
   await page.getByRole("button", { name: "Create OAuth client", exact: true }).click();
   await expect(page.locator(".credential-notice")).toContainText("p93_client_test_only");
+  await expect(page.locator(".credential-notice")).toHaveCSS("pointer-events", "auto");
   await page.clock.runFor(10_000);
   await expect(page.locator(".credential-notice")).toContainText("p93_client_test_only");
   await page.getByRole("link", { name: "Overview", exact: true }).click();
