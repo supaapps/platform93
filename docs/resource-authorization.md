@@ -232,6 +232,16 @@ forward a resource token to an endpoint expecting an application audience.
 
 ## Manual Verification Matrix
 
+### Initial release interoperability limits
+
+The initial resource-authorization release has automated protocol, PostgreSQL,
+SDK, and browser coverage. Real connections from ChatGPT, Claude, and Gemini CLI
+have not been verified. Administrator-registered clients and explicitly allowed
+HTTPS client metadata documents are supported; dynamic client registration is
+not supported. Hosts that require other registration methods may not connect.
+Validate each intended host separately before relying on it in production; do
+not interpret protocol coverage as universal MCP-host compatibility.
+
 These are integration verification steps, not a claim of real-host conformance.
 Mocked browser tests verify frontend behavior only. Run the matrix against the
 deployed backend and a generic resource service before claiming interoperability.
