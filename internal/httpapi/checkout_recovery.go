@@ -157,6 +157,9 @@ func (s *Server) resolveCheckoutAttempt(ctx context.Context, app string, a check
 			}
 		} else {
 			// Never replay creation after Stripe may have pruned its idempotency key.
+			if form.Get("customer") == "" {
+				return nil, fmt.Errorf("customer-scoped reconciliation is unavailable")
+			}
 			var found map[string]any
 			_, err = reconcileStripeList(ctx, string(secret), a.version, "https://api.stripe.com/v1/checkout/sessions", url.Values{"customer": {form.Get("customer")}}, func(value map[string]any) error {
 				if stringValue(value["client_reference_id"]) == a.id && metadataString(value, "platform93_application_id") == app {

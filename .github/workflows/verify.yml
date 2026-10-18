@@ -76,7 +76,7 @@ jobs:
           for TEST in TestResourceOAuthPostgresPopulatedRollback TestResourceOAuthPostgresRegisteredURLClient TestResourceOAuthPostgresRefreshEffectivePermissions TestResourceOAuthPostgresRefreshWorkspaceContexts TestResourceOAuthPostgresPatchResponseContract; do
             jq -e --arg test "$TEST" 'select(.Action == "pass" and .Test == $test)' /tmp/integration-tests.json >/dev/null
           done
-          for TEST in TestCheckoutEligibilityDatabase TestBillingPolicyPostgresConcurrencyAndRecovery TestBillingPolicyPostgresCancellationAndResubscription TestBillingPolicyPostgresSummaryAndStaleGrace TestBillingPolicyPostgresProviderFailures TestBillingPolicyPostgresEligibilityAndArchive TestBillingPolicyPostgresCheckoutExpiration TestBillingPolicyPostgresResolutionAndArchiveRaces TestBillingPolicyPostgresAbandonedPreparationCancellation; do
+          for TEST in TestCheckoutEligibilityDatabase TestBillingPolicyPostgresConcurrencyAndRecovery TestBillingPolicyPostgresCancellationAndResubscription TestBillingPolicyPostgresSummaryAndStaleGrace TestBillingPolicyPostgresProviderFailures TestBillingPolicyPostgresEligibilityAndArchive TestBillingPolicyPostgresCheckoutExpiration TestBillingPolicyPostgresResolutionAndArchiveRaces TestBillingPolicyPostgresAbandonedPreparationCancellation TestBillingPolicyPostgresResolutionAuthorizationAndAtomicity TestBillingPolicyPostgresUpgradeFromReleasedSchema TestBillingPolicyPostgresCancelBeforeSubscriptionWebhook; do
             jq -e --arg test "$TEST" 'select(.Action == "pass" and .Test == $test)' /tmp/integration-tests.json >/dev/null
           done
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...

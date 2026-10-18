@@ -143,7 +143,8 @@ func (s *Server) cancelProviderSubscription(ctx context.Context, app, provider, 
 func (s *Server) expireSubjectCheckouts(ctx context.Context, app, subject, key string) error {
 	rows, err := s.app.DB.Query(ctx, `SELECT c.id,c.provider_connection_id,COALESCE(c.provider_session_id,''),p.secret_ciphertext,p.api_version,pr.mode,c.status,c.provider_request,c.created_at,c.request_key,c.request_hash,c.checkout_uri,c.external_reference
 FROM checkout_sessions c JOIN provider_connections p ON p.id=c.provider_connection_id JOIN prices pr ON pr.id=c.price_id
-WHERE c.application_id=$1 AND c.subject_type='workspace' AND c.subject_id=$2 AND c.status IN('pending','open')`, app, subject)
+WHERE c.application_id=$1 AND c.subject_type='workspace' AND c.subject_id=$2
+AND (c.status IN('pending','open') OR c.status='completed' AND pr.mode='recurring' AND NOT EXISTS(SELECT 1 FROM subscriptions s WHERE s.application_id=c.application_id AND s.metadata->>'platform93_checkout_id'=c.id::text))`, app, subject)
 	if err != nil {
 		return err
 	}

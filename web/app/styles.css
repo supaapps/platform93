@@ -2515,7 +2515,7 @@ select,
   pointer-events: none;
   overflow: hidden;
 }
-.toast-success {
+.toast-success, .credential-notice {
   background: var(--p93-mint-deep);
   border-color: color-mix(in srgb, var(--p93-mint) 70%, var(--p93-dark-text));
 }

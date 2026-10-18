@@ -42,6 +42,10 @@ Only pending attempts older than 25 hours without provider session IDs qualify;
 the confirmation, reason and state change are audited atomically. This changes
 the attempt to failed, not completed, and creates no payment or entitlement.
 Never attest absence from age alone or while a provider purchase may exist.
+Automatic POST replay stops at 23 hours as a margin before Stripe may prune a
+24-hour idempotency key. Between 23 and 25 hours, an unknown result can remain
+blocked pending provider evidence; administrative attestation opens at 25 hours.
+This safety interval is intentional, not proof that a provider session exists.
 Known sessions must be reconciled/expired normally. Retry any pending subject
 cancellation afterwards to clear its temporary checkout block.
 

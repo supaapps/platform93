@@ -22,8 +22,8 @@ export function CredentialNoticeProvider({ children }: { children: ReactNode }) 
   }, []);
   return <CredentialContext.Provider value={(message) => setNotices((current) => [...current, { id: crypto.randomUUID(), message }])}>
     {children}
-    <div className="credential-notices" aria-label="One-time credentials">
-      {notices.map((notice) => <section className="toast toast-success credential-notice" role="status" key={notice.id}>
+    <div className="credential-notices" role="region" aria-label="One-time credentials">
+      {notices.map((notice) => <section className="toast credential-notice" role="status" key={notice.id}>
         <div><strong>Save your credential</strong><span>{notice.message}</span><small>Shown once. Keep this private and store it securely before dismissing.</small></div>
         <button aria-label="Dismiss credential notice" onClick={() => setNotices((current) => current.filter((item) => item.id !== notice.id))}>Dismiss</button>
       </section>)}

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pressly/goose/v3"
 	"github.com/supaapps/platform93/internal/generated"
 	"github.com/supaapps/platform93/internal/identity"
 	"github.com/supaapps/platform93/internal/kernel"
@@ -440,5 +442,89 @@ func TestBillingPolicyPostgresAbandonedPreparationCancellation(t *testing.T) {
 	w := b.jsonCall("/subjects/workspace/"+b.workspace+"/billing/cancel", map[string]any{}, b.machineToken(), "cancel-preparation")
 	if w.Code != 204 {
 		t.Fatalf("first cancellation of abandoned preparation: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestBillingPolicyPostgresResolutionAuthorizationAndAtomicity(t *testing.T) {
+	b := newBillingReviewFixture(t)
+	id := kernel.NewID().String()
+	b.exec(`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri,created_at) VALUES($1,$2,'workspace',$3,$4,$5,'pending','{}','https://client.example.test/callback','https://client.example.test/callback',now()-interval '26 hours')`, id, b.application, b.workspace, b.price, b.provider)
+	body := map[string]any{"confirm_no_provider_session": true, "reason": "Provider investigation confirmed no session was created"}
+	path := "/billing/checkout-sessions/" + id + "/resolve-not-created"
+	b.exec(`UPDATE organization_memberships SET role='auditor' WHERE control_user_id=$1`, b.controlUser)
+	if w := b.controlJSON("POST", path, body); w.Code != 403 {
+		t.Fatalf("auditor resolved billing: %d %s", w.Code, w.Body)
+	}
+	b.exec(`UPDATE organization_memberships SET role='admin' WHERE control_user_id=$1`, b.controlUser)
+	for _, state := range []struct {
+		status   string
+		external *string
+		age      string
+	}{{"pending", nil, "1 hour"}, {"completed", nil, "26 hours"}, {"pending", func() *string { v := "cs_known"; return &v }(), "26 hours"}} {
+		b.exec(`UPDATE checkout_sessions SET status=$1,provider_session_id=$2,created_at=now()-$3::interval WHERE id=$4`, state.status, state.external, state.age, id)
+		if w := b.controlJSON("POST", path, body); w.Code != 409 {
+			t.Fatalf("unsafe resolution state=%+v: %d %s", state, w.Code, w.Body)
+		}
+	}
+	b.exec(`UPDATE checkout_sessions SET status='pending',provider_session_id=NULL,created_at=now()-interval '26 hours' WHERE id=$1`, id)
+	b.exec(`CREATE FUNCTION reject_resolution_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='billing.checkout.resolved_not_created' THEN RAISE EXCEPTION 'fixture audit failure'; END IF; RETURN NEW; END $$`)
+	b.exec(`CREATE TRIGGER reject_resolution BEFORE INSERT ON audit_records FOR EACH ROW EXECUTE FUNCTION reject_resolution_audit()`)
+	if w := b.controlJSON("POST", path, body); w.Code != 503 {
+		t.Fatalf("unaudited resolution accepted: %d %s", w.Code, w.Body)
+	}
+	var status string
+	if err := b.app.DB.QueryRow(context.Background(), `SELECT status FROM checkout_sessions WHERE id=$1`, id).Scan(&status); err != nil || status != "pending" {
+		t.Fatalf("audit failure did not roll back: %s %v", status, err)
+	}
+}
+
+func TestBillingPolicyPostgresUpgradeFromReleasedSchema(t *testing.T) {
+	b := newBillingReviewFixture(t)
+	db, err := sql.Open("pgx", b.app.DB.Config().ConnString())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = goose.DownTo(db, ".", 8); err != nil {
+		t.Fatal(err)
+	}
+	id := kernel.NewID().String()
+	b.exec(`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri) VALUES($1,$2,'workspace',$3,$4,$5,'pending','{}','https://client.example.test/callback','https://client.example.test/callback')`, id, b.application, b.workspace, b.price, b.provider)
+	if err = goose.Up(db, "."); err != nil {
+		t.Fatal(err)
+	}
+	var preserved bool
+	if err = b.app.DB.QueryRow(context.Background(), `SELECT provider_request='{"legacy_unknown":true}'::jsonb FROM checkout_sessions WHERE id=$1`, id).Scan(&preserved); err != nil || !preserved {
+		t.Fatalf("upgrade treated unknown legacy outcome as unsent: %v %v", preserved, err)
+	}
+	if err = goose.DownTo(db, ".", 8); err != nil {
+		t.Fatal(err)
+	}
+	if err = goose.Up(db, "."); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBillingPolicyPostgresCancelBeforeSubscriptionWebhook(t *testing.T) {
+	b := newBillingReviewFixture(t)
+	id := kernel.NewID().String()
+	b.exec(`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri,provider_session_id) VALUES($1,$2,'workspace',$3,$4,$5,'completed','{}','https://client.example.test/callback','https://client.example.test/callback','cs_completed')`, id, b.application, b.workspace, b.price, b.provider)
+	cancelled := false
+	http.DefaultTransport = optionalCheckoutTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/v1/checkout/sessions/cs_completed" {
+			return billingProviderJSON(map[string]any{"id": "cs_completed", "status": "complete", "client_reference_id": id, "subscription": b.subscription(id, "active", true)}, 200), nil
+		}
+		if r.Method == "DELETE" && r.URL.Path == "/v1/subscriptions/sub_fixture" {
+			cancelled = true
+			return billingProviderJSON(b.subscription(id, "canceled", true), 200), nil
+		}
+		return nil, fmt.Errorf("unexpected provider call")
+	})
+	w := b.jsonCall("/subjects/workspace/"+b.workspace+"/billing/cancel", map[string]any{"at_period_end": false}, b.machineToken(), "cancel-before-webhook")
+	if w.Code != 204 || !cancelled {
+		t.Fatalf("cancel lost completed enrollment: %d %s cancelled=%v", w.Code, w.Body, cancelled)
+	}
+	if w = b.controlJSON("DELETE", "/workspaces/"+b.workspace, nil); w.Code != 204 {
+		t.Fatalf("settled workspace cannot archive: %d %s", w.Code, w.Body)
 	}
 }
