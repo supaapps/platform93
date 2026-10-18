@@ -156,6 +156,10 @@ ordinary application sign-in callbacks, invitation destinations, billing return
 URLs, or trusted application CORS origins. Resource login uses the hosted
 interaction and returns to the external client only after explicit resource
 consent; it never grants an ordinary application session to that client.
+Manage published clients through the resource's allowed client identifiers, not
+the ordinary OAuth client editor. Internal metadata records cannot be edited,
+disabled, assigned roles, or granted direct permissions through normal client
+administration; removing a client from the resource blocks its live checks.
 
 The callback includes `code`, `state`, and `iss`; validate state and the exact
 expected issuer before exchanging the code. Public clients submit:

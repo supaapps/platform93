@@ -294,7 +294,7 @@ WHERE u.id=$1 AND u.status='active' AND ro.id=$2 AND u.application_id=$3 AND
 		}
 	} else {
 		err := s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients c JOIN roles ro ON ro.application_id=c.application_id
-WHERE c.id=$1 AND c.disabled_at IS NULL AND ro.id=$2 AND c.application_id=$3 AND
+WHERE c.id=$1 AND c.disabled_at IS NULL AND NOT c.resource_only AND ro.id=$2 AND c.application_id=$3 AND
 ((ro.scope='application' AND $4::uuid IS NULL) OR (ro.scope='workspace' AND EXISTS(SELECT 1 FROM workspaces w WHERE w.id=$4 AND w.application_id=c.application_id AND w.deleted_at IS NULL))))`,
 			*request.ClientID, request.RoleID, chi.URLParam(r, "application_id"), request.WorkspaceID).Scan(&valid)
 		if err != nil {

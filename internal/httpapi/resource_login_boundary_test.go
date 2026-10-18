@@ -115,9 +115,9 @@ func TestResourceOAuthPostgresShadowBillingBoundary(t *testing.T) {
 	}
 }
 
-func TestResourceOAuthPostgresShadowControlBoundary(t *testing.T) {
-	f := newResourceLoginBoundaryFixture(t)
-	f.exec(`UPDATE applications SET internal_config=jsonb_set(internal_config,'{delegation_enabled}','true') WHERE id=$1`, f.application)
+func (f *resourceLoginBoundaryFixture) controlBearer() string {
+	t := f.t
+	t.Helper()
 	f.exec(`INSERT INTO organization_memberships(organization_id,control_user_id,role) SELECT organization_id,$2,'owner' FROM applications WHERE id=$1`, f.application, f.controlUser)
 	session := kernel.NewID().String()
 	f.exec(`INSERT INTO control_user_sessions(id,control_user_id,refresh_digest,expires_at) VALUES($1,$2,$3,now()+interval '1 hour')`, session, f.controlUser, f.app.Vault.Digest("boundary-control-session"))
@@ -130,6 +130,13 @@ func TestResourceOAuthPostgresShadowControlBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return bearer
+}
+
+func TestResourceOAuthPostgresShadowControlBoundary(t *testing.T) {
+	f := newResourceLoginBoundaryFixture(t)
+	f.exec(`UPDATE applications SET internal_config=jsonb_set(internal_config,'{delegation_enabled}','true') WHERE id=$1`, f.application)
+	bearer := f.controlBearer()
 	t.Run("ordinary client list", func(t *testing.T) {
 		w := f.call("GET", "/v1/control/applications/"+f.application+"/clients", nil, bearer, "192.0.2.20")
 		if w.Code != http.StatusOK {
@@ -247,6 +254,111 @@ func TestResourceOAuthPostgresShadowNormalEligibility(t *testing.T) {
 		w := f.call("GET", "/oidc/authorize?"+form.Encode(), nil, "", "192.0.2.20")
 		assertResourceLoginProblem(t, w, http.StatusBadRequest, "oauth_application_unresolved")
 	})
+}
+
+func TestResourceOAuthPostgresShadowAdminMutations(t *testing.T) {
+	for _, clientType := range []string{"public", "confidential"} {
+		t.Run(clientType, func(t *testing.T) {
+			f := newResourceLoginBoundaryFixture(t)
+			if clientType == "confidential" {
+				// Rotation already rejects public clients. A legacy confidential
+				// shadow verifies the independent resource-only boundary as well.
+				f.exec(`UPDATE clients SET client_type='confidential',secret_digest=$2 WHERE id=$1`, f.shadowID, f.app.Vault.Digest("shadow-secret"))
+			}
+			bearer := f.controlBearer()
+			call := func(method, path string, body any) *httptest.ResponseRecorder {
+				t.Helper()
+				encoded, err := json.Marshal(body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r := httptest.NewRequest(method, path, strings.NewReader(string(encoded)))
+				r.Header.Set("Content-Type", "application/json")
+				r.Header.Set("Authorization", "Bearer "+bearer)
+				w := httptest.NewRecorder()
+				f.router.ServeHTTP(w, r)
+				return w
+			}
+			var before, after string
+			if err := f.app.DB.QueryRow(context.Background(), `SELECT to_jsonb(c)::text FROM clients c WHERE id=$1`, f.shadowID).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			base := "/v1/control/applications/" + f.application + "/clients/"
+			for _, tc := range []struct {
+				method, suffix string
+				body           any
+			}{
+				{method: "GET"},
+				{method: "PATCH", body: map[string]any{"name": "Overwritten metadata"}},
+				{method: "PATCH", body: map[string]any{"redirect_uris": []string{"https://replacement.example.test/callback"}}},
+				{method: "POST", suffix: "/rotate-secret", body: map[string]any{}},
+				{method: "DELETE"},
+			} {
+				t.Run(tc.method+tc.suffix, func(t *testing.T) {
+					assertResourceLoginProblem(t, call(tc.method, base+f.shadowClient+tc.suffix, tc.body), http.StatusNotFound, "client_not_found")
+				})
+			}
+			if err := f.app.DB.QueryRow(context.Background(), `SELECT to_jsonb(c)::text FROM clients c WHERE id=$1`, f.shadowID).Scan(&after); err != nil {
+				t.Fatal(err)
+			}
+			if before != after {
+				t.Error("ordinary admin request changed shadow metadata, freshness, secret, or disabled state")
+			}
+			if w := call("GET", base+f.client, nil); w.Code != http.StatusOK {
+				t.Fatalf("ordinary client read rejected: %d %s", w.Code, w.Body)
+			}
+			if w := call("PATCH", base+f.client, map[string]any{"name": "Updated ordinary client"}); w.Code != http.StatusNoContent {
+				t.Fatalf("ordinary client update rejected: %d %s", w.Code, w.Body)
+			}
+			if w := call("POST", base+f.machine+"/rotate-secret", map[string]any{}); w.Code != http.StatusOK {
+				t.Fatalf("ordinary machine secret rotation rejected: %d %s", w.Code, w.Body)
+			}
+			if w := call("DELETE", base+f.client, nil); w.Code != http.StatusNoContent {
+				t.Fatalf("ordinary client disable rejected: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+}
+
+func TestResourceOAuthPostgresShadowAuthorizationSubjects(t *testing.T) {
+	f := newResourceLoginBoundaryFixture(t)
+	bearer := f.controlBearer()
+	base := "/v1/control/applications/" + f.application
+	t.Run("direct permission grant", func(t *testing.T) {
+		body := map[string]any{"subject_type": "client", "subject_id": f.shadowID, "permission": "billing:read"}
+		assertResourceLoginProblem(t, f.jsonCall(base+"/permission-grants", body, nil, "", bearer), http.StatusUnprocessableEntity, "invalid_permission_grant_subject")
+		body["subject_id"] = f.client
+		if w := f.jsonCall(base+"/permission-grants", body, nil, "", bearer); w.Code != http.StatusCreated {
+			t.Fatalf("ordinary client permission grant rejected: %d %s", w.Code, w.Body)
+		}
+	})
+	t.Run("effective access", func(t *testing.T) {
+		w := f.call("GET", base+"/permission-grants/effective?subject_type=client&subject_id="+f.shadowID, nil, bearer, "192.0.2.20")
+		assertResourceLoginProblem(t, w, http.StatusUnprocessableEntity, "invalid_permission_subject")
+		w = f.call("GET", base+"/permission-grants/effective?subject_type=client&subject_id="+f.client, nil, bearer, "192.0.2.20")
+		if w.Code != http.StatusOK {
+			t.Fatalf("ordinary client effective access rejected: %d %s", w.Code, w.Body)
+		}
+	})
+	t.Run("role assignment", func(t *testing.T) {
+		var role string
+		if err := f.app.DB.QueryRow(context.Background(), `SELECT id FROM roles WHERE application_id=$1 AND key='billing'`, f.application).Scan(&role); err != nil {
+			t.Fatal(err)
+		}
+		body := map[string]any{"client_id": f.shadowID, "role_id": role}
+		assertResourceLoginProblem(t, f.jsonCall(base+"/role-assignments", body, nil, "", bearer), http.StatusUnprocessableEntity, "invalid_role_assignment")
+		body["client_id"] = f.client
+		if w := f.jsonCall(base+"/role-assignments", body, nil, "", bearer); w.Code != http.StatusCreated {
+			t.Fatalf("ordinary client role assignment rejected: %d %s", w.Code, w.Body)
+		}
+	})
+	var grants, roles int
+	if err := f.app.DB.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM permission_grants WHERE client_id=$1),(SELECT count(*) FROM role_assignments WHERE client_id=$1)`, f.shadowID).Scan(&grants, &roles); err != nil {
+		t.Fatal(err)
+	}
+	if grants != 0 || roles != 0 {
+		t.Fatalf("shadow gained ordinary authority: grants=%d roles=%d", grants, roles)
+	}
 }
 
 func TestResourceOAuthPostgresShadowHostedProviderBoundary(t *testing.T) {
