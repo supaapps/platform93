@@ -1,4 +1,6 @@
 from .verifier import Claims, Verifier
+from .resource_models import OAuthResource, ResourceCapability, OAuthConnection, ResourceAccessCheckRequest, ResourceAccessCheckResponse
+from .resources import capability_scope, protected_resource_metadata, resource_challenge
 from .machine import (
     BillingSummary,
     CustomEventInput,
@@ -18,6 +20,8 @@ from .machine import (
 )
 
 __all__ = [
+    "OAuthResource", "ResourceCapability", "OAuthConnection", "ResourceAccessCheckRequest", "ResourceAccessCheckResponse",
+    "capability_scope", "protected_resource_metadata", "resource_challenge",
     "BillingSummary",
     "Claims",
     "CustomEventInput",

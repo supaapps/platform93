@@ -34,6 +34,7 @@ type Claims struct {
 	SessionID     string         `json:"sid,omitempty"`
 	ApplicationID string         `json:"application_id,omitempty"`
 	ClientID      string         `json:"client_id,omitempty"`
+	ConnectionID  string         `json:"connection_id,omitempty"`
 	TokenKind     string         `json:"token_kind"`
 	ActorType     string         `json:"actor_type"`
 	Scope         string         `json:"scope"`

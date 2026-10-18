@@ -242,7 +242,7 @@ func TestOAuthTokenSecurity(t *testing.T) {
 			t.Helper()
 			for {
 				var n int
-				if err := f.app.DB.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%oauth_sessions%'`).Scan(&n); err != nil {
+				if err := f.app.DB.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND (query LIKE '%oauth_sessions%' OR query LIKE '%pg_advisory_xact_lock%')`).Scan(&n); err != nil {
 					t.Fatal(err)
 				}
 				if n >= want {
@@ -282,8 +282,8 @@ func TestOAuthTokenSecurity(t *testing.T) {
 			t.Fatalf("same refresh credential succeeded %d times, want exactly one", successes)
 		}
 		var active int
-		if err := f.app.DB.QueryRow(ctx, `SELECT count(*) FROM oauth_sessions WHERE kind='refresh' AND active`).Scan(&active); err != nil || active != 1 {
-			t.Fatalf("unexpected persisted successors: count=%d err=%v", active, err)
+		if err := f.app.DB.QueryRow(ctx, `SELECT count(*) FROM oauth_sessions WHERE kind IN ('refresh','access') AND active`).Scan(&active); err != nil || active != 0 {
+			t.Fatalf("concurrent refresh reuse retained active family members: count=%d err=%v", active, err)
 		}
 	})
 	t.Run("invalid secrets cannot exhaust another callers client capacity", func(t *testing.T) {

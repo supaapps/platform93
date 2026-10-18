@@ -66,7 +66,7 @@ func (s *Server) validateApplicationFlowConfig(ctx context.Context, applicationI
 	var redirectURIs, grants []string
 	var clientType string
 	if err := s.app.DB.QueryRow(ctx, `SELECT client_type,redirect_uris,allowed_grants FROM clients
-WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, applicationID, config.OAuthClientID).Scan(&clientType, &redirectURIs, &grants); err != nil {
+WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`, applicationID, config.OAuthClientID).Scan(&clientType, &redirectURIs, &grants); err != nil {
 		return errors.New("the configured OAuth client does not exist or is disabled")
 	}
 	if clientType != "public" || !stringSliceContains(grants, "authorization_code") {

@@ -38,6 +38,8 @@ type PermissionGrantLifecycleData = { grant_id: ID; subject_type: "user" | "clie
 type ExternalAuthProvider = "google" | "apple" | "microsoft" | "facebook" | "linkedin";
 type ControlUserIdentityData = { control_user_id: ID; provider: ExternalAuthProvider };
 type ControlInvitationData = { invitation_id: ID; organization_id?: ID | null; control_user_id?: ID; role: "owner" | "admin" | "member" | "auditor"; onboarding_method: "email" | ExternalAuthProvider; status: "pending" | "accepted" | "revoked" };
+type OAuthResourceLifecycleData = { resource_id: ID; version: number };
+type OAuthConnectionLifecycleData = OAuthResourceLifecycleData & { connection_id: ID };
 
 export interface Platform93EventDataMap {
   "organization.created": NamedData;
@@ -74,6 +76,10 @@ export interface Platform93EventDataMap {
   "local_entitlement_request.created": { request_id: ID; subject_type: "user" | "workspace"; subject_id: ID; price_id: ID };
   "local_entitlement_request.approved": { request_id: ID; grant_id: ID };
   "oauth.consent_revoked": { user_id: ID; client_id: ID; client_key: string };
+  "resource.created": OAuthResourceLifecycleData;
+  "resource.updated": OAuthResourceLifecycleData;
+  "connection.approved": OAuthConnectionLifecycleData;
+  "connection.revoked": OAuthConnectionLifecycleData;
   "platform93.webhook.test": { webhook_endpoint_id: ID; test: true };
   "storage.object.upload_requested": StorageObjectData;
   "storage.object.ready": StorageObjectData;
@@ -128,6 +134,8 @@ export const platform93EventVersions: Readonly<Record<Platform93EventType, strin
   "delegation.created": "1.0", "delegation.exchanged": "1.0", "delegation.revoked": "1.0",
   "entitlement.granted": "1.0", "local_entitlement_request.created": "1.0", "local_entitlement_request.approved": "1.0",
   "oauth.consent_revoked": "1.0", "platform93.webhook.test": "1.0", "user.created": "1.0",
+  "resource.created": "1.0", "resource.updated": "1.0",
+  "connection.approved": "1.0", "connection.revoked": "1.0",
   "storage.object.upload_requested": "1.0", "storage.object.ready": "1.0", "storage.object.deleted": "1.0",
   "storage.provider.verified": "1.0", "storage.provider.disabled": "1.0",
   "user.email_verified": "1.0", "user.email_unverified": "1.0", "user.organization_verified": "1.0",

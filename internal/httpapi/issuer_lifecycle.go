@@ -18,7 +18,7 @@ func (s *Server) getClient(w http.ResponseWriter, r *http.Request) {
 	var ui, initiateURI string
 	var required bool
 	err := s.app.DB.QueryRow(r.Context(), `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at,updated_at,authorization_ui,pkce_required,initiate_login_uri
-FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`,
+FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`,
 		chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id")).Scan(
 		&id, &clientID, &name, &clientType, &redirectURIs, &allowedGrants, &allowedScopes, &createdAt, &updatedAt, &ui, &required, &initiateURI)
 	if err != nil {
@@ -56,7 +56,7 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 	var clientType, ui string
 	var required bool
 	var grants []string
-	if err := s.app.DB.QueryRow(r.Context(), `SELECT client_type,authorization_ui,pkce_required,allowed_grants FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id")).Scan(&clientType, &ui, &required, &grants); err != nil {
+	if err := s.app.DB.QueryRow(r.Context(), `SELECT client_type,authorization_ui,pkce_required,allowed_grants FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id")).Scan(&clientType, &ui, &required, &grants); err != nil {
 		kernel.WriteProblem(w, r, 404, "client_not_found", "The client was not found.")
 		return
 	}
@@ -75,7 +75,7 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 	}
 	if request.RedirectURIs != nil {
 		var clientType string
-		if err := s.app.DB.QueryRow(r.Context(), `SELECT client_type FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`,
+		if err := s.app.DB.QueryRow(r.Context(), `SELECT client_type FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`,
 			chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id")).Scan(&clientType); err != nil {
 			kernel.WriteProblem(w, r, http.StatusNotFound, "client_not_found", "The client was not found.")
 			return
@@ -89,7 +89,7 @@ func (s *Server) updateClient(w http.ResponseWriter, r *http.Request) {
 redirect_uris=CASE WHEN $2::text[] IS NULL THEN redirect_uris ELSE $2 END,
 allowed_grants=CASE WHEN $3::text[] IS NULL THEN allowed_grants ELSE $3 END,
 allowed_scopes=CASE WHEN $4::text[] IS NULL THEN allowed_scopes ELSE $4 END,authorization_ui=COALESCE($7,authorization_ui),pkce_required=COALESCE($8,pkce_required),initiate_login_uri=COALESCE($9,initiate_login_uri),updated_at=now()
-WHERE application_id=$5 AND client_id=$6 AND disabled_at IS NULL`, request.Name, request.RedirectURIs,
+WHERE application_id=$5 AND client_id=$6 AND disabled_at IS NULL AND NOT resource_only`, request.Name, request.RedirectURIs,
 		request.AllowedGrants, request.AllowedScopes, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"), request.AuthorizationUI, request.PKCERequired, request.InitiateLoginURI)
 	if err != nil || result.RowsAffected() != 1 {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "client_not_found", "The client was not found.")
@@ -105,7 +105,7 @@ func (s *Server) rotateClientSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.app.DB.Exec(r.Context(), `UPDATE clients SET secret_digest=$1,updated_at=now()
-WHERE application_id=$2 AND client_id=$3 AND client_type IN ('confidential','machine') AND disabled_at IS NULL`,
+WHERE application_id=$2 AND client_id=$3 AND client_type IN ('confidential','machine') AND disabled_at IS NULL AND NOT resource_only`,
 		s.app.Vault.Digest(secret), chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"))
 	if err != nil || result.RowsAffected() != 1 {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "client_not_found", "An active confidential or machine client was not found.")
@@ -122,7 +122,7 @@ func (s *Server) disableClient(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rollback(tx, r.Context())
 	result, err := tx.Exec(r.Context(), `UPDATE clients SET disabled_at=now(),updated_at=now()
-WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"))
+WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"))
 	if err == nil && result.RowsAffected() == 1 {
 		_, err = tx.Exec(r.Context(), `UPDATE oauth_sessions SET active=false,updated_at=now()
 WHERE application_id=$1 AND request_payload->>'client_id'=$2 AND active`, chi.URLParam(r, "application_id"), chi.URLParam(r, "client_id"))

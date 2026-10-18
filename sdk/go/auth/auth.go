@@ -34,6 +34,9 @@ type Claims struct {
 	IsOrgVerified bool           `json:"is_org_verified"`
 	CustomClaims  map[string]any `json:"custom_claims,omitempty"`
 	Actor         *Actor         `json:"act,omitempty"`
+	SessionID     string         `json:"sid,omitempty"`
+	ClientID      string         `json:"client_id,omitempty"`
+	ConnectionID  string         `json:"connection_id,omitempty"`
 }
 
 type RoleClaims struct {
@@ -60,6 +63,10 @@ type Verifier struct {
 }
 
 func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
+	return v.verify(ctx, token, "")
+}
+
+func (v *Verifier) verify(ctx context.Context, token, resource string) (Claims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return Claims{}, fmt.Errorf("malformed token")
@@ -91,7 +98,28 @@ func (v *Verifier) Verify(ctx context.Context, token string) (Claims, error) {
 	}
 	var claims Claims
 	now := time.Now()
-	if json.Unmarshal(payload, &claims) != nil || claims.Issuer != strings.TrimRight(v.Issuer, "/") || claims.Subject == "" || claims.IssuedAt == 0 || claims.IssuedAt > now.Add(30*time.Second).Unix() || claims.ApplicationID != v.ApplicationID || claims.ExpiresAt <= now.Unix() || claims.NotBefore == 0 || claims.NotBefore > now.Add(30*time.Second).Unix() || !contains(claims.Audience, v.Audience) || claims.TokenKind == "access" && claims.ActorType != "user" || claims.TokenKind == "machine" && claims.ActorType != "client" || claims.TokenKind != "access" && claims.TokenKind != "machine" {
+	if resource != "" {
+		// JWT audience permits a string as well as a singleton array.
+		var raw map[string]json.RawMessage
+		if json.Unmarshal(payload, &raw) != nil {
+			return Claims{}, fmt.Errorf("invalid resource claims")
+		}
+		var single string
+		if json.Unmarshal(raw["aud"], &single) == nil {
+			raw["aud"], _ = json.Marshal([]string{single})
+			payload, _ = json.Marshal(raw)
+		}
+	}
+	if json.Unmarshal(payload, &claims) != nil || claims.Issuer != strings.TrimRight(v.Issuer, "/") || claims.Subject == "" || claims.IssuedAt == 0 || claims.IssuedAt > now.Add(30*time.Second).Unix() || claims.ApplicationID != v.ApplicationID || claims.ExpiresAt <= now.Unix() || claims.NotBefore == 0 || claims.NotBefore > now.Add(30*time.Second).Unix() {
+		return Claims{}, fmt.Errorf("token claims rejected")
+	}
+	if resource != "" {
+		if err := validateResourceClaims(claims, payload, resource); err != nil {
+			return Claims{}, err
+		}
+		return claims, nil
+	}
+	if !contains(claims.Audience, v.Audience) || !(claims.TokenKind == "access" && claims.ActorType == "user" || claims.TokenKind == "machine" && claims.ActorType == "client") {
 		return Claims{}, fmt.Errorf("token claims rejected")
 	}
 	if claims.Actor != nil && (claims.TokenKind != "access" || claims.Actor.Type != "control_user" || claims.Actor.Subject == "") {

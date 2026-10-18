@@ -187,3 +187,13 @@ whitespace-injected scope invalidates the whole JWT.
 Applications with many workspace assignments can produce large JWTs. Configure
 ingress proxies and application servers to accept the required Authorization
 header size; do not truncate the header or parse only a prefix.
+
+## Connected Applications
+
+Optional [resource authorization](resource-authorization.md) lets an external
+OAuth client act for a user within explicitly consented capabilities and personal
+or workspace contexts. It is separate from Platform-user support delegation,
+roles, and direct grants. Resource tokens use `token_kind=resource_access`, a
+registered resource audience, empty roles, and a required live authorization
+check. Ordinary application verifiers reject them. Existing application tokens
+and their scope behavior are unchanged.

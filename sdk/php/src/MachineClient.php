@@ -19,20 +19,31 @@ use RuntimeException;
  * @phpstan-type BillingSummary array{subject_type:'user'|'workspace',subject_id:string,billing_profile:?array{id:string,name:?string,email:?string,tax_id:?string,version:int},subscriptions:list<array{id:string,price_id:string,provider_id:string,status:string,external_reference:?string}>}
  * @phpstan-type CustomEventInput array{type:string,subject:string,data:array<string,mixed>,correlation_id?:string,causation_id?:string}
  * @phpstan-type PublishedEvent array{id:string,specversion:string,source:string,type:string,subject:string,schema_version:string,data:array<string,mixed>}
+ * @phpstan-type ResourceCapability array{key:string,name:string,context:'personal'|'workspace',permissions:list<string>}
+ * @phpstan-type OAuthResource array{id:string,application_id:string,uri:string,name:string,enabled:bool,allow_client_metadata:bool,client_ids:list<string>,capabilities:list<ResourceCapability>,version:int,created_at:string,updated_at:string}
+ * @phpstan-type OAuthConnection array{id:string,application_id:string,resource_id:string,resource_version:int,user_id:string,client_id:string,session_id:string,capabilities:list<string>,personal_access:bool,workspace_ids:list<string>,expires_at:string,revoked_at:?string,version:int,created_at:string,updated_at:string}
+ * @phpstan-type ResourceAccessCheckRequest array{token:string,resource:string,capability:string,workspace_id?:string}
+ * @phpstan-type ResourceAccessCheckResponse array{allowed:bool,reason:string,user_id?:string,connection_id?:string,workspace_id?:string}
  */
 final class MachineClient
 {
     private ?string $accessToken = null;
     private int $expiresAt = 0;
+    private readonly ?\Closure $transport;
 
-    /** @param list<string> $scopes */
+    /**
+     * @param list<string> $scopes
+     * @param callable(string,string,list<string>,?string):array<string,mixed>|null $transport Optional HTTP transport; failures must throw.
+     */
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $applicationId,
         private readonly string $clientId,
         private string $clientSecret,
         private readonly array $scopes = [],
+        ?callable $transport = null,
     ) {
+        $this->transport = $transport === null ? null : \Closure::fromCallable($transport);
         if ($baseUrl === '' || $applicationId === '' || $clientId === '' || $clientSecret === '') {
             throw new RuntimeException('Platform93 machine client requires base URL, application ID, client ID, and client secret.');
         }
@@ -87,6 +98,12 @@ final class MachineClient
     public function listUsers(): array
     {
         return $this->request('GET', '/users');
+    }
+
+    /** @param ResourceAccessCheckRequest $input @return ResourceAccessCheckResponse */
+    public function checkResourceAccess(array $input): array
+    {
+        return $this->request('POST', '/service/resource-access/check', $input);
     }
 
     /** @return User */
@@ -179,6 +196,9 @@ final class MachineClient
     /** @param list<string> $headers @return array<string,mixed> */
     private function http(string $method, string $path, array $headers, ?string $content): array
     {
+        if ($this->transport !== null) {
+            return ($this->transport)($method, rtrim($this->baseUrl, '/') . $path, $headers, $content);
+        }
         $context = stream_context_create(['http' => [
             'method' => $method,
             'header' => implode("\r\n", $headers),

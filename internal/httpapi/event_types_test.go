@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,58 @@ func TestEventContractValidationAndVersionOrdering(t *testing.T) {
 	}
 }
 
+type resourceAuthorizationEventFixture struct {
+	schema  map[string]any
+	example map[string]any
+}
+
+func resourceAuthorizationEventCatalogFixtures(t *testing.T) map[string]resourceAuthorizationEventFixture {
+	t.Helper()
+	fixtures := make(map[string]resourceAuthorizationEventFixture)
+	for name, kind := range map[string]string{
+		"resource.created": "resource", "resource.updated": "resource",
+		"connection.approved": "connection", "connection.revoked": "connection",
+	} {
+		readJSON := func(path string) map[string]any {
+			t.Helper()
+			raw, err := os.ReadFile("../../schemas/events/" + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var value map[string]any
+			if err := json.Unmarshal(raw, &value); err != nil {
+				t.Fatalf("%s: %v", path, err)
+			}
+			return value
+		}
+		schema := readJSON(kind + "-1.0.schema.json")
+		// Catalog schemas contain validation keywords, not publication metadata.
+		for _, key := range []string{"$schema", "$id", "title", "description", "examples"} {
+			delete(schema, key)
+		}
+		example := readJSON("examples/" + strings.ReplaceAll(name, ".", "-") + "-1.0.json")
+		if example["type"] != name || example["schema_version"] != "1.0" || example["contract_source"] != "platform93" {
+			t.Fatalf("%s fixture does not identify the expected platform contract: %v", name, example)
+		}
+		fixtures[name] = resourceAuthorizationEventFixture{schema: schema, example: example}
+	}
+	return fixtures
+}
+
+func TestResourceAuthorizationEventCatalogFixtures(t *testing.T) {
+	for name, fixture := range resourceAuthorizationEventCatalogFixtures(t) {
+		t.Run(name, func(t *testing.T) {
+			data, ok := fixture.example["data"].(map[string]any)
+			if !ok {
+				t.Fatal("event fixture data must be an object")
+			}
+			if err := validateEventData(fixture.schema, data); err != nil {
+				t.Fatalf("public example violates its public schema: %v", err)
+			}
+		})
+	}
+}
+
 func TestPlatformEventCatalogExamplesMatchContracts(t *testing.T) {
 	databaseURL := os.Getenv("PLATFORM93_DATABASE_URL")
 	if databaseURL == "" {
@@ -61,7 +114,9 @@ func TestPlatformEventCatalogExamplesMatchContracts(t *testing.T) {
 	}
 	defer db.Close()
 
-	rows, err := db.Query(context.Background(), `SELECT name,data_schema,example_data
+	fixtures := resourceAuthorizationEventCatalogFixtures(t)
+	seen := make(map[string]bool)
+	rows, err := db.Query(context.Background(), `SELECT name,schema_version,data_schema,example_data
 FROM event_type_definitions WHERE application_id IS NULL AND source='platform93' ORDER BY name`)
 	if err != nil {
 		t.Fatal(err)
@@ -69,9 +124,9 @@ FROM event_type_definitions WHERE application_id IS NULL AND source='platform93'
 	defer rows.Close()
 	count := 0
 	for rows.Next() {
-		var name string
+		var name, schemaVersion string
 		var rawSchema, rawExample []byte
-		if err = rows.Scan(&name, &rawSchema, &rawExample); err != nil {
+		if err = rows.Scan(&name, &schemaVersion, &rawSchema, &rawExample); err != nil {
 			t.Fatal(err)
 		}
 		var schema, example map[string]any
@@ -84,13 +139,30 @@ FROM event_type_definitions WHERE application_id IS NULL AND source='platform93'
 		if err = validateEventData(schema, example); err != nil {
 			t.Fatalf("%s example violates its contract: %v", name, err)
 		}
+		if fixture, ok := fixtures[name]; ok {
+			if schemaVersion != fixture.example["schema_version"] {
+				t.Fatalf("%s catalog schema version %q differs from the public fixture", name, schemaVersion)
+			}
+			if !reflect.DeepEqual(schema, fixture.schema) {
+				t.Fatalf("%s catalog schema differs from the public schema: catalog=%s public=%v", name, rawSchema, fixture.schema)
+			}
+			if err = validateEventData(schema, fixture.example["data"].(map[string]any)); err != nil {
+				t.Fatalf("%s public example violates the catalog contract: %v", name, err)
+			}
+			seen[name] = true
+		}
 		count++
 	}
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if count != 68 {
-		t.Fatalf("expected 68 built-in event contracts, got %d", count)
+	for name := range fixtures {
+		if !seen[name] {
+			t.Errorf("missing built-in event contract %q", name)
+		}
+	}
+	if expected := 68 + len(fixtures); count != expected {
+		t.Fatalf("expected %d built-in event contracts, got %d", expected, count)
 	}
 }
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform93.dev/schemas/events/connection/1.0",
+  "title": "Platform93 OAuth Connection Event Data",
+  "description": "Version 1.0 data for connection.approved and connection.revoked. Only connection identity, resource identity, and connection version are public.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["connection_id", "resource_id", "version"],
+  "properties": {
+    "connection_id": { "type": "string", "format": "uuid" },
+    "resource_id": { "type": "string", "format": "uuid" },
+    "version": { "type": "integer", "minimum": 1 }
+  },
+  "examples": [
+    { "connection_id": "01900000-0000-7000-8000-000000000005", "resource_id": "01900000-0000-7000-8000-000000000004", "version": 1 },
+    { "connection_id": "01900000-0000-7000-8000-000000000005", "resource_id": "01900000-0000-7000-8000-000000000004", "version": 2 }
+  ]
+}

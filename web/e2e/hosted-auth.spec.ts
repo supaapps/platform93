@@ -11,6 +11,56 @@ const initial = {
   branding: { display_name: "Example", accent_color: "#17261f", background_color: "#f6f8fa", layout: "centered", default_locale: "en", copy: { en: { heading: "Welcome back", help: "Secure access to your application." } } },
 };
 
+test("resource consent cannot select unavailable contexts and ordinary approve stays unchanged", async ({ page }) => {
+  const view = { ...initial, stage: "consent", user: { name: "User", email: "user@example.test", email_verified: true } };
+  let resource = true;
+  let submitted: unknown;
+  await page.route(`**${endpoint}`, (route) => route.fulfill({ json: { ...view, ...(resource ? { resource_consent: { resource: { id: "resource-1", name: "Resource", uri: "https://resource.example.test" }, capabilities: [{ key: "personal:read", name: "Personal", context: "personal" }, { key: "team:read", name: "Team", context: "workspace" }], personal_access_available: false, workspaces: [] } } : {}) } }));
+  await page.route(`**${endpoint}/actions`, (route) => { submitted = route.request().postDataJSON(); return route.fulfill({ json: view }); });
+  await page.goto(`/auth/?interaction=${interaction}`);
+  await expect(page.getByLabel(/^Personal/)).toBeDisabled();
+  await expect(page.getByLabel(/^Team/)).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Approve selected access" })).toBeDisabled();
+  resource = false;
+  await page.reload();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  expect(submitted).toEqual({ action: "approve" });
+});
+
+for (const width of [1280, 390]) {
+  test(`resource consent is explicit and reducible (${width}px)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const actions: Record<string, unknown>[] = [];
+    const view = { ...initial, stage: "consent", user: { name: "Example User", email: "user@example.test", email_verified: true }, resource_consent: {
+      resource: { id: "resource-1", name: "Document service", uri: "https://resource.example.test" },
+      capabilities: [{ key: "documents:read", name: "Read documents", context: "workspace" }, { key: "profile:read", name: "Read personal profile", context: "personal" }],
+      workspaces: [{ id: "workspace-1", key: "first", name: "First workspace" }, { id: "workspace-2", key: "second", name: "Second workspace" }], personal_access_available: true,
+    } };
+    await page.route(`**${endpoint}`, (route) => route.fulfill({ json: view }));
+    await page.route(`**${endpoint}/actions`, (route) => { actions.push(route.request().postDataJSON()); return route.fulfill({ json: view }); });
+    await page.goto(`/auth/?interaction=${interaction}`);
+    const approve = page.getByRole("button", { name: "Approve selected access" });
+    await expect(approve).toBeDisabled();
+    await expect(page.getByRole("checkbox", { checked: true })).toHaveCount(0);
+    await page.getByLabel(/^Read documents/).check();
+    await expect(approve).toBeDisabled();
+    await page.getByLabel(/^First workspace/).check();
+    await approve.click();
+    expect(actions[0]).toEqual({ action: "approve", approved_capabilities: ["documents:read"], personal_access: false, workspace_ids: ["workspace-1"] });
+    await page.getByLabel(/^Read documents/).uncheck();
+    await page.getByLabel(/^Read personal profile/).check();
+    await expect(approve).toBeDisabled();
+    await page.getByLabel("Allow personal access").check();
+    await approve.click();
+    expect(actions[1]).toEqual({ action: "approve", approved_capabilities: ["profile:read"], personal_access: true, workspace_ids: [] });
+    await page.reload();
+    await expect(approve).toBeDisabled();
+    await expect(page.getByRole("checkbox", { checked: true })).toHaveCount(0);
+    const accessibility = await new AxeBuilder({ page }).analyze();
+    expect(accessibility.violations.filter((item) => ["critical", "serious"].includes(item.impact ?? ""))).toEqual([]);
+  });
+}
+
 for (const viewport of [{ name: "desktop", width: 1280, height: 900 }, { name: "mobile", width: 390, height: 844 }]) {
   test(`hosted sign-in, feedback and consent on ${viewport.name}`, async ({ page }, info) => {
     await page.setViewportSize(viewport);
