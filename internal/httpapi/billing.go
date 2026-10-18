@@ -207,6 +207,13 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 	request.PaymentMethods = stringsOrEmpty(request.PaymentMethods)
 	policy := cloneMap(config)
 	policy["payment_methods"] = request.PaymentMethods
+	if mode == "recurring" {
+		release, ok := s.guardRecurringCheckout(w, r, request.SubjectType, request.SubjectID, productID, request.PriceID, policy)
+		if !ok {
+			return
+		}
+		defer release()
+	}
 	policyJSON, _ := json.Marshal(policy)
 	sessionID := kernel.NewID()
 	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO checkout_sessions (id,application_id,subject_type,subject_id,price_id,provider_connection_id,payment_methods,policy_snapshot,success_uri,cancel_uri,external_reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, sessionID, chi.URLParam(r, "application_id"), request.SubjectType, request.SubjectID, request.PriceID, providerConnectionID, request.PaymentMethods, policyJSON, request.SuccessURI, request.CancelURI, request.ExternalReference)
@@ -234,6 +241,7 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 	form := url.Values{}
 	if mode == "recurring" {
 		form.Set("mode", "subscription")
+		form.Set("payment_method_collection", "always")
 	} else {
 		form.Set("mode", "payment")
 	}
@@ -279,13 +287,13 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 		form.Set(fmt.Sprintf("payment_method_types[%d]", index), method)
 	}
 	applyStripeCheckoutPolicy(form, policy)
-	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-	if idempotencyKey == "" {
-		idempotencyKey = sessionID.String()
-	}
+	// Provider keys are installation-wide: never trust a caller's key to be
+	// globally unique across applications sharing a Stripe connection.
+	idempotencyKey := "platform93-checkout-" + chi.URLParam(r, "application_id") + "-" + sessionID.String()
 	response, err := stripeRequest(r.Context(), "POST", "https://api.stripe.com/v1/checkout/sessions", string(secret), apiVersion, idempotencyKey, form)
 	if err != nil {
-		_, _ = s.app.DB.Exec(r.Context(), "UPDATE checkout_sessions SET status='failed',updated_at=now() WHERE id=$1", sessionID)
+		// A timeout may occur after Stripe created the session. Keep pending
+		// rather than authorizing another trial or duplicate purchase.
 		kernel.WriteProblem(w, r, 502, "provider_checkout_failed", err.Error())
 		return
 	}

@@ -8923,6 +8923,69 @@ export type GetMyBillingSummaryResponses = {
 
 export type GetMyBillingSummaryResponse = GetMyBillingSummaryResponses[keyof GetMyBillingSummaryResponses];
 
+export type CancelMySubscriptionData = {
+    body: CancelSubscription;
+    headers?: {
+        'Idempotency-Key'?: string;
+    };
+    path: {
+        application_id: Uuid;
+        subscription_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/billing/subscriptions/{subscription_id}/cancel';
+};
+
+export type CancelMySubscriptionErrors = {
+    /**
+     * Subscription unavailable to this user
+     */
+    404: Problem;
+};
+
+export type CancelMySubscriptionError = CancelMySubscriptionErrors[keyof CancelMySubscriptionErrors];
+
+export type CancelMySubscriptionResponses = {
+    /**
+     * Subscription cancellation scheduled or applied
+     */
+    204: void;
+};
+
+export type CancelMySubscriptionResponse = CancelMySubscriptionResponses[keyof CancelMySubscriptionResponses];
+
+export type ServiceCancelSubjectBillingData = {
+    body: CancelSubscription;
+    headers?: {
+        'Idempotency-Key'?: string;
+    };
+    path: {
+        application_id: Uuid;
+        subject_type: 'workspace';
+        subject_id: string;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/subjects/{subject_type}/{subject_id}/billing/cancel';
+};
+
+export type ServiceCancelSubjectBillingErrors = {
+    /**
+     * Machine billing permission required
+     */
+    403: Problem;
+};
+
+export type ServiceCancelSubjectBillingError = ServiceCancelSubjectBillingErrors[keyof ServiceCancelSubjectBillingErrors];
+
+export type ServiceCancelSubjectBillingResponses = {
+    /**
+     * Cancellations scheduled or applied
+     */
+    204: void;
+};
+
+export type ServiceCancelSubjectBillingResponse = ServiceCancelSubjectBillingResponses[keyof ServiceCancelSubjectBillingResponses];
+
 export type ListMySubscriptionsData = {
     body?: never;
     path: {

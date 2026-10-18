@@ -5392,6 +5392,70 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BillingSummary'
+  /v1/applications/{application_id}/billing/subscriptions/{subscription_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - $ref: '#/components/parameters/SubscriptionID'
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      operationId: cancelMySubscription
+      tags:
+        - Billing
+      description: Cancel an owned subscription or one belonging to a workspace the authenticated user can manage. Unrelated subscriptions are not disclosed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelSubscription'
+      responses:
+        '204':
+          description: Subscription cancellation scheduled or applied
+        '404':
+          description: Subscription unavailable to this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /v1/applications/{application_id}/subjects/{subject_type}/{subject_id}/billing/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: subject_type
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+            - workspace
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+    post:
+      operationId: serviceCancelSubjectBilling
+      tags:
+        - Billing
+      description: >-
+        Requires a machine client with application billing/write permission. Cancels workspace subscriptions without revoking independent manual grants. Batches
+        can be retried after partial provider failure.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelSubscription'
+      responses:
+        '204':
+          description: Cancellations scheduled or applied
+        '403':
+          description: Machine billing permission required
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /v1/applications/{application_id}/me/subscriptions:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
