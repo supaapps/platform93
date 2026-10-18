@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 import re
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .resources import ResourceCheckClient
 
 import jwt
 from jwt import PyJWKClient
@@ -47,6 +50,13 @@ class Verifier:
         )
 
     def verify(self, token: str) -> Claims:
+        return self._verify(token)
+
+    def authorize_resource(self, token: str, *, resource: str, capability: str, machine_client: "ResourceCheckClient", workspace_id: str | None = None) -> Claims:
+        from .resources import authorize_resource
+        return authorize_resource(self, token, resource, capability, machine_client, workspace_id)
+
+    def _verify(self, token: str, resource: str | None = None) -> Claims:
         header = jwt.get_unverified_header(token)
         if (
             header.get("alg") != "RS256"
@@ -60,7 +70,7 @@ class Verifier:
             token,
             key.key,
             algorithms=["RS256"],
-            audience=self.audience,
+            audience=resource if resource is not None else self.audience,
             issuer=self.issuer,
             options={
                 "require": [
@@ -69,16 +79,17 @@ class Verifier:
                 ]
             },
         )
+        valid_actor = (
+            values.get("token_kind") == "resource_access" and values.get("actor_type") == "user"
+            if resource is not None else
+            values.get("token_kind") == "access" and values.get("actor_type") == "user"
+            or values.get("token_kind") == "machine" and values.get("actor_type") == "client"
+        )
         if (
             not isinstance(values.get("sub"), str)
             or not values["sub"]
             or values.get("application_id") != self.application_id
-            or not (
-                values.get("token_kind") == "access"
-                and values.get("actor_type") == "user"
-                or values.get("token_kind") == "machine"
-                and values.get("actor_type") == "client"
-            )
+            or not valid_actor
             or not isinstance(values.get("scope"), str)
         ):
             raise jwt.InvalidTokenError("Platform93 token context rejected")

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,17 +16,32 @@ import (
 	"github.com/supaapps/platform93/internal/oauthserver"
 )
 
+func oauthRequestClientID(r *http.Request) string {
+	if encoded, _, ok := r.BasicAuth(); ok {
+		id, err := url.QueryUnescape(encoded)
+		if err != nil {
+			return ""
+		}
+		return id
+	}
+	return r.FormValue("client_id")
+}
+
 func (s *Server) resolveOAuthApplication(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
-		clientID := strings.TrimSpace(r.FormValue("client_id"))
-		if basicClientID, _, ok := r.BasicAuth(); ok && basicClientID != "" {
-			clientID = basicClientID
+		if _, present := r.Form["resource"]; present {
+			resolved, ok := s.resolveResourceOAuth(w, r)
+			if ok {
+				next.ServeHTTP(w, resolved)
+			}
+			return
 		}
+		clientID := oauthRequestClientID(r)
 		application := ""
 		if clientID != "" {
 			_ = s.app.DB.QueryRow(r.Context(), `SELECT application_id FROM clients
-WHERE client_id=$1 AND disabled_at IS NULL`, clientID).Scan(&application)
+WHERE client_id=$1 AND disabled_at IS NULL AND NOT resource_only`, clientID).Scan(&application)
 		}
 		if application == "" {
 			if managementRequest, ok := s.resolveManagementOAuthClient(r, clientID); ok {
@@ -68,6 +84,7 @@ func unverifiedApplicationID(token string) string {
 }
 
 func (s *Server) oauthAuthorizeInteraction(w http.ResponseWriter, r *http.Request) {
+	w = oauthIssuerWriter{ResponseWriter: w, issuer: s.app.Issuer()}
 	provider, ok := s.oauthProvider(w, r)
 	if !ok {
 		return
@@ -78,6 +95,10 @@ func (s *Server) oauthAuthorizeInteraction(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if s.startHostedAuthorization(w, r, provider, request) {
+		return
+	}
+	if resource := resourceFromRequest(r); resource != nil {
+		kernel.WriteJSON(w, http.StatusOK, map[string]any{"interaction": "consent", "client_id": request.GetClient().GetID(), "requested_scopes": request.GetRequestedScopes(), "redirect_uri": request.GetRedirectURI().String(), "state": request.GetState(), "submit_method": "POST", "resource": map[string]any{"id": resource.ID, "uri": resource.URI, "name": resource.Name, "version": resource.Version}})
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -92,6 +113,7 @@ func (s *Server) oauthAuthorizeInteraction(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) oauthAuthorizeDecision(w http.ResponseWriter, r *http.Request) {
+	w = oauthIssuerWriter{ResponseWriter: w, issuer: s.app.Issuer()}
 	provider, ok := s.oauthProvider(w, r)
 	if !ok {
 		return
@@ -103,6 +125,10 @@ func (s *Server) oauthAuthorizeDecision(w http.ResponseWriter, r *http.Request) 
 	}
 	if strings.EqualFold(r.FormValue("decision"), "deny") {
 		provider.OAuth.WriteAuthorizeError(r.Context(), w, request, fosite.ErrAccessDenied)
+		return
+	}
+	if resourceFromRequest(r) != nil {
+		s.authorizeResource(w, r, provider, request)
 		return
 	}
 	consentScopes := append([]string(nil), request.GetRequestedScopes()...)
@@ -196,6 +222,7 @@ SET scopes=(SELECT ARRAY(SELECT DISTINCT unnest(oauth_consents.scopes || EXCLUDE
 		provider.OAuth.WriteAuthorizeError(r.Context(), w, request, err)
 		return
 	}
+	response.AddParameter("iss", s.app.Issuer())
 	if strings.Contains(r.Header.Get("Accept"), "application/json") {
 		redirectTo := *request.GetRedirectURI()
 		query := redirectTo.Query()
@@ -217,10 +244,7 @@ func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusBadRequest, "invalid_oauth_request", "The token request could not be parsed.")
 		return
 	}
-	clientID := r.FormValue("client_id")
-	if basicClientID, _, ok := r.BasicAuth(); ok && basicClientID != "" {
-		clientID = basicClientID
-	}
+	clientID := oauthRequestClientID(r)
 	if managementClient, ok := managementClientFromContext(r.Context()); ok {
 		s.issueManagementToken(w, r, managementClient)
 		return
@@ -238,12 +262,25 @@ func (s *Server) oauthToken(w http.ResponseWriter, r *http.Request) {
 		provider.OAuth.WriteAccessError(r.Context(), w, request, err)
 		return
 	}
-	for _, scope := range request.GetRequestedScopes() {
-		request.GrantScope(scope)
+	resourceSession, _ := request.GetSession().(*oauthserver.Session)
+	if resourceSession == nil || resourceSession.AccessClaims == nil || resourceSession.AccessClaims.Extra["token_kind"] != "resource_access" {
+		for _, scope := range request.GetRequestedScopes() {
+			request.GrantScope(scope)
+		}
 	}
 	applicationID, _ := uuid.Parse(chi.URLParam(r, "application_id"))
-	request.GrantAudience(s.app.ApplicationAudience(applicationID))
-	if request.GetGrantTypes().ExactOne("client_credentials") {
+	if err := s.prepareResourceToken(r, request); err != nil {
+		provider.OAuth.WriteAccessError(r.Context(), w, request, err)
+		return
+	}
+	storedResource, _ := request.GetSession().(*oauthserver.Session)
+	isResource := storedResource != nil && storedResource.AccessClaims != nil && storedResource.AccessClaims.Extra["token_kind"] == "resource_access"
+	if !isResource {
+		request.GrantAudience(s.app.ApplicationAudience(applicationID))
+	}
+	if isResource {
+		// Resource grants retain their consent ceiling instead of inheriting all roles.
+	} else if request.GetGrantTypes().ExactOne("client_credentials") {
 		clientID := request.GetClient().GetID()
 		effective, accessErr := s.clientEffectiveAccess(r, applicationID, clientID)
 		if accessErr != nil {
@@ -359,6 +396,10 @@ func (s *Server) oauthUserinfo(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_token", "The access token is invalid or inactive.")
 		return
 	}
+	if session, ok := request.GetSession().(*oauthserver.Session); ok && session.AccessClaims.Extra["token_kind"] == "resource_access" {
+		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_token", "Resource credentials cannot access application UserInfo.")
+		return
+	}
 	subject := request.GetSession().GetSubject()
 	var email, firstName, lastName, locale, status string
 	var verified, orgVerified bool
@@ -406,6 +447,16 @@ func (s *Server) oauthSubjectLive(r *http.Request, request fosite.Requester) boo
 		return false
 	}
 	tokenKind, _ := session.AccessClaims.Extra["token_kind"].(string)
+	if tokenKind == "resource_access" {
+		connection, _ := session.AccessClaims.Extra["connection_id"].(string)
+		sid, _ := session.AccessClaims.Extra["sid"].(string)
+		var uri string
+		if len(request.GetGrantedAudience()) == 1 {
+			uri = request.GetGrantedAudience()[0]
+		}
+		_, _, live := s.resourceConnectionLive(r, connection, chi.URLParam(r, "application_id"), uri, session.Subject, sid, request.GetClient().GetID())
+		return live
+	}
 	if tokenKind == "machine" {
 		var live bool
 		err := s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients
@@ -455,14 +506,16 @@ func (s *Server) oauthProvider(w http.ResponseWriter, r *http.Request) (*oauthse
 		kernel.WriteProblem(w, r, http.StatusNotFound, "application_not_found", "The application was not found.")
 		return nil, false
 	}
-	clientID := r.FormValue("client_id")
-	if basicID, _, ok := r.BasicAuth(); ok {
-		clientID = basicID
+	clientID := oauthRequestClientID(r)
+	resourceURI := ""
+	if resource := resourceFromRequest(r); resource != nil {
+		resourceURI = resource.URI
 	}
-	provider, err := oauthserver.NewProviderForClient(r.Context(), s.app, applicationID, clientID)
+	provider, err := oauthserver.NewProviderForClient(r.Context(), s.app, applicationID, clientID, resourceURI)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "oauth_provider_unavailable", "The OAuth provider is unavailable for this application.")
 		return nil, false
 	}
+	s.configureResourceProvider(r, provider)
 	return provider, true
 }

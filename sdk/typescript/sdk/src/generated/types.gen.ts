@@ -50,6 +50,7 @@ export type HostedAuthView = {
     consent_required: boolean;
     verification_pending?: boolean;
     requested_scopes: Array<string>;
+    resource_consent?: HostedResourceConsent;
     providers: Array<string>;
     password_enabled: boolean;
     passwordless_enabled: boolean;
@@ -75,6 +76,18 @@ export type HostedAuthAction = {
     provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     intent?: 'automatic' | 'sign_in' | 'sign_up';
     invitation_id?: Uuid;
+    /**
+     * Approved relative capability keys; optional and used only when approving resource consent.
+     */
+    approved_capabilities?: Array<string>;
+    /**
+     * Approve personal-context access; optional and used only when approving resource consent.
+     */
+    personal_access?: boolean;
+    /**
+     * Approved workspace IDs; optional and used only when approving resource consent.
+     */
+    workspace_ids?: Array<Uuid>;
     credential?: {
         [key: string]: unknown;
     };
@@ -83,6 +96,133 @@ export type HostedAuthAction = {
 export type HostedAuthReturn = {
     challenge_id?: Uuid;
     provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+};
+
+/**
+ * Public consent display summary; excludes client allowlists, permission mappings, and other control configuration.
+ */
+export type OAuthResourceSummary = {
+    id: Uuid;
+    uri: string;
+    name: string;
+    version: number;
+};
+
+/**
+ * Present only for the resource authorization flow; contains display-safe consent information, not permission mappings or credentials.
+ */
+export type HostedResourceConsent = {
+    resource: OAuthResourceSummary;
+    capabilities: Array<{
+        /**
+         * Relative capability key.
+         */
+        key: string;
+        name: string;
+        context: 'personal' | 'workspace';
+    }>;
+    workspaces: Array<{
+        id: Uuid;
+        name: string;
+        key: string;
+    }>;
+    personal_access_available: boolean;
+};
+
+export type OAuthResourceCapability = {
+    /**
+     * Relative capability key, unique within the resource.
+     */
+    key: string;
+    name: string;
+    context: 'personal' | 'workspace';
+    /**
+     * Required non-null permission list. An empty array permits identity-only access based on the live user and selected personal or workspace context, without requiring scopes or default roles.
+     */
+    permissions: Array<string>;
+};
+
+export type OAuthResource = {
+    id: Uuid;
+    application_id: Uuid;
+    uri: string;
+    name: string;
+    enabled: boolean;
+    allow_client_metadata: boolean;
+    client_ids: Array<string>;
+    capabilities: Array<OAuthResourceCapability>;
+    version: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type CreateOAuthResource = {
+    uri: string;
+    name: string;
+    enabled?: boolean;
+    allow_client_metadata?: boolean;
+    client_ids?: Array<string>;
+    capabilities?: Array<OAuthResourceCapability>;
+};
+
+/**
+ * Partial configuration update. Omitted fields are unchanged; supplied arrays replace the complete array. Null is not accepted.
+ */
+export type UpdateOAuthResource = {
+    uri?: string;
+    name?: string;
+    enabled?: boolean;
+    allow_client_metadata?: boolean;
+    client_ids?: Array<string>;
+    capabilities?: Array<OAuthResourceCapability>;
+};
+
+export type OAuthConnection = {
+    id: Uuid;
+    application_id: Uuid;
+    resource_id: Uuid;
+    resource_version: number;
+    user_id: Uuid;
+    client_id: string;
+    session_id: Uuid;
+    /**
+     * Approved relative capability keys.
+     */
+    capabilities: Array<string>;
+    personal_access: boolean;
+    workspace_ids: Array<Uuid>;
+    expires_at: string;
+    revoked_at: string | null;
+    version: number;
+    created_at: string;
+    updated_at: string;
+};
+
+export type OAuthResourcePage = {
+    items: Array<OAuthResource>;
+    next_cursor: string | null;
+};
+
+export type OAuthConnectionPage = {
+    items: Array<OAuthConnection>;
+    next_cursor: string | null;
+};
+
+export type ResourceAccessCheck = {
+    resource: string;
+    /**
+     * Relative capability key.
+     */
+    capability: string;
+    workspace_id?: Uuid;
+};
+
+export type ResourceAccessDecision = {
+    allowed: boolean;
+    reason: string;
+    user_id?: Uuid;
+    connection_id?: Uuid;
+    workspace_id?: Uuid;
 };
 
 export type HealthStatus = {
@@ -646,6 +786,9 @@ export type Subscription = {
      * First observed transition into the current past-due episode; repeated events do not extend it. Cleared on recovery.
      */
     past_due_since?: string | null;
+    cancel_at?: string | null;
+    canceled_at?: string | null;
+    trial_end?: string | null;
     cancel_at_period_end?: boolean;
     external_reference?: string | null;
     created_at?: string;
@@ -982,6 +1125,8 @@ export type StorageDownload = {
 };
 
 export type OidcDiscovery = {
+    authorization_response_iss_parameter_supported?: true;
+    client_id_metadata_document_supported?: true;
     issuer: string;
     authorization_endpoint: string;
     token_endpoint: string;
@@ -1008,6 +1153,19 @@ export type Jwks = {
     }>;
 };
 
+export type OAuthAuthorizationInteraction = {
+    interaction: 'consent';
+    client_id: string;
+    requested_scopes: Array<string>;
+    redirect_uri: string;
+    state: string;
+    submit_method: 'POST';
+    /**
+     * Present only for resource authorization. Submit this display summary's version as resource_version with the headless decision.
+     */
+    resource?: OAuthResourceSummary;
+};
+
 export type AuthorizationRedirect = {
     redirect_to: string;
 };
@@ -1022,6 +1180,14 @@ export type TokenIntrospection = {
     scope?: string;
     client_id?: string;
     token_type?: string;
+    /**
+     * Token purpose discriminator. Resource-access tokens are not general application authentication credentials.
+     */
+    token_kind?: 'access' | 'machine' | 'resource_access';
+    /**
+     * Connection that issued the resource-access token; present only for resource-access tokens.
+     */
+    connection_id?: Uuid;
     actor_type?: 'control_user' | 'user' | 'client';
     application_id?: string;
     roles?: StructuredRoles;
@@ -1037,6 +1203,14 @@ export type UserInfo = {
     family_name?: string;
     locale?: Locale;
     scope?: string;
+    /**
+     * Token purpose discriminator, including resource_access when resource-flow claims are represented.
+     */
+    token_kind?: 'access' | 'machine' | 'resource_access';
+    /**
+     * Connection associated with resource-flow claims, when present.
+     */
+    connection_id?: Uuid;
     roles?: StructuredRoles;
     custom_claims?: {
         [key: string]: unknown;
@@ -1995,6 +2169,7 @@ export type ApplicationInternalConfig = {
     passwordless_enabled?: boolean;
     personal_api_keys_enabled?: boolean;
     delegation_enabled?: boolean;
+    resource_authorization_enabled?: boolean;
     user_invitations_enabled?: boolean;
     custom_token_claim_keys?: Array<string>;
 };
@@ -2452,6 +2627,18 @@ export type HostedAuthActionWritable = {
     provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     intent?: 'automatic' | 'sign_in' | 'sign_up';
     invitation_id?: Uuid;
+    /**
+     * Approved relative capability keys; optional and used only when approving resource consent.
+     */
+    approved_capabilities?: Array<string>;
+    /**
+     * Approve personal-context access; optional and used only when approving resource consent.
+     */
+    personal_access?: boolean;
+    /**
+     * Approved workspace IDs; optional and used only when approving resource consent.
+     */
+    workspace_ids?: Array<Uuid>;
     link_token?: string;
     credential?: {
         [key: string]: unknown;
@@ -2464,6 +2651,16 @@ export type HostedAuthReturnWritable = {
     provider?: 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     code?: string;
     enrollment?: string;
+};
+
+export type ResourceAccessCheckWritable = {
+    token: string;
+    resource: string;
+    /**
+     * Relative capability key.
+     */
+    capability: string;
+    workspace_id?: Uuid;
 };
 
 export type SetupSessionWritable = {
@@ -2893,6 +3090,15 @@ export type PaymentId = Uuid;
 
 export type RequestId = Uuid;
 
+export type OAuthResourceId = Uuid;
+
+export type OAuthConnectionId = Uuid;
+
+/**
+ * Registered OAuth resource URI. When present, selects resource authorization rather than the ordinary OIDC flow.
+ */
+export type OAuthResourceIndicator = string;
+
 export type OAuthClientId = string;
 
 export type OAuthRedirectUri = string;
@@ -2972,6 +3178,26 @@ export type OAuthAuthorizationDecision = {
     code_challenge: string;
     code_challenge_method: 'S256';
     decision: 'grant' | 'deny';
+    /**
+     * Registered resource URI; optional and used only for resource authorization.
+     */
+    resource?: string;
+    /**
+     * Required only for resource authorization; must match the resource version displayed in resource_consent. Disabled resources and stale versions are rejected.
+     */
+    resource_version?: number;
+    /**
+     * Approved relative capability keys; optional and used only for resource authorization.
+     */
+    approved_capabilities?: Array<string>;
+    /**
+     * Approve personal-context access; optional and used only for resource authorization.
+     */
+    personal_access?: boolean;
+    /**
+     * Approved workspace IDs; optional and used only for resource authorization.
+     */
+    workspace_ids?: Array<Uuid>;
 };
 
 export type OAuthToken = {
@@ -2980,6 +3206,10 @@ export type OAuthToken = {
     redirect_uri?: string;
     code_verifier?: string;
     refresh_token?: string;
+    /**
+     * Optional registered resource URI for the resource authorization flow.
+     */
+    resource?: string;
     client_id?: string;
     client_secret?: string;
     scope?: string;
@@ -5387,6 +5617,443 @@ export type VerifyApplicationDomainResponses = {
 };
 
 export type VerifyApplicationDomainResponse = VerifyApplicationDomainResponses[keyof VerifyApplicationDomainResponses];
+
+export type ListOAuthResourcesData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: {
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
+    url: '/v1/control/applications/{application_id}/oauth-resources';
+};
+
+export type ListOAuthResourcesErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ListOAuthResourcesError = ListOAuthResourcesErrors[keyof ListOAuthResourcesErrors];
+
+export type ListOAuthResourcesResponses = {
+    /**
+     * Application OAuth resources in cursor order.
+     */
+    200: OAuthResourcePage;
+};
+
+export type ListOAuthResourcesResponse = ListOAuthResourcesResponses[keyof ListOAuthResourcesResponses];
+
+export type CreateOAuthResourceData = {
+    body: CreateOAuthResource;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/oauth-resources';
+};
+
+export type CreateOAuthResourceErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
+     */
+    500: Problem;
+};
+
+export type CreateOAuthResourceError = CreateOAuthResourceErrors[keyof CreateOAuthResourceErrors];
+
+export type CreateOAuthResourceResponses = {
+    /**
+     * OAuth resource created; the same idempotency key and payload replay the original result.
+     */
+    201: OAuthResource;
+};
+
+export type CreateOAuthResourceResponse = CreateOAuthResourceResponses[keyof CreateOAuthResourceResponses];
+
+export type GetOAuthResourceData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        resource_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/oauth-resources/{resource_id}';
+};
+
+export type GetOAuthResourceErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    404: Problem;
+};
+
+export type GetOAuthResourceError = GetOAuthResourceErrors[keyof GetOAuthResourceErrors];
+
+export type GetOAuthResourceResponses = {
+    /**
+     * Application OAuth resource configuration.
+     */
+    200: OAuthResource;
+};
+
+export type GetOAuthResourceResponse = GetOAuthResourceResponses[keyof GetOAuthResourceResponses];
+
+export type UpdateOAuthResourceData = {
+    body: UpdateOAuthResource;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        resource_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/oauth-resources/{resource_id}';
+};
+
+export type UpdateOAuthResourceErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    404: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    409: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    412: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    428: Problem;
+};
+
+export type UpdateOAuthResourceError = UpdateOAuthResourceErrors[keyof UpdateOAuthResourceErrors];
+
+export type UpdateOAuthResourceResponses = {
+    /**
+     * OAuth resource updated.
+     */
+    200: OAuthResource;
+};
+
+export type UpdateOAuthResourceResponse = UpdateOAuthResourceResponses[keyof UpdateOAuthResourceResponses];
+
+export type ListOAuthResourceConnectionsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        resource_id: Uuid;
+    };
+    query?: {
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
+    url: '/v1/control/applications/{application_id}/oauth-resources/{resource_id}/connections';
+};
+
+export type ListOAuthResourceConnectionsErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    404: Problem;
+};
+
+export type ListOAuthResourceConnectionsError = ListOAuthResourceConnectionsErrors[keyof ListOAuthResourceConnectionsErrors];
+
+export type ListOAuthResourceConnectionsResponses = {
+    /**
+     * Connections belonging to this application and OAuth resource.
+     */
+    200: OAuthConnectionPage;
+};
+
+export type ListOAuthResourceConnectionsResponse = ListOAuthResourceConnectionsResponses[keyof ListOAuthResourceConnectionsResponses];
+
+export type RevokeOAuthResourceConnectionData = {
+    body?: never;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        resource_id: Uuid;
+        connection_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/oauth-resources/{resource_id}/connections/{connection_id}';
+};
+
+export type RevokeOAuthResourceConnectionErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    404: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    412: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    428: Problem;
+};
+
+export type RevokeOAuthResourceConnectionError = RevokeOAuthResourceConnectionErrors[keyof RevokeOAuthResourceConnectionErrors];
+
+export type RevokeOAuthResourceConnectionResponses = {
+    /**
+     * Connection revoked; associated resource access is no longer valid.
+     */
+    204: void;
+};
+
+export type RevokeOAuthResourceConnectionResponse = RevokeOAuthResourceConnectionResponses[keyof RevokeOAuthResourceConnectionResponses];
+
+export type GetOAuthResourceConnectionData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        resource_id: Uuid;
+        connection_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/oauth-resources/{resource_id}/connections/{connection_id}';
+};
+
+export type GetOAuthResourceConnectionErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    404: Problem;
+};
+
+export type GetOAuthResourceConnectionError = GetOAuthResourceConnectionErrors[keyof GetOAuthResourceConnectionErrors];
+
+export type GetOAuthResourceConnectionResponses = {
+    /**
+     * Connection belonging to this application and OAuth resource.
+     */
+    200: OAuthConnection;
+};
+
+export type GetOAuthResourceConnectionResponse = GetOAuthResourceConnectionResponses[keyof GetOAuthResourceConnectionResponses];
+
+export type ListMyOAuthConnectionsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: {
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
+    url: '/v1/applications/{application_id}/me/connections';
+};
+
+export type ListMyOAuthConnectionsErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+};
+
+export type ListMyOAuthConnectionsError = ListMyOAuthConnectionsErrors[keyof ListMyOAuthConnectionsErrors];
+
+export type ListMyOAuthConnectionsResponses = {
+    /**
+     * Current user's OAuth connections in cursor order.
+     */
+    200: OAuthConnectionPage;
+};
+
+export type ListMyOAuthConnectionsResponse = ListMyOAuthConnectionsResponses[keyof ListMyOAuthConnectionsResponses];
+
+export type RevokeMyOAuthConnectionData = {
+    body?: never;
+    headers: {
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        connection_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/connections/{connection_id}';
+};
+
+export type RevokeMyOAuthConnectionErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    404: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    412: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    428: Problem;
+};
+
+export type RevokeMyOAuthConnectionError = RevokeMyOAuthConnectionErrors[keyof RevokeMyOAuthConnectionErrors];
+
+export type RevokeMyOAuthConnectionResponses = {
+    /**
+     * Current user's connection revoked; associated resource access is no longer valid.
+     */
+    204: void;
+};
+
+export type RevokeMyOAuthConnectionResponse = RevokeMyOAuthConnectionResponses[keyof RevokeMyOAuthConnectionResponses];
+
+export type GetMyOAuthConnectionData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        connection_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/me/connections/{connection_id}';
+};
+
+export type GetMyOAuthConnectionErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    404: Problem;
+};
+
+export type GetMyOAuthConnectionError = GetMyOAuthConnectionErrors[keyof GetMyOAuthConnectionErrors];
+
+export type GetMyOAuthConnectionResponses = {
+    /**
+     * Current user's OAuth connection.
+     */
+    200: OAuthConnection;
+};
+
+export type GetMyOAuthConnectionResponse = GetMyOAuthConnectionResponses[keyof GetMyOAuthConnectionResponses];
+
+export type ServiceCheckResourceAccessData = {
+    body: ResourceAccessCheckWritable;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/service/resource-access/check';
+};
+
+export type ServiceCheckResourceAccessErrors = {
+    /**
+     * RFC 9457 problem
+     */
+    401: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    403: Problem;
+    /**
+     * RFC 9457 problem
+     */
+    422: Problem;
+};
+
+export type ServiceCheckResourceAccessError = ServiceCheckResourceAccessErrors[keyof ServiceCheckResourceAccessErrors];
+
+export type ServiceCheckResourceAccessResponses = {
+    /**
+     * Resource authorization decision; a denied check returns allowed=false and a reason.
+     */
+    200: ResourceAccessDecision;
+};
+
+export type ServiceCheckResourceAccessResponse = ServiceCheckResourceAccessResponses[keyof ServiceCheckResourceAccessResponses];
 
 export type ListClientsData = {
     body?: never;
@@ -8479,6 +9146,10 @@ export type CreateCheckoutSessionError = CreateCheckoutSessionErrors[keyof Creat
 
 export type CreateCheckoutSessionResponses = {
     /**
+     * Existing checkout recovered using the same idempotency key
+     */
+    200: CheckoutSession;
+    /**
      * Provider checkout created
      */
     201: CheckoutSession;
@@ -8967,8 +9638,8 @@ export type CancelMySubscriptionResponse = CancelMySubscriptionResponses[keyof C
 
 export type ServiceCancelSubjectBillingData = {
     body: CancelSubscription;
-    headers?: {
-        'Idempotency-Key'?: string;
+    headers: {
+        'Idempotency-Key': string;
     };
     path: {
         application_id: Uuid;
@@ -12546,6 +13217,10 @@ export type BeginOidcAuthorizationData = {
         redirect_uri: string;
         response_type: 'code';
         scope: string;
+        /**
+         * Registered OAuth resource URI. When present, selects resource authorization rather than the ordinary OIDC flow.
+         */
+        resource?: string;
         state: string;
         code_challenge?: string;
         code_challenge_method?: 'S256';
@@ -12561,7 +13236,7 @@ export type BeginOidcAuthorizationResponses = {
     /**
      * Headless consent interaction
      */
-    200: AuthorizationRedirect;
+    200: OAuthAuthorizationInteraction;
 };
 
 export type BeginOidcAuthorizationResponse = BeginOidcAuthorizationResponses[keyof BeginOidcAuthorizationResponses];

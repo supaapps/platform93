@@ -24,8 +24,10 @@ test("one-time client credentials stay visible until explicitly dismissed", asyn
   await expect(page.locator(".toast-success")).toContainText("p93_client_test_only");
   await page.clock.runFor(10_000);
   await expect(page.locator(".toast-success")).toContainText("p93_client_test_only");
-  await page.getByRole("button", { name: "Dismiss notification" }).click();
-  await expect(page.locator(".toast-success")).toHaveCount(0);
+  await page.getByRole("link", { name: "Overview", exact: true }).click();
+  await expect(page.locator(".credential-notice")).toContainText("p93_client_test_only");
+  await page.getByRole("button", { name: "Dismiss credential notice" }).click();
+  await expect(page.locator(".credential-notice")).toHaveCount(0);
 });
 
 test("immutable prices retain configured trial and tax policies", async ({ page }) => {
@@ -47,6 +49,116 @@ test("immutable prices retain configured trial and tax policies", async ({ page 
   await page.getByRole("button", { name: "Create price", exact: true }).click();
   await expect.poll(() => requests.length).toBe(1);
   expect(requests[0]).toMatchObject({ checkout_config: policy, tax_behavior: "inclusive", amount_minor: 1200 });
+});
+
+test("OAuth resources create, edit and revoke nested connections with concurrency headers", async ({ page }, info) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockAdmin(page);
+  const base = `/v1/control/applications/${app.id}/oauth-resources`;
+  let resource = { id: "resource-1", application_id: app.id, name: "Documents", uri: "https://resource.example.test", enabled: true, allow_client_metadata: false, client_ids: [] as string[], capabilities: [] as object[], version: 17 };
+  let created = false;
+  let conflict = true;
+  let connection = { id: "connection-1", resource_id: resource.id, client_id: "explicit-client", user_id: "user-1", session_id: "session-1", resource_version: 17, capabilities: ["documents:read"], personal_access: false, workspace_ids: ["workspace-1"], expires_at: "2030-01-01T00:00:00Z", revoked_at: null as string | null, version: 18 };
+  await page.route(`**${base}**`, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const method = route.request().method();
+    if (method === "POST") {
+      expect(route.request().headers()["idempotency-key"]).toBeTruthy();
+      const body = route.request().postDataJSON();
+      expect(body).toMatchObject({ enabled: true, allow_client_metadata: false, client_ids: ["explicit-client"], capabilities: [{ key: "documents:read", name: "Read documents", context: "personal", permissions: ["documents:read"] }] });
+      resource = { ...resource, ...body }; created = true;
+    }
+    if (method === "PATCH") {
+      expect(route.request().headers()["if-match"]).toBe('"v11"');
+      if (conflict) { conflict = false; return route.fulfill({ status: 412, json: { detail: "Resource version conflict" } }); }
+      resource = { ...resource, ...route.request().postDataJSON(), version: 18 };
+    }
+    if (method === "DELETE") { expect(path).toBe(`${base}/resource-1/connections/connection-1`); expect(route.request().headers()["if-match"]).toBe('"v12"'); connection = { ...connection, revoked_at: "2026-10-18T00:00:00Z", version: 19 }; return route.fulfill({ status: 204 }); }
+    const body = path.endsWith("/connections/connection-1") ? connection : path.endsWith("/connections") ? { items: [connection], next_cursor: null } : path === base && method === "GET" ? { items: created ? [resource] : [], next_cursor: null } : resource;
+    await route.fulfill({ json: body });
+  });
+  await page.goto(`/?context=application&application_id=${app.id}&section=identity&resource=oauth-resources`);
+  await page.getByRole("button", { name: "Create OAuth resource", exact: true }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Documents");
+  await page.getByLabel("Resource URI").fill(resource.uri);
+  await page.getByLabel(/^Allowed client IDs/).fill("explicit-client");
+  await page.getByRole("button", { name: "Add capability", exact: true }).click();
+  await page.getByLabel("Capability key", { exact: true }).fill("documents:read");
+  await page.getByLabel("Capability name", { exact: true }).fill("Read documents");
+  await page.getByLabel("Permissions (comma separated)").fill("documents:read");
+  await page.getByRole("button", { name: "Create resource", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Documents", exact: true })).toBeVisible();
+  await page.getByLabel("Name", { exact: true }).fill("Updated documents");
+  await page.getByRole("button", { name: "Save OAuth resource" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Resource version conflict" })).toContainText("Reload before retrying a version conflict.");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Updated documents");
+  await page.getByRole("button", { name: "Reload resources", exact: true }).click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Documents");
+  await page.getByLabel("Name", { exact: true }).fill("Updated documents");
+  await page.getByRole("button", { name: "Save OAuth resource" }).click();
+  await expect(page.getByRole("heading", { name: "Updated documents", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Inspect connection connection-1" }).click();
+  await expect(page).toHaveURL(/connection_id=connection-1/);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Connection detail" })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Revoke connection", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Connection revoked", exact: true })).toBeDisabled();
+  await page.screenshot({ path: info.outputPath("oauth-resources-mobile.png"), fullPage: true });
+});
+
+test("OAuth resource capabilities allow empty permissions and backend-compatible segments", async ({ page }) => {
+  await mockAdmin(page);
+  const base = `/v1/control/applications/${app.id}/oauth-resources`;
+  let submitted: { capabilities: { key: string; permissions: string[] }[] } | undefined;
+  await page.route(`**${base}`, (route) => {
+    if (route.request().method() === "POST") {
+      submitted = route.request().postDataJSON();
+      return route.fulfill({ status: 422, json: { detail: "Test response retains editor" } });
+    }
+    return route.fulfill({ json: { items: [], next_cursor: null } });
+  });
+  await page.goto(`/?context=application&application_id=${app.id}&section=identity&resource=oauth-resources`);
+  await page.getByRole("button", { name: "Create OAuth resource", exact: true }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Identity only");
+  await page.getByLabel("Resource URI").fill("https://resource.example.test");
+  await page.getByRole("button", { name: "Add capability", exact: true }).click();
+  await page.getByLabel("Capability name", { exact: true }).fill("Read identity");
+  const key = page.getByLabel("Capability key", { exact: true });
+  const permissions = page.getByLabel("Permissions (comma separated)");
+  await expect(permissions).not.toHaveAttribute("required");
+  for (const invalid of ["roles:read", "workspaces:read", "profile:*", "Upper:read", "a".repeat(65)]) {
+    await key.fill(invalid);
+    expect(await key.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(false);
+  }
+  await key.fill("123:profile.v1:read-only");
+  expect(await key.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
+  await permissions.fill("123:profile.v1:read-only, records:42");
+  expect(await permissions.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
+  await permissions.fill("   ");
+  await page.getByRole("button", { name: "Create resource", exact: true }).click();
+  await expect.poll(() => submitted?.capabilities).toEqual([{ key: "123:profile.v1:read-only", name: "Read identity", context: "personal", permissions: [] }]);
+});
+
+test("resource authorization is an explicit default-off application policy", async ({ page }) => {
+  await mockAdmin(page);
+  let enabled = false;
+  let saved = false;
+  await page.route(`**/v1/control/applications/${app.id}`, (route) => route.fulfill({ json: { ...app, version: saved ? 2 : 1, internal_config: { resource_authorization_enabled: enabled } } }));
+  await page.route(`**/v1/control/applications/${app.id}/internal-config`, (route) => {
+    expect(route.request().headers()["if-match"]).toBe('"v1"');
+    enabled = route.request().postDataJSON().resource_authorization_enabled;
+    saved = true;
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto(`/?context=application&application_id=${app.id}&section=settings&panel=settings-internal`);
+  const toggle = page.getByRole("switch", { name: /^Resource authorization/ });
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await page.getByRole("button", { name: "Save access policy", exact: true }).click();
+  await expect.poll(() => saved && enabled).toBe(true);
+  await page.reload();
+  await expect(toggle).toBeChecked();
 });
 
 test("catalog products can be activated, archived and restored with version checks", async ({ page }) => {

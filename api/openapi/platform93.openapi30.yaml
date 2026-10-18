@@ -2241,6 +2241,307 @@ paths:
       responses:
         '204':
           description: DNS ownership verified
+  /v1/control/applications/{application_id}/oauth-resources:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    get:
+      operationId: listOAuthResources
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
+      responses:
+        '200':
+          description: Application OAuth resources in cursor order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResourcePage'
+        '403':
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createOAuthResource
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOAuthResource'
+      responses:
+        '201':
+          description: OAuth resource created; the same idempotency key and payload replay the original result.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResource'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/CreationConflict'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/CreationFailure'
+  /v1/control/applications/{application_id}/oauth-resources/{resource_id}:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - $ref: '#/components/parameters/OAuthResourceID'
+    get:
+      operationId: getOAuthResource
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      responses:
+        '200':
+          description: Application OAuth resource configuration.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResource'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateOAuthResource
+      description: Omitted fields remain unchanged. Supplied client_ids and capabilities replace the complete corresponding arrays, including nested permission lists.
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOAuthResource'
+      responses:
+        '200':
+          description: OAuth resource updated.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthResource'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '412':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '428':
+          $ref: '#/components/responses/Problem'
+  /v1/control/applications/{application_id}/oauth-resources/{resource_id}/connections:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - $ref: '#/components/parameters/OAuthResourceID'
+    get:
+      operationId: listOAuthResourceConnections
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
+      responses:
+        '200':
+          description: Connections belonging to this application and OAuth resource.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthConnectionPage'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/control/applications/{application_id}/oauth-resources/{resource_id}/connections/{connection_id}:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - $ref: '#/components/parameters/OAuthResourceID'
+      - $ref: '#/components/parameters/OAuthConnectionID'
+    get:
+      operationId: getOAuthResourceConnection
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      responses:
+        '200':
+          description: Connection belonging to this application and OAuth resource.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthConnection'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: revokeOAuthResourceConnection
+      tags:
+        - Control
+      security:
+        - controlBearer: []
+        - controlCookie: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Connection revoked; associated resource access is no longer valid.
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '412':
+          $ref: '#/components/responses/Problem'
+        '428':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/me/connections:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    get:
+      operationId: listMyOAuthConnections
+      description: Lists only the authenticated application user's connections within this application.
+      tags:
+        - Identity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
+      responses:
+        '200':
+          description: Current user's OAuth connections in cursor order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthConnectionPage'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/me/connections/{connection_id}:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - $ref: '#/components/parameters/OAuthConnectionID'
+    get:
+      operationId: getMyOAuthConnection
+      description: Returns only a connection owned by the authenticated application user within this application.
+      tags:
+        - Identity
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user's OAuth connection.
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthConnection'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: revokeMyOAuthConnection
+      description: Revokes only a connection owned by the authenticated application user within this application.
+      tags:
+        - Identity
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: Current user's connection revoked; associated resource access is no longer valid.
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '412':
+          $ref: '#/components/responses/Problem'
+        '428':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/service/resource-access/check:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    post:
+      operationId: serviceCheckResourceAccess
+      description: >-
+        Requires an application machine-client bearer token with actor_type=client and the resource_access:check permission in the target application. The body
+        token is the resource-access credential being checked, not the caller's authentication credential. User credentials and resource-access tokens cannot
+        authenticate this endpoint.
+      tags:
+        - Identity
+      security:
+        - bearerAuth: []
+      x-required-permissions:
+        - resource_access:check
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceAccessCheck'
+      responses:
+        '200':
+          description: Resource authorization decision; a denied check returns allowed=false and a reason.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceAccessDecision'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
   /v1/control/applications/{application_id}/clients:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -4938,6 +5239,12 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateCheckout'
       responses:
+        '200':
+          description: Existing checkout recovered using the same idempotency key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSession'
         '201':
           description: Provider checkout created
           content:
@@ -5433,14 +5740,21 @@ paths:
         schema:
           type: string
           format: uuid
-      - $ref: '#/components/parameters/IdempotencyKey'
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 255
     post:
       operationId: serviceCancelSubjectBilling
       tags:
         - Billing
       description: >-
-        Requires a machine client with application billing/write permission. Cancels workspace subscriptions without revoking independent manual grants. Batches
-        can be retried after partial provider failure.
+        Requires a machine client with application billing/write permission and Idempotency-Key. Reconciles or expires unfinished checkout, then cancels
+        workspace subscriptions without revoking independent manual grants. Partial failures temporarily block checkout and must be retried with the same
+        at_period_end value. Success permits later resubscription; it does not archive or permanently close the workspace.
       requestBody:
         required: true
         content:
@@ -8493,6 +8807,7 @@ paths:
         - $ref: '#/components/parameters/OAuthRedirectURI'
         - $ref: '#/components/parameters/OAuthResponseType'
         - $ref: '#/components/parameters/OAuthScope'
+        - $ref: '#/components/parameters/OAuthResourceIndicator'
         - $ref: '#/components/parameters/OAuthState'
         - $ref: '#/components/parameters/OAuthCodeChallenge'
         - $ref: '#/components/parameters/OAuthCodeChallengeMethod'
@@ -8523,7 +8838,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthorizationRedirect'
+                $ref: '#/components/schemas/OAuthAuthorizationInteraction'
         '302':
           description: Authorization response redirect
         '303':
@@ -9024,6 +9339,25 @@ components:
       required: true
       schema:
         $ref: '#/components/schemas/UUID'
+    OAuthResourceID:
+      name: resource_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUID'
+    OAuthConnectionID:
+      name: connection_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/UUID'
+    OAuthResourceIndicator:
+      name: resource
+      in: query
+      description: Registered OAuth resource URI. When present, selects resource authorization rather than the ordinary OIDC flow.
+      schema:
+        type: string
+        format: uri
     OAuthClientID:
       name: client_id
       in: query
@@ -9270,6 +9604,32 @@ components:
                 enum:
                   - grant
                   - deny
+              resource:
+                type: string
+                format: uri
+                description: Registered resource URI; optional and used only for resource authorization.
+              resource_version:
+                type: integer
+                format: int64
+                minimum: 1
+                description: >-
+                  Required only for resource authorization; must match the resource version displayed in resource_consent. Disabled resources and stale versions
+                  are rejected.
+              approved_capabilities:
+                type: array
+                uniqueItems: true
+                description: Approved relative capability keys; optional and used only for resource authorization.
+                items:
+                  type: string
+              personal_access:
+                type: boolean
+                description: Approve personal-context access; optional and used only for resource authorization.
+              workspace_ids:
+                type: array
+                uniqueItems: true
+                description: Approved workspace IDs; optional and used only for resource authorization.
+                items:
+                  $ref: '#/components/schemas/UUID'
     OAuthToken:
       required: true
       content:
@@ -9293,6 +9653,10 @@ components:
                 type: string
               refresh_token:
                 type: string
+              resource:
+                type: string
+                format: uri
+                description: Optional registered resource URI for the resource authorization flow.
               client_id:
                 type: string
               client_secret:
@@ -9490,6 +9854,8 @@ components:
           type: array
           items:
             type: string
+        resource_consent:
+          $ref: '#/components/schemas/HostedResourceConsent'
         providers:
           type: array
           items:
@@ -9592,6 +9958,21 @@ components:
             - sign_up
         invitation_id:
           $ref: '#/components/schemas/UUID'
+        approved_capabilities:
+          type: array
+          uniqueItems: true
+          description: Approved relative capability keys; optional and used only when approving resource consent.
+          items:
+            type: string
+        personal_access:
+          type: boolean
+          description: Approve personal-context access; optional and used only when approving resource consent.
+        workspace_ids:
+          type: array
+          uniqueItems: true
+          description: Approved workspace IDs; optional and used only when approving resource consent.
+          items:
+            $ref: '#/components/schemas/UUID'
         link_token:
           type: string
           writeOnly: true
@@ -9621,6 +10002,347 @@ components:
         enrollment:
           type: string
           writeOnly: true
+    OAuthResourceSummary:
+      type: object
+      additionalProperties: false
+      description: Public consent display summary; excludes client allowlists, permission mappings, and other control configuration.
+      required:
+        - id
+        - uri
+        - name
+        - version
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        uri:
+          type: string
+          format: uri
+        name:
+          type: string
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+    HostedResourceConsent:
+      type: object
+      additionalProperties: false
+      description: Present only for the resource authorization flow; contains display-safe consent information, not permission mappings or credentials.
+      required:
+        - resource
+        - capabilities
+        - workspaces
+        - personal_access_available
+      properties:
+        resource:
+          $ref: '#/components/schemas/OAuthResourceSummary'
+        capabilities:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - key
+              - name
+              - context
+            properties:
+              key:
+                type: string
+                description: Relative capability key.
+              name:
+                type: string
+              context:
+                type: string
+                enum:
+                  - personal
+                  - workspace
+        workspaces:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - id
+              - name
+              - key
+            properties:
+              id:
+                $ref: '#/components/schemas/UUID'
+              name:
+                type: string
+              key:
+                type: string
+        personal_access_available:
+          type: boolean
+    OAuthResourceCapability:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - name
+        - context
+        - permissions
+      properties:
+        key:
+          type: string
+          minLength: 1
+          description: Relative capability key, unique within the resource.
+        name:
+          type: string
+          minLength: 1
+        context:
+          type: string
+          enum:
+            - personal
+            - workspace
+        permissions:
+          type: array
+          minItems: 0
+          uniqueItems: true
+          description: >-
+            Required non-null permission list. An empty array permits identity-only access based on the live user and selected personal or workspace context,
+            without requiring scopes or default roles.
+          items:
+            type: string
+            minLength: 1
+    OAuthResource:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - application_id
+        - uri
+        - name
+        - enabled
+        - allow_client_metadata
+        - client_ids
+        - capabilities
+        - version
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        application_id:
+          $ref: '#/components/schemas/UUID'
+        uri:
+          type: string
+          format: uri
+        name:
+          type: string
+        enabled:
+          type: boolean
+        allow_client_metadata:
+          type: boolean
+        client_ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthResourceCapability'
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateOAuthResource:
+      type: object
+      additionalProperties: false
+      required:
+        - uri
+        - name
+      properties:
+        uri:
+          type: string
+          format: uri
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+          default: true
+        allow_client_metadata:
+          type: boolean
+          default: false
+        client_ids:
+          type: array
+          uniqueItems: true
+          default: []
+          items:
+            type: string
+            minLength: 1
+        capabilities:
+          type: array
+          default: []
+          items:
+            $ref: '#/components/schemas/OAuthResourceCapability'
+    UpdateOAuthResource:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Partial configuration update. Omitted fields are unchanged; supplied arrays replace the complete array. Null is not accepted.
+      properties:
+        uri:
+          type: string
+          format: uri
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        enabled:
+          type: boolean
+        allow_client_metadata:
+          type: boolean
+        client_ids:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        capabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthResourceCapability'
+    OAuthConnection:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - application_id
+        - resource_id
+        - resource_version
+        - user_id
+        - client_id
+        - session_id
+        - capabilities
+        - personal_access
+        - workspace_ids
+        - expires_at
+        - revoked_at
+        - version
+        - created_at
+        - updated_at
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        application_id:
+          $ref: '#/components/schemas/UUID'
+        resource_id:
+          $ref: '#/components/schemas/UUID'
+        resource_version:
+          type: integer
+          format: int64
+          minimum: 1
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        client_id:
+          type: string
+        session_id:
+          $ref: '#/components/schemas/UUID'
+        capabilities:
+          type: array
+          uniqueItems: true
+          description: Approved relative capability keys.
+          items:
+            type: string
+        personal_access:
+          type: boolean
+        workspace_ids:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/UUID'
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    OAuthResourcePage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthResource'
+        next_cursor:
+          type: string
+          nullable: true
+    OAuthConnectionPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OAuthConnection'
+        next_cursor:
+          type: string
+          nullable: true
+    ResourceAccessCheck:
+      type: object
+      additionalProperties: false
+      required:
+        - token
+        - resource
+        - capability
+      properties:
+        token:
+          type: string
+          writeOnly: true
+          minLength: 1
+        resource:
+          type: string
+          format: uri
+        capability:
+          type: string
+          minLength: 1
+          description: Relative capability key.
+        workspace_id:
+          $ref: '#/components/schemas/UUID'
+    ResourceAccessDecision:
+      type: object
+      additionalProperties: false
+      required:
+        - allowed
+        - reason
+      properties:
+        allowed:
+          type: boolean
+        reason:
+          type: string
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        connection_id:
+          $ref: '#/components/schemas/UUID'
+        workspace_id:
+          $ref: '#/components/schemas/UUID'
     HealthStatus:
       type: object
       required:
@@ -11310,6 +12032,18 @@ components:
           format: date-time
           description: First observed transition into the current past-due episode; repeated events do not extend it. Cleared on recovery.
           nullable: true
+        cancel_at:
+          type: string
+          format: date-time
+          nullable: true
+        canceled_at:
+          type: string
+          format: date-time
+          nullable: true
+        trial_end:
+          type: string
+          format: date-time
+          nullable: true
         cancel_at_period_end:
           type: boolean
         external_reference:
@@ -12315,6 +13049,14 @@ components:
         - subject_types_supported
         - id_token_signing_alg_values_supported
       properties:
+        authorization_response_iss_parameter_supported:
+          type: boolean
+          enum:
+            - true
+        client_id_metadata_document_supported:
+          type: boolean
+          enum:
+            - true
         issuer:
           type: string
           format: uri
@@ -12392,6 +13134,39 @@ components:
                 type: string
             additionalProperties: false
       additionalProperties: false
+    OAuthAuthorizationInteraction:
+      type: object
+      additionalProperties: false
+      required:
+        - interaction
+        - client_id
+        - requested_scopes
+        - redirect_uri
+        - state
+        - submit_method
+      properties:
+        interaction:
+          type: string
+          enum:
+            - consent
+        client_id:
+          type: string
+        requested_scopes:
+          type: array
+          items:
+            type: string
+        redirect_uri:
+          type: string
+          format: uri
+        state:
+          type: string
+        submit_method:
+          type: string
+          enum:
+            - POST
+        resource:
+          $ref: '#/components/schemas/OAuthResourceSummary'
+          description: Present only for resource authorization. Submit this display summary's version as resource_version with the headless decision.
     AuthorizationRedirect:
       type: object
       required:
@@ -12431,6 +13206,16 @@ components:
           type: string
         token_type:
           type: string
+        token_kind:
+          type: string
+          enum:
+            - access
+            - machine
+            - resource_access
+          description: Token purpose discriminator. Resource-access tokens are not general application authentication credentials.
+        connection_id:
+          $ref: '#/components/schemas/UUID'
+          description: Connection that issued the resource-access token; present only for resource-access tokens.
         actor_type:
           enum:
             - control_user
@@ -12470,6 +13255,16 @@ components:
           $ref: '#/components/schemas/Locale'
         scope:
           type: string
+        token_kind:
+          type: string
+          enum:
+            - access
+            - machine
+            - resource_access
+          description: Token purpose discriminator, including resource_access when resource-flow claims are represented.
+        connection_id:
+          $ref: '#/components/schemas/UUID'
+          description: Connection associated with resource-flow claims, when present.
         roles:
           $ref: '#/components/schemas/StructuredRoles'
         custom_claims:
@@ -15116,6 +15911,9 @@ components:
           type: boolean
         delegation_enabled:
           type: boolean
+        resource_authorization_enabled:
+          type: boolean
+          default: false
         user_invitations_enabled:
           type: boolean
           default: false

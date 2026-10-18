@@ -246,7 +246,7 @@ func (s *Server) effectivePermissionAccess(w http.ResponseWriter, r *http.Reques
 		access, err = s.userEffectiveAccess(r, applicationID, subjectID)
 	} else if subjectType == "client" {
 		var clientKey string
-		err = s.app.DB.QueryRow(r.Context(), `SELECT client_id FROM clients WHERE id=$1 AND application_id=$2 AND disabled_at IS NULL`, subjectID, applicationID).Scan(&clientKey)
+		err = s.app.DB.QueryRow(r.Context(), `SELECT client_id FROM clients WHERE id=$1 AND application_id=$2 AND disabled_at IS NULL AND NOT resource_only`, subjectID, applicationID).Scan(&clientKey)
 		if err == nil {
 			access, err = s.clientEffectiveAccess(r, applicationID, clientKey)
 		}
@@ -308,7 +308,7 @@ WHERE u.id=$1 AND u.application_id=$2 AND u.status='active' AND w.id=$3 AND w.de
 AND (w.owner_user_id=u.id OR EXISTS(SELECT 1 FROM workspace_memberships m WHERE m.workspace_id=w.id AND m.user_id=u.id)))`, subjectID, applicationID, *workspaceID).Scan(&valid)
 		}
 	} else {
-		_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE id=$1 AND application_id=$2 AND disabled_at IS NULL)`, subjectID, applicationID).Scan(&valid)
+		_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients WHERE id=$1 AND application_id=$2 AND disabled_at IS NULL AND NOT resource_only)`, subjectID, applicationID).Scan(&valid)
 	}
 	return valid
 }

@@ -26,6 +26,7 @@ import (
 
 type hostedContextKey struct{}
 type hostedPrivateState struct {
+	ResourceVersion       int64    `json:"resource_version,omitempty"`
 	Verifier              string   `json:"verifier"`
 	CSRF                  string   `json:"csrf"`
 	MFAChallenge          string   `json:"mfa_challenge,omitempty"`
@@ -54,19 +55,22 @@ type hostedInteraction struct {
 	SessionID     *string
 }
 type hostedActionRequest struct {
-	Action       string          `json:"action"`
-	Email        string          `json:"email,omitempty"`
-	Password     string          `json:"password,omitempty"`
-	FirstName    string          `json:"first_name,omitempty"`
-	LastName     string          `json:"last_name,omitempty"`
-	Locale       string          `json:"locale,omitempty"`
-	Code         string          `json:"code,omitempty"`
-	RecoveryCode string          `json:"recovery_code,omitempty"`
-	Provider     string          `json:"provider,omitempty"`
-	Intent       string          `json:"intent,omitempty"`
-	InvitationID string          `json:"invitation_id,omitempty"`
-	LinkToken    string          `json:"link_token,omitempty"`
-	Credential   json.RawMessage `json:"credential,omitempty"`
+	ApprovedCapabilities []string        `json:"approved_capabilities,omitempty"`
+	PersonalAccess       bool            `json:"personal_access,omitempty"`
+	WorkspaceIDs         []string        `json:"workspace_ids,omitempty"`
+	Action               string          `json:"action"`
+	Email                string          `json:"email,omitempty"`
+	Password             string          `json:"password,omitempty"`
+	FirstName            string          `json:"first_name,omitempty"`
+	LastName             string          `json:"last_name,omitempty"`
+	Locale               string          `json:"locale,omitempty"`
+	Code                 string          `json:"code,omitempty"`
+	RecoveryCode         string          `json:"recovery_code,omitempty"`
+	Provider             string          `json:"provider,omitempty"`
+	Intent               string          `json:"intent,omitempty"`
+	InvitationID         string          `json:"invitation_id,omitempty"`
+	LinkToken            string          `json:"link_token,omitempty"`
+	Credential           json.RawMessage `json:"credential,omitempty"`
 }
 
 // Internal adapters capture existing authentication results without returning bearer
@@ -187,7 +191,16 @@ func (s *Server) startHostedAuthorization(w http.ResponseWriter, r *http.Request
 	}
 	var id, name, ui string
 	var required bool
-	e := s.app.DB.QueryRow(r.Context(), `SELECT id,name,authorization_ui,pkce_required FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, chi.URLParam(r, "application_id"), request.GetClient().GetID()).Scan(&id, &name, &ui, &required)
+	e := s.app.DB.QueryRow(r.Context(), `SELECT id,name,authorization_ui,pkce_required FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`, chi.URLParam(r, "application_id"), request.GetClient().GetID()).Scan(&id, &name, &ui, &required)
+	if resource := resourceFromRequest(r); resource != nil {
+		id, e = s.resourceClientDatabaseID(r.Context(), resource, request.GetClient().GetID())
+		if e == nil {
+			e = s.app.DB.QueryRow(r.Context(), `SELECT CASE WHEN c.resource_only THEN b.name ELSE c.name END,c.authorization_ui FROM clients c
+LEFT JOIN oauth_resource_clients b ON b.client_database_id=c.id AND b.resource_id=$3 AND b.client_id=$4
+WHERE c.id=$1 AND c.application_id=$2 AND ((NOT c.resource_only AND c.disabled_at IS NULL) OR (c.resource_only AND c.disabled_at IS NOT NULL AND b.client_id IS NOT NULL))`, id, resource.ApplicationID, resource.ID, request.GetClient().GetID()).Scan(&name, &ui)
+		}
+		required = true
+	}
 	if e != nil || ui != "hosted" {
 		return false
 	}
@@ -206,12 +219,15 @@ func (s *Server) startHostedAuthorization(w http.ResponseWriter, r *http.Request
 		return true
 	}
 	interaction := hostedInteraction{ID: kernel.NewID().String(), ApplicationID: chi.URLParam(r, "application_id"), ClientID: request.GetClient().GetID(), ClientName: name, Params: url.Values{}, CreatedAt: s.app.Now(), ExpiresAt: s.app.Now().Add(15 * time.Minute)}
-	for _, key := range []string{"client_id", "redirect_uri", "response_type", "scope", "state", "nonce", "code_challenge", "code_challenge_method", "prompt", "max_age", "login_hint", "ui_locales"} {
+	for _, key := range []string{"client_id", "redirect_uri", "response_type", "scope", "state", "nonce", "code_challenge", "code_challenge_method", "prompt", "max_age", "login_hint", "ui_locales", "resource"} {
 		if value := r.URL.Query().Get(key); value != "" {
 			interaction.Params.Set(key, value)
 		}
 	}
 	interaction.Private = hostedPrivateState{Verifier: oauth2.GenerateVerifier(), CSRF: oauth2.GenerateVerifier(), ForceLogin: prompts["login"] || prompts["select_account"]}
+	if resource := resourceFromRequest(r); resource != nil {
+		interaction.Private.ResourceVersion = resource.Version
+	}
 	raw, _ := json.Marshal(interaction.Private)
 	cipher, e := s.app.Vault.Encrypt(raw, "hosted-interaction:"+interaction.ID)
 	params, _ := json.Marshal(interaction.Params)
@@ -258,9 +274,13 @@ func (s *Server) loadHostedInteraction(w http.ResponseWriter, r *http.Request, l
 	i := &hostedInteraction{ID: id}
 	var params []byte
 	var cipher string
-	query := `SELECT h.application_id,c.client_id,c.name,h.authorization_parameters,h.private_state_ciphertext,h.created_at,h.expires_at,h.session_id
+	query := `SELECT h.application_id,COALESCE(h.authorization_parameters->'client_id'->>0,c.client_id),CASE WHEN c.resource_only THEN b.name ELSE c.name END,h.authorization_parameters,h.private_state_ciphertext,h.created_at,h.expires_at,h.session_id
  FROM hosted_auth_interactions h JOIN clients c ON c.id=h.client_id JOIN applications a ON a.id=h.application_id
- WHERE h.id=$1 AND h.browser_digest=$2 AND h.consumed_at IS NULL AND h.expires_at>now() AND c.disabled_at IS NULL AND c.authorization_ui='hosted' AND a.deleted_at IS NULL`
+ LEFT JOIN oauth_resources rs ON rs.application_id=h.application_id AND rs.uri=h.authorization_parameters->'resource'->>0
+ LEFT JOIN oauth_resource_clients b ON b.resource_id=rs.id AND b.application_id=h.application_id AND b.client_database_id=c.id AND b.client_id=h.authorization_parameters->'client_id'->>0
+ WHERE h.id=$1 AND h.browser_digest=$2 AND h.consumed_at IS NULL AND h.expires_at>now()
+ AND ((NOT c.resource_only AND c.disabled_at IS NULL) OR (c.resource_only AND c.disabled_at IS NOT NULL AND b.client_id IS NOT NULL))
+ AND c.authorization_ui='hosted' AND a.deleted_at IS NULL`
 	e := s.app.DB.QueryRow(r.Context(), query, id, s.app.Vault.Digest(browser)).Scan(&i.ApplicationID, &i.ClientID, &i.ClientName, &params, &cipher, &i.CreatedAt, &i.ExpiresAt, &i.SessionID)
 	if e == nil {
 		e = json.Unmarshal(params, &i.Params)
@@ -355,6 +375,9 @@ func hostedApplicationRequest(r *http.Request, appID string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rc))
 }
 func (s *Server) hostedConsentKnown(r *http.Request, i *hostedInteraction, userID string) bool {
+	if i.Params.Get("resource") != "" {
+		return false
+	}
 	var known bool
 	e := s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM oauth_consents oc JOIN clients c ON c.id=oc.client_id WHERE oc.application_id=$1 AND oc.user_id=$2 AND c.client_id=$3 AND oc.revoked_at IS NULL AND $4::text[]<@oc.scopes)`, i.ApplicationID, userID, i.ClientID, strings.Fields(i.Params.Get("scope"))).Scan(&known)
 	return e == nil && known
@@ -413,6 +436,14 @@ func (s *Server) writeHostedView(w http.ResponseWriter, r *http.Request, i *host
 	if profile != nil {
 		view["user"] = profile
 	}
+	if live && i.Params.Get("resource") != "" {
+		consent, err := s.hostedResourceConsent(r, i, current.ID)
+		if err != nil {
+			kernel.WriteProblem(w, r, 400, "resource_unavailable", "The resource consent is no longer available.")
+			return
+		}
+		view["resource_consent"] = consent
+	}
 	view["mfa_methods"] = append([]string{}, i.Private.MFAMethods...)
 	view["verification_pending"] = i.Private.VerificationChallenge != ""
 	kernel.WriteJSON(w, 200, view)
@@ -434,6 +465,13 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 			kernel.WriteProblem(w, r, 401, "hosted_login_required", "Sign in before approving access.")
 			return
 		}
+		if i.Params.Get("resource") != "" && input.Action == "approve" {
+			capabilities, _ := json.Marshal(input.ApprovedCapabilities)
+			workspaces, _ := json.Marshal(input.WorkspaceIDs)
+			i.Params.Set("approved_capabilities", string(capabilities))
+			i.Params.Set("workspace_ids", string(workspaces))
+			i.Params.Set("personal_access", strconv.FormatBool(input.PersonalAccess))
+		}
 		s.completeHostedAuthorization(w, r, i, current, input.Action == "deny")
 		return
 	}
@@ -454,7 +492,7 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		i.Private = hostedPrivateState{Verifier: oauth2.GenerateVerifier(), CSRF: i.Private.CSRF, ForceLogin: true, InvitationID: i.Private.InvitationID, InvitationToken: i.Private.InvitationToken, InvitationMethod: i.Private.InvitationMethod}
+		i.Private = hostedPrivateState{ResourceVersion: i.Private.ResourceVersion, Verifier: oauth2.GenerateVerifier(), CSRF: i.Private.CSRF, ForceLogin: true, InvitationID: i.Private.InvitationID, InvitationToken: i.Private.InvitationToken, InvitationMethod: i.Private.InvitationMethod}
 		i.SessionID = nil
 		if e := s.saveHostedState(r, i); e != nil {
 			kernel.WriteProblem(w, r, 500, "hosted_state_failed", "Sign-in could not be restarted.")
@@ -479,7 +517,7 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 			kernel.WriteProblem(w, r, 500, "hosted_logout_failed", "The application session could not be signed out. Please retry.")
 			return
 		}
-		i.Private = hostedPrivateState{Verifier: oauth2.GenerateVerifier(), CSRF: i.Private.CSRF, ForceLogin: true, InvitationID: i.Private.InvitationID, InvitationToken: i.Private.InvitationToken, InvitationMethod: i.Private.InvitationMethod}
+		i.Private = hostedPrivateState{ResourceVersion: i.Private.ResourceVersion, Verifier: oauth2.GenerateVerifier(), CSRF: i.Private.CSRF, ForceLogin: true, InvitationID: i.Private.InvitationID, InvitationToken: i.Private.InvitationToken, InvitationMethod: i.Private.InvitationMethod}
 		if e := s.saveHostedState(r, i); e != nil {
 			kernel.WriteProblem(w, r, 500, "hosted_state_failed", "The sign-in state could not be updated.")
 			return
@@ -732,6 +770,9 @@ func (s *Server) completeHostedAuthorization(w http.ResponseWriter, r *http.Requ
 	if deny {
 		parameters.Set("decision", "deny")
 	}
+	if i.Params.Get("resource") != "" {
+		parameters.Set("resource_version", strconv.FormatInt(i.Private.ResourceVersion, 10))
+	}
 	encoded := parameters.Encode()
 	clone.Body = io.NopCloser(strings.NewReader(encoded))
 	clone.ContentLength = int64(len(encoded))
@@ -740,6 +781,17 @@ func (s *Server) completeHostedAuthorization(w http.ResponseWriter, r *http.Requ
 	clone.Header = r.Header.Clone()
 	clone.Header.Set("Accept", "application/json")
 	clone.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if i.Params.Get("resource") != "" {
+		if err := clone.ParseForm(); err != nil {
+			kernel.WriteProblem(w, r, 400, "resource_unavailable", "The resource request is invalid.")
+			return
+		}
+		resolved, ok := s.resolveResourceOAuth(w, clone)
+		if !ok {
+			return
+		}
+		clone = resolved
+	}
 	response := &hostedResponse{header: make(http.Header)}
 	if !s.consumeHostedInteraction(r, i.ID, i.LockToken) {
 		kernel.WriteProblem(w, r, 409, "hosted_interaction_consumed", "This sign-in request was already completed.")

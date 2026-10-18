@@ -1,4 +1,6 @@
 export * as generated from "./generated/index.js";
+export type * from "./resources.js";
+import type { OAuthConnection } from "./resources.js";
 
 export type Platform93ClientOptions = {
   baseUrl: string;
@@ -115,6 +117,12 @@ export class ApplicationClient {
   verifyMFA(input: MFAVerify) { return this.client.request<TokenResponse>("POST", this.path("/auth/mfa/verify"), input); }
   authMethods(email?: string) { return this.client.request<AuthMethods>("POST", this.path("/auth/methods"), email ? { email } : {}); }
   me() { return this.client.request<User>("GET", this.path("/me")); }
+  listConnections() { return this.client.request<Page<OAuthConnection>>("GET", this.path("/me/connections")); }
+  getConnection(id: string) { return this.client.request<OAuthConnection>("GET", this.path(`/me/connections/${encodeURIComponent(id)}`)); }
+  revokeConnection(id: string, ifMatch: string) {
+    if (!ifMatch || /[\r\n]/.test(ifMatch)) throw new Error("Connection If-Match is required");
+    return this.client.request<void>("DELETE", this.path(`/me/connections/${encodeURIComponent(id)}`), undefined, { headers: { "If-Match": ifMatch } });
+  }
   updateMe(input: Partial<Pick<User, "first_name" | "last_name" | "username" | "locale">>) { return this.client.request<void>("PATCH", this.path("/me"), input); }
   listSessions() { return this.client.request<Page<Record<string, unknown>>>("GET", this.path("/me/sessions")); }
   revokeSession(sessionId: string) { return this.client.request<void>("DELETE", this.path(`/me/sessions/${encodeURIComponent(sessionId)}`)); }

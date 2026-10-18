@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/kernel"
 )
+
+type stripeObservationTime struct{}
 
 func (s *Server) normalizeStripeCheckout(ctx context.Context, applicationID, connectionID string, object map[string]any, completed bool) error {
 	checkoutID := metadataString(object, "platform93_checkout_id")
@@ -32,9 +35,13 @@ func (s *Server) normalizeStripeCheckout(ctx context.Context, applicationID, con
 	var externalReference *string
 	var validity *int64
 	err = tx.QueryRow(ctx, `UPDATE checkout_sessions c SET status=$1,provider_session_id=COALESCE(NULLIF($2,''),provider_session_id),updated_at=now()
-FROM prices pr WHERE c.id=$3 AND c.application_id=$4 AND pr.id=c.price_id
-RETURNING pr.mode,c.subject_type,c.subject_id,pr.product_id,pr.id,pr.validity_seconds,c.external_reference`, status, stringValue(object["id"]), checkoutID, applicationID).
+FROM prices pr WHERE c.id=$3 AND c.application_id=$4 AND pr.id=c.price_id AND c.provider_connection_id=$5
+AND (c.status<>'completed' OR $1='completed')
+RETURNING pr.mode,c.subject_type,c.subject_id,pr.product_id,pr.id,pr.validity_seconds,c.external_reference`, status, stringValue(object["id"]), checkoutID, applicationID, connectionID).
 		Scan(&mode, &subjectType, &subjectID, &productID, &priceID, &validity, &externalReference)
+	if err == pgx.ErrNoRows {
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("resolve checkout %s: %w", checkoutID, err)
 	}
@@ -93,6 +100,10 @@ WHERE provider_connection_id=$1 AND provider_subscription_id=$2`, connectionID, 
 		status = "unknown"
 	}
 	metadata, _ := json.Marshal(mapValue(object["metadata"]))
+	observedAt, _ := ctx.Value(stripeObservationTime{}).(time.Time)
+	if observedAt.IsZero() || observedAt.After(s.app.Now()) {
+		observedAt = s.app.Now()
+	}
 	tx, err := s.app.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -101,17 +112,22 @@ WHERE provider_connection_id=$1 AND provider_subscription_id=$2`, connectionID, 
 	var subscriptionID, productID string
 	err = tx.QueryRow(ctx, `INSERT INTO subscriptions
 (id,application_id,subject_type,subject_id,price_id,provider_connection_id,provider_subscription_id,provider_item_id,status,
-current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,metadata,external_reference,past_due_since)
-VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),$9,$10,$11,$12,$13,$14,$15,$16,$17,CASE WHEN $9='past_due' THEN now() END)
+current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,metadata,external_reference,past_due_since,provider_event_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),$9,$10,$11,$12,$13,$14,$15,$16,$17,CASE WHEN $9='past_due' THEN $18::timestamptz END,$18)
 ON CONFLICT(provider_connection_id,provider_subscription_id) DO UPDATE SET
 price_id=EXCLUDED.price_id,provider_item_id=COALESCE(EXCLUDED.provider_item_id,subscriptions.provider_item_id),status=EXCLUDED.status,
 current_period_start=EXCLUDED.current_period_start,current_period_end=EXCLUDED.current_period_end,cancel_at=EXCLUDED.cancel_at,
 canceled_at=EXCLUDED.canceled_at,trial_end=EXCLUDED.trial_end,cancel_at_period_end=EXCLUDED.cancel_at_period_end,
-past_due_since=CASE WHEN EXCLUDED.status='past_due' THEN COALESCE(subscriptions.past_due_since,EXCLUDED.past_due_since) END,
-metadata=EXCLUDED.metadata,external_reference=COALESCE(EXCLUDED.external_reference,subscriptions.external_reference),updated_at=now() RETURNING id`, kernel.NewID(), applicationID, subjectType, subjectID, priceID,
+past_due_since=CASE WHEN EXCLUDED.status='past_due' THEN LEAST(COALESCE(subscriptions.past_due_since,EXCLUDED.past_due_since),EXCLUDED.past_due_since) END,
+provider_event_at=EXCLUDED.provider_event_at,
+metadata=EXCLUDED.metadata,external_reference=COALESCE(EXCLUDED.external_reference,subscriptions.external_reference),updated_at=now()
+WHERE subscriptions.provider_event_at IS NULL OR EXCLUDED.provider_event_at>=subscriptions.provider_event_at RETURNING id`, kernel.NewID(), applicationID, subjectType, subjectID, priceID,
 		connectionID, providerSubscriptionID, providerItemID, status, periodStart, periodEnd, unixTimeValue(object["cancel_at"]),
-		unixTimeValue(object["canceled_at"]), unixTimeValue(object["trial_end"]), boolValue(object["cancel_at_period_end"]), metadata, externalReference).
+		unixTimeValue(object["canceled_at"]), unixTimeValue(object["trial_end"]), boolValue(object["cancel_at_period_end"]), metadata, externalReference, observedAt).
 		Scan(&subscriptionID)
+	if err == pgx.ErrNoRows {
+		return nil
+	}
 	if err == nil {
 		err = tx.QueryRow(ctx, `SELECT product_id FROM prices WHERE id=$1 AND application_id=$2`, priceID, applicationID).Scan(&productID)
 	}

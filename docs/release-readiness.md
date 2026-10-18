@@ -64,6 +64,21 @@ clean-install prerelease and must not be tagged `v1.0.0` yet.
 - The redacted Stripe, SMTP, Google, Apple, Microsoft, Facebook, LinkedIn, and S3 release-candidate checklist in
   [Release Process](releasing.md) must be complete before the stable tag.
 
+## v0.5.0 Release Exceptions
+
+- Temporarily accepted: Dependabot alert #17 for `braces` 3.0.3, a high-severity
+  stack-exhaustion denial of service involving deeply nested patterns. It is a
+  transitive admin development dependency through the lint/tooling chain, not a
+  production runtime dependency. No patched version was reported when reviewed
+  on 2026-10-18. This is a scoped release exception, not a dismissed advisory or
+  disabled scanner. Do not feed untrusted patterns into this tooling; review the
+  alert again before the next release and upgrade or remove the dependency when
+  a safe resolution is available.
+- Resource authorization has automated regression coverage, but live ChatGPT,
+  Claude, and Gemini CLI interoperability remains unverified. See the
+  [resource authorization limitations](resource-authorization.md#initial-release-interoperability-limits).
+  The feature remains application-local and disabled by default.
+
 ## Blocking `v1.0.0`
 
 - Enforce PostgreSQL row-level security with a non-owner runtime role and request-

@@ -82,7 +82,7 @@ func TestCheckoutEligibilityDatabase(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		policy := map[string]any{"single_subscription": true, "trial_once_per_subject": true, "trial_period_days": float64(7)}
+		policy := map[string]any{"single_subscription": status != "completed", "trial_once_per_subject": true, "trial_period_days": float64(7)}
 		response := httptest.NewRecorder()
 		release, ok := server.guardRecurringCheckout(response, request, "user", user.String(), product.String(), price.String(), policy)
 		if status == "open" || status == "pending" {
@@ -98,7 +98,9 @@ func TestCheckoutEligibilityDatabase(t *testing.T) {
 				t.Fatalf("trial eligibility %s: %+v", status, policy)
 			}
 		}
-		release()
+		if release != nil {
+			_ = release.Rollback(ctx)
+		}
 		if _, err = db.Exec(ctx, `DELETE FROM checkout_sessions WHERE id=$1`, id); err != nil {
 			t.Fatal(err)
 		}

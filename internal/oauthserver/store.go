@@ -18,9 +18,11 @@ import (
 )
 
 type Store struct {
-	DB            *pgxpool.Pool
-	Vault         *secure.Vault
-	ApplicationID uuid.UUID
+	DB             *pgxpool.Pool
+	Vault          *secure.Vault
+	ApplicationID  uuid.UUID
+	ResourceURI    string
+	ResourceScopes []string
 }
 
 var _ fosite.Storage = (*Store)(nil)
@@ -38,6 +40,12 @@ func (s *Store) executor(ctx context.Context) executor {
 		return tx
 	}
 	return s.DB
+}
+
+// Transaction exposes the request-local transaction for atomic domain changes.
+func (s *Store) Transaction(ctx context.Context) (pgx.Tx, bool) {
+	tx, ok := ctx.Value(transactionKey{s}).(pgx.Tx)
+	return tx, ok
 }
 
 // Fosite brackets token consumption and successor persistence with these hooks.
@@ -90,8 +98,24 @@ func (s *Store) GetClient(ctx context.Context, clientID string) (fosite.Client, 
 	var clientType string
 	var redirects, grants, scopes []string
 	err := s.executor(ctx).QueryRow(ctx, `SELECT client_type,redirect_uris,allowed_grants,allowed_scopes,secret_digest
-FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, s.ApplicationID, clientID).
+FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`, s.ApplicationID, clientID).
 		Scan(&clientType, &redirects, &grants, &scopes, &secret)
+	if errors.Is(err, pgx.ErrNoRows) && s.ResourceURI != "" {
+		// Registration, even disabled, must never be downgraded to public metadata.
+		var registered bool
+		if e := s.executor(ctx).QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND client_id=$2 AND NOT resource_only)`, s.ApplicationID, clientID).Scan(&registered); e != nil || registered {
+			return nil, fosite.ErrNotFound
+		}
+		err = s.executor(ctx).QueryRow(ctx, `SELECT b.redirect_uris,b.allowed_grants FROM oauth_resource_clients b
+JOIN oauth_resources r ON r.id=b.resource_id AND r.application_id=b.application_id
+JOIN clients c ON c.id=b.client_database_id AND c.application_id=b.application_id
+WHERE b.application_id=$1 AND r.uri=$2 AND b.client_id=$3 AND r.enabled AND r.allow_client_metadata
+AND b.client_id=ANY(r.client_ids) AND c.resource_only AND c.disabled_at IS NOT NULL`, s.ApplicationID, s.ResourceURI, clientID).Scan(&redirects, &grants)
+		clientType = "public"
+		if len(grants) == 0 {
+			grants = []string{"authorization_code"}
+		}
+	}
 	if err != nil {
 		return nil, fosite.ErrNotFound
 	}
@@ -102,9 +126,20 @@ FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, 
 			grants = []string{"authorization_code", "refresh_token"}
 		}
 	}
+	audiences := []string{"platform93:application:" + s.ApplicationID.String()}
+	if s.ResourceURI != "" {
+		if clientType == "machine" {
+			return nil, fosite.ErrNotFound
+		}
+		audiences = []string{s.ResourceURI}
+		scopes = append([]string{"openid", "email", "profile", "offline_access"}, s.ResourceScopes...)
+		if !fosite.Arguments(grants).Has("authorization_code") {
+			return nil, fosite.ErrNotFound
+		}
+	}
 	client := &fosite.DefaultClient{
 		ID: clientID, Secret: secret, RedirectURIs: redirects, GrantTypes: grants,
-		ResponseTypes: []string{"code"}, Scopes: scopes, Audience: []string{"platform93:application:" + s.ApplicationID.String()}, Public: clientType == "public",
+		ResponseTypes: []string{"code"}, Scopes: scopes, Audience: audiences, Public: clientType == "public",
 	}
 	if !client.Public {
 		// DefaultClient accepts Basic and POST secret authentication, both verified
@@ -217,24 +252,71 @@ func (s *Store) GetRefreshTokenSession(ctx context.Context, signature string, _ 
 }
 
 func (s *Store) DeleteRefreshTokenSession(ctx context.Context, signature string) error {
-	return s.delete(ctx, "refresh", signature)
+	var requestID string
+	err := s.executor(ctx).QueryRow(ctx, `SELECT request_id FROM oauth_sessions
+WHERE application_id=$1 AND kind='refresh' AND signature_digest=$2`, s.ApplicationID, s.Vault.Digest(signature)).Scan(&requestID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return s.withFamilyTransaction(ctx, requestID, func(ctx context.Context) error {
+		return s.delete(ctx, "refresh", signature)
+	})
 }
 
 func (s *Store) RevokeRefreshToken(ctx context.Context, requestID string) error {
-	_, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
+	return s.withFamilyTransaction(ctx, requestID, func(ctx context.Context) error {
+		_, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
 WHERE application_id=$1 AND request_id=$2 AND kind IN ('refresh','access')`, s.ApplicationID, requestID)
-	return err
+		return err
+	})
 }
 
 func (s *Store) RevokeAccessToken(ctx context.Context, requestID string) error {
-	_, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
+	return s.withFamilyTransaction(ctx, requestID, func(ctx context.Context) error {
+		_, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
 WHERE application_id=$1 AND request_id=$2 AND kind='access'`, s.ApplicationID, requestID)
+		return err
+	})
+}
+
+func (s *Store) lockFamily(ctx context.Context, requestID string) error {
+	// Keep lock acquisition separate so the following statement sees a fresh
+	// READ COMMITTED snapshot after a competing rotation commits its successors.
+	_, err := s.executor(ctx).Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "oauth-family:"+s.ApplicationID.String()+":"+requestID)
 	return err
+}
+
+func (s *Store) withFamilyTransaction(ctx context.Context, requestID string, operation func(context.Context) error) error {
+	_, existing := s.Transaction(ctx)
+	if !existing {
+		var err error
+		ctx, err = s.BeginTX(ctx)
+		if err != nil {
+			return err
+		}
+		defer s.Rollback(ctx)
+	}
+	if err := s.lockFamily(ctx, requestID); err != nil {
+		return err
+	}
+	if err := operation(ctx); err != nil {
+		return err
+	}
+	if !existing {
+		return s.Commit(ctx)
+	}
+	return nil
 }
 
 func (s *Store) RotateRefreshToken(ctx context.Context, requestID, signature string) error {
 	if _, ok := ctx.Value(transactionKey{s}).(pgx.Tx); !ok {
 		return errors.New("refresh rotation requires a transaction")
+	}
+	if err := s.lockFamily(ctx, requestID); err != nil {
+		return err
 	}
 	result, err := s.executor(ctx).Exec(ctx, `UPDATE oauth_sessions SET active=false,updated_at=now()
 WHERE application_id=$1 AND request_id=$2 AND kind='refresh' AND signature_digest=$3 AND active AND expires_at>now()`,
@@ -243,6 +325,26 @@ WHERE application_id=$1 AND request_id=$2 AND kind='refresh' AND signature_diges
 		return err
 	}
 	if result.RowsAffected() != 1 {
+		var consumed bool
+		if err := s.executor(ctx).QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM oauth_sessions
+WHERE application_id=$1 AND request_id=$2 AND kind='refresh' AND signature_digest=$3 AND NOT active)`,
+			s.ApplicationID, requestID, s.Vault.Digest(signature)).Scan(&consumed); err != nil {
+			return err
+		}
+		if !consumed {
+			return fosite.ErrInactiveToken
+		}
+		// Fosite rolls back response-stage failures. Release this transaction's
+		// family lock first, then commit reuse revocation independently.
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := s.Rollback(cleanup); err != nil {
+			return err
+		}
+		cleanup = context.WithValue(cleanup, transactionKey{s}, struct{}{})
+		if err := s.RevokeRefreshToken(cleanup, requestID); err != nil {
+			return err
+		}
 		return fosite.ErrInactiveToken
 	}
 	return s.RevokeRefreshToken(ctx, requestID)

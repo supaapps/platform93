@@ -106,7 +106,7 @@ func (s *Server) clientRedirectOriginAllowed(ctx context.Context, applicationID,
 		return false
 	}
 	query := `SELECT redirect_uris,post_logout_redirect_uris FROM clients
-WHERE disabled_at IS NULL AND client_type='public'`
+WHERE disabled_at IS NULL AND NOT resource_only AND client_type='public'`
 	arguments := []any{}
 	if applicationID != "" {
 		query += " AND application_id=$1"

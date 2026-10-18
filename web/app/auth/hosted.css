@@ -8,3 +8,4 @@
 .hosted-centered .hosted-brand p{display:block;font-size:14px}
 @media(max-width:760px){.hosted-brand p{display:block;font-size:14px}}
 .hosted-card :is(input,button,a):focus-visible{outline-color:var(--hosted-accent)}
+.hosted-resource-consent fieldset{min-width:0;border:1px solid #d9e1e9;border-radius:7px;padding:14px;display:grid;gap:12px}.hosted-resource-consent legend{font-size:13px;font-weight:650;padding:0 5px}.hosted-card .hosted-resource-consent label{flex-direction:row;align-items:flex-start;gap:10px}.hosted-card .hosted-resource-consent input[type=checkbox]{width:18px;height:18px;flex-shrink:0;margin:2px 0;accent-color:var(--hosted-accent);padding:0}.hosted-resource-consent small{font-weight:400;overflow-wrap:anywhere}.hosted-resource-consent p{overflow-wrap:anywhere}

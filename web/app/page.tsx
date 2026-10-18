@@ -1,6 +1,7 @@
 "use client";
 import { Toggle } from "./ui/toggle";
 import { SelectControl } from "./ui/select";
+import { CredentialNoticeProvider, useCredentialNotice, clearCredentialNotices } from "./credential-notice";
 import { useEffect, useEffectEvent, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Platform93Client, Platform93Error } from "@supaapps/platform93-sdk";
@@ -13,6 +14,7 @@ import { ReleaseStatus } from "./release-status";
 import { ReferencePicker, type ReferenceKind, type ReferencePage } from "./reference-picker";
 import { ManualGrantForm } from "./manual-grant-form";
 import { HostedBrandingEditor } from "./hosted-branding-editor";
+import { OAuthResources, type ResourceRequest } from "./oauth-resources";
 import { ListHints, ResourceLabels, ResourceSummary } from "./resource-summary";
 
 const loadRowLabels = (path: string) => api.request<Page<Record<string, unknown>>>("GET", path);
@@ -139,6 +141,7 @@ const api = new Platform93Client({
   fetch: adminFetch,
 });
 const referenceRequest = (path: string) => api.request<ReferencePage>("GET", path);
+const resourceRequest: ResourceRequest = (method, path, body, options) => api.request(method, path, body, options);
 function ResourceReference({ application, kind, name, label, multiple = false, required = false, roleScope, machineOnly = false }: { application: Application; kind: ReferenceKind; name: string; label: string; multiple?: boolean; required?: boolean; roleScope?: string; machineOnly?: boolean }) {
   const [values, setValues] = useState<string[]>([]);
   return <ReferencePicker key={`${application.id}-${kind}`} basePath={`/v1/control/applications/${application.id}`} request={referenceRequest} kind={kind} name={name} label={label} value={values} onChange={setValues} multiple={multiple} required={required} roleScope={roleScope} useKeys={multiple && kind === "roles"} machineOnly={machineOnly} activeOnly={kind === "users" || kind === "workspaces"} />;
@@ -184,6 +187,7 @@ const resources: Record<string, Resource[]> = {
     { label: "Role assignments", path: "role-assignments", create: { label: "Assign role", fields: [{ name: "user_id", label: "User ID (choose user or client)" }, { name: "client_id", label: "Client database ID (choose user or client)" }, { name: "role_id", label: "Role ID", required: true }, { name: "workspace_id", label: "Workspace ID (workspace roles only)" }] } },
     { label: "Direct scopes", path: "permission-grants" },
     { label: "OAuth consents", path: "oauth-consents" },
+    { label: "OAuth resources", path: "oauth-resources" },
     { label: "Domains", path: "domains", create: { label: "Add domain", fields: [{ name: "hostname", label: "Hostname", required: true }] } },
     { label: "OAuth clients", path: "clients", create: { label: "Create OAuth client", fields: [{ name: "client_id", label: "Client ID", required: true }, { name: "name", label: "Name", required: true }, { name: "client_type", label: "Type", placeholder: "public", required: true }, { name: "redirect_uris", label: "Allowed redirect URIs, comma separated (not used by machine clients)" }, { name: "allowed_grants", label: "Grants, comma separated", placeholder: "authorization_code,refresh_token" }, { name: "allowed_scopes", label: "Scopes, comma separated", placeholder: "openid,profile,email" }] } },
   ],
@@ -215,7 +219,7 @@ const resources: Record<string, Resource[]> = {
 };
 
 export default function Home() {
-  return <><NetworkActivity /><PlatformAdmin /></>;
+  return <CredentialNoticeProvider><NetworkActivity /><PlatformAdmin /></CredentialNoticeProvider>;
 }
 
 function NetworkActivity() {
@@ -301,7 +305,7 @@ function PlatformAdmin() {
       .catch((error) => setMessage(readError(error)));
   }, []);
   useEffect(() => {
-    const requireLogin = () => setNeedsLogin(true);
+    const requireLogin = () => { clearCredentialNotices(); setNeedsLogin(true); };
     globalThis.addEventListener?.(controlUserSessionExpiredEvent, requireLogin);
     return () => globalThis.removeEventListener?.(controlUserSessionExpiredEvent, requireLogin);
   }, []);
@@ -409,6 +413,7 @@ function PlatformAdmin() {
   async function logout() {
     try {
       await api.request("POST", "/v1/control/auth/logout", {});
+      clearCredentialNotices();
       setOrganization(null);
       setApplication(null);
       setOrganizations([]);
@@ -991,7 +996,7 @@ function Workspace({
   }, [routeMatchesWorkspace, application, selectedResource, route.resource, setMessage]);
   useEffect(() => {
     setDetail(null);
-    if (!routeMatchesWorkspace || !application || !selectedResource || !route.id) return;
+    if (!routeMatchesWorkspace || !application || !selectedResource || !route.id || selectedResource.path === "oauth-resources") return;
     const path = resourceDetailPath(selectedResource.path, route.id);
     if (!path) {
       setMessage(`${errorMessagePrefix}This resource has no detail view.`);
@@ -1016,6 +1021,7 @@ function Workspace({
       setItems([]);
       return;
     }
+    if (selectedResource.path === "oauth-resources") { setLoading(false); return; }
     let current = true;
     setLoading(true);
     api
@@ -1133,12 +1139,13 @@ function Workspace({
     <>
       <div className="resource-tabs">
         {sectionResources.map((resource) => (
-          <a className={resource.path === selectedResource.path ? "active" : ""} key={resource.path} href={routeHref({ resource: resource.path, id: undefined })} onClick={(event) => followRoute(event, { resource: resource.path, id: undefined })}>
+          <a className={resource.path === selectedResource.path ? "active" : ""} key={resource.path} href={routeHref({ resource: resource.path, id: undefined, connection_id: undefined })} onClick={(event) => followRoute(event, { resource: resource.path, id: undefined, connection_id: undefined })}>
             {resource.label}
           </a>
         ))}
       </div>
       <div className="resource-view" key={selectedResource.path}>
+        {selectedResource.path === "oauth-resources" ? <OAuthResources key={application.id} applicationID={application.id} enabled={application.internal_config?.resource_authorization_enabled === true} request={resourceRequest} /> : <>
         {section === "Audit" && <AuditExport application={application} setMessage={setMessage} />}
         {selectedResource.path === "event-types" && <EventTypeCreator application={application} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
         {selectedResource.path === "webhooks" && <WebhookCreator application={application} setMessage={setMessage} onCreated={() => setRefresh((value) => value + 1)} />}
@@ -1153,12 +1160,14 @@ function Workspace({
           ))}
         </section></ResourceLabels>
         {detail && <DetailPanel detail={detail} resource={selectedResource.path} application={application} setMessage={setMessage} onClose={closeDetail} onChanged={() => setRefresh((value) => value + 1)} />}
+        </>}
       </div>
     </>
   );
 }
 
 function CreateResource({ application, resource, setMessage, onCreated }: { application: Application; resource: Resource; setMessage: (value: string) => void; onCreated: () => void }) {
+  const showCredential = useCredentialNotice();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
@@ -1181,7 +1190,8 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
     try {
       const result = await api.request<Record<string, unknown>>("POST", `/v1/control/applications/${application.id}/${resource.path}`, body, { idempotencyKey: crypto.randomUUID() });
       const returnedSecret = result?.secret ?? result?.client_secret ?? result?.invitation_token;
-      setMessage(returnedSecret ? `Created. Store this one-time credential now: ${String(returnedSecret)}` : `${resource.create!.label} completed.`);
+      if (returnedSecret) showCredential(`Created. Store this one-time credential now: ${String(returnedSecret)}`);
+      else setMessage(`${resource.create!.label} completed.`);
       target.reset();
       setFieldValues({});
       setOpen(false);
@@ -1222,6 +1232,7 @@ return <ReferencePicker key={`${field.name}-${fieldValues._subject_type ?? "user
 }
 
 function ResourceRow({ item, resource, application, setMessage, onInspect, onChanged }: { item: Record<string, unknown>; resource: string; application: Application; setMessage: (value: string) => void; onInspect: () => Promise<void>; onChanged: () => void }) {
+  const showCredential = useCredentialNotice();
   const [pendingAction, setPendingAction] = useState("");
   const id = String(item.id ?? "");
   const actions: { label: string; icon?: AdminIconName; tone?: "default" | "danger" | "success"; method?: "POST" | "PATCH" | "DELETE"; suffix: string; body?: unknown; headers?: Record<string, string> }[] = [];
@@ -1273,7 +1284,8 @@ function ResourceRow({ item, resource, application, setMessage, onInspect, onCha
     try {
       const result = await api.request<Record<string, unknown>>(action.method ?? "POST", `/v1/control/applications/${application.id}/${action.suffix}`, action.body ?? {}, { idempotencyKey: crypto.randomUUID(), headers: action.headers });
       const returnedSecret = result?.secret ?? result?.client_secret;
-      setMessage(returnedSecret ? `Store this one-time credential now: ${String(returnedSecret)}` : resource === "products" ? `${action.label} completed.` : result ? JSON.stringify(result) : `${action.label} completed.`);
+      if (returnedSecret) showCredential(`Store this one-time credential now: ${String(returnedSecret)}`);
+      else setMessage(resource === "products" ? `${action.label} completed.` : result ? JSON.stringify(result) : `${action.label} completed.`);
       onChanged();
     } catch (error) { setMessage(readError(error)); }
     finally { setPendingAction(""); }
@@ -1598,6 +1610,7 @@ function EventFilterSelector({ definitions, initial = [] }: { definitions: Event
 }
 
 function WebhookCreator({ application, setMessage, onCreated }: { application: Application; setMessage: (value: string) => void; onCreated: () => void }) {
+  const showCredential = useCredentialNotice();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const { definitions, loading } = useEventTypes(application, setMessage);
@@ -1612,7 +1625,7 @@ function WebhookCreator({ application, setMessage, onCreated }: { application: A
       });
       target.reset();
       setOpen(false);
-      setMessage(`Webhook created. Store this one-time secret now: ${String(result.secret)}`);
+      showCredential(`Webhook created. Store this one-time secret now: ${String(result.secret)}`);
       onCreated();
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(false); }
@@ -1821,7 +1834,7 @@ function PriceCreator({ productID, application, setMessage, onChanged }: { produ
       <label><span>Interval count</span><input name="interval_count" min="1" type="number" defaultValue="1" /></label>
     </>}
     {mode === "local" && <label><span>Local validity in seconds</span><input required name="validity_seconds" min="1" type="number" placeholder="e.g. 2592000" /></label>}
-    <label className="full-field"><span>Checkout configuration (JSON)</span><textarea name="checkout_config" defaultValue="{}" /></label>
+    <label className="full-field"><span>Checkout configuration (JSON)</span><textarea name="checkout_config" defaultValue="{}" /><small>Recurring example: {`{"trial_period_days":14,"single_subscription":true,"trial_once_per_subject":true}`}. Tax/address example: {`{"automatic_tax":true,"billing_address_required":true}`}. Each price keeps its own immutable policy.</small></label>
     <button>Create price</button>
   </form>;
 }
@@ -2379,6 +2392,7 @@ type InternalApplicationConfig = {
   personal_api_keys_enabled: boolean;
   delegation_enabled: boolean;
   user_invitations_enabled: boolean;
+  resource_authorization_enabled: boolean;
   custom_token_claim_keys: string[];
 };
 
@@ -2389,6 +2403,7 @@ const defaultInternalApplicationConfig: InternalApplicationConfig = {
   personal_api_keys_enabled: false,
   delegation_enabled: false,
   user_invitations_enabled: false,
+  resource_authorization_enabled: false,
   custom_token_claim_keys: [],
 };
 
@@ -2439,7 +2454,7 @@ function ApplicationConfigurationSettings({ application, setMessage, onChanged }
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
   }
-  const toggle = (key: "password_enabled" | "passwordless_enabled" | "personal_api_keys_enabled" | "delegation_enabled" | "user_invitations_enabled") => setInternal((value) => ({ ...value, [key]: !value[key] }));
+  const toggle = (key: "password_enabled" | "passwordless_enabled" | "personal_api_keys_enabled" | "delegation_enabled" | "user_invitations_enabled" | "resource_authorization_enabled") => setInternal((value) => ({ ...value, [key]: !value[key] }));
   const publicConfigURL = `${api.baseUrl}/v1/applications/${encodeURIComponent(application.id)}/public-config`;
   return <section className="application-configuration">
     <header><p className="eyebrow">APPLICATION CONFIGURATION</p><h3>Runtime and access policy</h3><p>Public configuration is safe runtime data for clients. Internal configuration is enforced by Platform93 and is never returned as a raw object to unauthenticated callers.</p></header>
@@ -2466,6 +2481,7 @@ function ApplicationConfigurationSettings({ application, setMessage, onChanged }
         <label className="toggle-setting"><Toggle checked={internal.delegation_enabled} onChange={() => toggle("delegation_enabled")} /><span><strong>Platform user delegation</strong><small>Allow audited, short-lived delegated application-user access. Disabling revokes active delegations.</small></span></label>
         <label className="toggle-setting"><Toggle checked={internal.user_invitations_enabled} onChange={() => toggle("user_invitations_enabled")} /><span><strong>User-managed invitations</strong><small>Allow workspace owners and authorized members to invite users. Existing invitations remain exchangeable when disabled.</small></span></label>
         <label>JWT custom claim allowlist<input value={internal.custom_token_claim_keys.join(", ")} onChange={(event) => setInternal((value) => ({ ...value, custom_token_claim_keys: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))} placeholder="plan, account_tier, region" /><small>Selected user custom attributes are emitted only under <code>custom_claims</code>, up to 4 KiB.</small></label>
+        <label className="toggle-setting"><Toggle checked={internal.resource_authorization_enabled} onChange={() => toggle("resource_authorization_enabled")} /><span><strong>Resource authorization (opt-in)</strong><small>Allow explicit user consent for registered OAuth resources. Off by default; ordinary application tokens remain unchanged.</small></span></label>
         <button disabled={busy !== ""}>{busy === "internal" ? "Applying policy..." : "Save access policy"}</button>
       </form>
     </div>
@@ -2618,6 +2634,7 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
   installationRole: OrganizationPage["installation_role"];
   setMessage: (value: string) => void;
 }) {
+  const showCredential = useCredentialNotice();
   const [members, setMembers] = useState<Record<string, unknown>[]>([]);
   const [invitations, setInvitations] = useState<Record<string, unknown>[]>([]);
   const [sessions, setSessions] = useState<Record<string, unknown>[]>([]);
@@ -2673,7 +2690,7 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
     const form = new FormData(target);
     try {
       const result = await api.request<Record<string, unknown>>("POST", `/v1/control/organizations/${organization.id}/invitations`, { email: form.get("email"), role: form.get("role"), onboarding_method: form.get("onboarding_method"), expires_in: 604800 });
-      setMessage(`Invitation queued. One-time credential: ${String(result.invitation_token)}`);
+      showCredential(`Invitation queued. One-time credential: ${String(result.invitation_token)}`);
       target.reset();
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
@@ -2682,7 +2699,8 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
   async function action(method: "POST" | "DELETE" | "PATCH", path: string, body?: unknown) {
     try {
       const result = await api.request<Record<string, unknown> | undefined>(method, path, body);
-      setMessage(result?.invitation_token ? `New one-time credential: ${String(result.invitation_token)}` : `Operation completed (${method}).`);
+      if (result?.invitation_token) showCredential(`New one-time credential: ${String(result.invitation_token)}`);
+      else setMessage(`Operation completed (${method}).`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
@@ -2694,7 +2712,7 @@ function ControlPlane({ organization, section, installationRole, setMessage }: {
     try {
       const result = await api.request<Record<string, unknown>>("POST", "/v1/control/installation/invitations", { email: form.get("email"), role: form.get("role"), onboarding_method: form.get("onboarding_method"), expires_in: 604800 });
       target.reset();
-      setMessage(`Platform user invitation created. One-time credential: ${String(result.invitation_token)}`);
+      showCredential(`Platform user invitation created. One-time credential: ${String(result.invitation_token)}`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
   }
@@ -2781,6 +2799,7 @@ function OrganizationPolicySettings({ organization, installationRole, setMessage
 }
 
 function ManagementAPISettings({ setMessage }: { setMessage: (value: string) => void }) {
+  const showCredential = useCredentialNotice();
   const [status, setStatus] = useState<ManagementAPIStatus | null>(null);
   const [clients, setClients] = useState<Record<string, unknown>[]>([]);
   const [busy, setBusy] = useState("");
@@ -2810,7 +2829,7 @@ function ManagementAPISettings({ setMessage }: { setMessage: (value: string) => 
     try {
       const result = await api.request<Record<string, unknown>>("POST", "/v1/control/installation/management-clients", { client_id: form.get("client_id"), name: form.get("name") });
       target.reset();
-      setMessage(`Management client created. Store this secret now; it is shown once: ${String(result.client_secret)}`);
+      showCredential(`Management client created. Store this secret now; it is shown once: ${String(result.client_secret)}`);
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
@@ -2819,7 +2838,8 @@ function ManagementAPISettings({ setMessage }: { setMessage: (value: string) => 
     setBusy(clientID);
     try {
       const result = await api.request<Record<string, unknown> | undefined>(method, `/v1/control/installation/management-clients/${clientID}${method === "POST" ? "/rotate-secret" : ""}`, method === "POST" ? {} : undefined);
-      setMessage(result?.client_secret ? `Management secret rotated. Store it now; it is shown once: ${String(result.client_secret)}` : "Management client disabled. Its tokens are rejected immediately.");
+      if (result?.client_secret) showCredential(`Management secret rotated. Store it now; it is shown once: ${String(result.client_secret)}`);
+      else setMessage("Management client disabled. Its tokens are rejected immediately.");
       setRefresh((value) => value + 1);
     } catch (error) { setMessage(readError(error)); }
     finally { setBusy(""); }
@@ -3283,7 +3303,7 @@ function ControlTable({ title, items, renderActions }: { title: string; items: R
 
 function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   const failed = message.startsWith(errorMessagePrefix);
-  const persistent = failed || /one-time|store this secret now|store it now/i.test(message);
+  const persistent = failed;
   const dismissNotification = useEffectEvent(() => onDismiss());
   useEffect(() => {
     if (persistent) return;
