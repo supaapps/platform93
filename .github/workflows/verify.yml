@@ -70,7 +70,7 @@ jobs:
           jq -e 'select(.Action == "pass" and .Test == "TestGoogleProvisioningProfileDefaultsAndConcurrentLink")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestGoogleProvisioningAuditFailureRollsBack")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestGoogleProvisioningRevalidatesActiveApplication")' /tmp/integration-tests.json >/dev/null
-          for TEST in TestResourceRegistryPostgres TestResourceOAuthPostgresIsolation TestResourceOAuthPostgresConsentVersion TestResourceOAuthPostgresRefreshNarrowing TestResourceOAuthPostgresResourceBinding TestResourceOAuthPostgresLiveInvalidation TestResourceOAuthPostgresRevocationAndReplay TestResourceOAuthPostgresWorkspaceOwner; do
+          for TEST in TestResourceRegistryPostgres TestResourceOAuthPostgresIsolation TestResourceOAuthPostgresConsentVersion TestResourceOAuthPostgresRefreshNarrowing TestResourceOAuthPostgresResourceBinding TestResourceOAuthPostgresLiveInvalidation TestResourceOAuthPostgresRevocationAndReplay TestResourceOAuthPostgresRevokeRacesRefresh TestResourceOAuthPostgresWorkspaceOwner TestResourceOAuthPostgresIdentityOnlyPersonalCapability TestResourceOAuthPostgresIdentityOnlyWorkspaceCapability TestResourceOAuthHostedPostgresJourney; do
             jq -e --arg test "$TEST" 'select(.Action == "pass" and .Test == $test)' /tmp/integration-tests.json >/dev/null
           done
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
