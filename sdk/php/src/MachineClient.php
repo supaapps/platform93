@@ -16,7 +16,8 @@ use RuntimeException;
  * @phpstan-type Workspace array{id:string,application_id:string,owner_user_id:string,key:string,name:string,metadata:array<string,mixed>,status:string,version:int,created_at:string,updated_at:string}
  * @phpstan-type WorkspaceAccess array{type:string,workspace_id:string,user_id:?string,email:?string,role_keys:list<string>,invitation_id:?string,status:string,expires_at:?string}
  * @phpstan-type EntitlementGrant array{id:string,subject_type:'user'|'workspace',subject_id:string,source_type:string,feature_values:array<string,mixed>,configuration:array<string,mixed>,starts_at:string,expires_at:?string,external_reference:?string}
- * @phpstan-type BillingSummary array{subject_type:'user'|'workspace',subject_id:string,billing_profile:?array{id:string,name:?string,email:?string,tax_id:?string,version:int},subscriptions:list<array{id:string,price_id:string,provider_id:string,status:string,external_reference:?string}>}
+ * @phpstan-type Subscription array{id:string,subject_type:'user'|'workspace',subject_id:string,price_id:string,provider_id:string,provider_subscription_id:string,status:string,current_period_start:?string,current_period_end:?string,past_due_since:?string,cancel_at:?string,canceled_at:?string,trial_end:?string,cancel_at_period_end:bool,external_reference:?string}
+ * @phpstan-type BillingSummary array{subject_type:'user'|'workspace',subject_id:string,billing_profile:?array{id:string,subject_type:'user'|'workspace',subject_id:string,name:?string,email:?string,tax_id:?string,version:int},subscriptions:list<Subscription>}
  * @phpstan-type CustomEventInput array{type:string,subject:string,data:array<string,mixed>,correlation_id?:string,causation_id?:string}
  * @phpstan-type PublishedEvent array{id:string,specversion:string,source:string,type:string,subject:string,schema_version:string,data:array<string,mixed>}
  * @phpstan-type ResourceCapability array{key:string,name:string,context:'personal'|'workspace',permissions:list<string>}
@@ -140,6 +141,11 @@ final class MachineClient
     public function getBilling(string $subjectType, string $subjectId): array
     {
         return $this->request('GET', '/subjects/' . $this->subject($subjectType, $subjectId) . '/billing');
+    }
+
+    public function cancelWorkspaceBilling(string $workspaceId, string $idempotencyKey, bool $atPeriodEnd = true): void
+    {
+        $this->request('POST', '/subjects/' . $this->subject('workspace', $workspaceId) . '/billing/cancel', ['at_period_end' => $atPeriodEnd], $idempotencyKey);
     }
 
     /** @param CustomEventInput $event @return PublishedEvent */

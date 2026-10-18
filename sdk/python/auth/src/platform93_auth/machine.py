@@ -149,7 +149,15 @@ class Subscription(TypedDict):
     subject_id: str
     price_id: str
     provider_id: str
+    provider_subscription_id: str
     status: str
+    current_period_start: str | None
+    current_period_end: str | None
+    past_due_since: str | None
+    cancel_at: str | None
+    canceled_at: str | None
+    trial_end: str | None
+    cancel_at_period_end: bool
     external_reference: str | None
 
 
@@ -252,6 +260,9 @@ class MachineClient:
 
     def get_billing(self, subject_type: str, subject_id: str) -> BillingSummary:
         return cast(BillingSummary, self._request("GET", f"/subjects/{self._subject(subject_type, subject_id)}/billing"))
+
+    def cancel_workspace_billing(self, workspace_id: str, idempotency_key: str, *, at_period_end: bool = True) -> None:
+        self._request("POST", f"/subjects/{self._subject('workspace', workspace_id)}/billing/cancel", {"at_period_end": at_period_end}, idempotency_key)
 
     def publish_event(self, event: CustomEventInput, idempotency_key: str) -> PublishedEvent:
         return cast(PublishedEvent, self._request("POST", "/events", event, idempotency_key))

@@ -120,15 +120,21 @@ type BillingProfile struct {
 }
 
 type Subscription struct {
-	ID                string     `json:"id"`
-	SubjectType       string     `json:"subject_type"`
-	SubjectID         string     `json:"subject_id"`
-	PriceID           string     `json:"price_id"`
-	ProviderID        string     `json:"provider_id"`
-	Status            string     `json:"status"`
-	CurrentPeriodEnd  *time.Time `json:"current_period_end"`
-	CancelAtPeriodEnd bool       `json:"cancel_at_period_end"`
-	ExternalReference *string    `json:"external_reference"`
+	ID                     string     `json:"id"`
+	SubjectType            string     `json:"subject_type"`
+	SubjectID              string     `json:"subject_id"`
+	PriceID                string     `json:"price_id"`
+	ProviderID             string     `json:"provider_id"`
+	ProviderSubscriptionID string     `json:"provider_subscription_id"`
+	Status                 string     `json:"status"`
+	CurrentPeriodStart     *time.Time `json:"current_period_start"`
+	CurrentPeriodEnd       *time.Time `json:"current_period_end"`
+	PastDueSince           *time.Time `json:"past_due_since"`
+	CancelAt               *time.Time `json:"cancel_at"`
+	CanceledAt             *time.Time `json:"canceled_at"`
+	TrialEnd               *time.Time `json:"trial_end"`
+	CancelAtPeriodEnd      bool       `json:"cancel_at_period_end"`
+	ExternalReference      *string    `json:"external_reference"`
 }
 
 type BillingSummary struct {
@@ -264,6 +270,13 @@ func (c *Client) SubjectBilling(ctx context.Context, subjectType, subjectID stri
 	var output BillingSummary
 	err := c.request(ctx, http.MethodGet, "/subjects/"+url.PathEscape(subjectType)+"/"+url.PathEscape(subjectID)+"/billing", nil, "", &output)
 	return output, err
+}
+
+func (c *Client) CancelWorkspaceBilling(ctx context.Context, workspaceID, idempotencyKey string, atPeriodEnd bool) error {
+	input := struct {
+		AtPeriodEnd bool `json:"at_period_end"`
+	}{atPeriodEnd}
+	return c.request(ctx, http.MethodPost, "/subjects/workspace/"+url.PathEscape(workspaceID)+"/billing/cancel", input, idempotencyKey, nil)
 }
 
 func (c *Client) PublishEvent(ctx context.Context, input CustomEvent, idempotencyKey string) (PublishedEvent, error) {

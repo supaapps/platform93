@@ -20,6 +20,17 @@ RESOURCE_FIXTURE = json.loads((Path(__file__).parents[4] / "conformance" / "reso
 
 
 class ResourceTests(unittest.TestCase):
+    def test_machine_billing_cancellation(self):
+        def transport(request):
+            if request.url.path == "/oidc/token":
+                return httpx.Response(200, json={"access_token": "machine", "expires_in": 300})
+            self.assertEqual(request.url.path, f"/v1/applications/{APP}/subjects/workspace/{ID}/billing/cancel")
+            self.assertEqual(request.headers["Idempotency-Key"], "cancel-key")
+            self.assertEqual(json.loads(request.content), {"at_period_end": False})
+            return httpx.Response(204)
+        machine = MachineClient(base_url=ISSUER, application_id=APP, client_id="machine", client_secret="fixture", client=httpx.Client(transport=httpx.MockTransport(transport)))
+        self.assertIsNone(machine.cancel_workspace_billing(ID, "cancel-key", at_period_end=False))
+
     def setUp(self):
         self.verifier = Verifier(ISSUER, RESOURCE, APP)
         self.verifier.jwks = SimpleNamespace(get_signing_key_from_jwt=lambda _: SimpleNamespace(key=KEY.public_key()))
