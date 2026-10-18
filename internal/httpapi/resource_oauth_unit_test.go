@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -38,14 +39,17 @@ func TestResourceOAuthMetadataValidation(t *testing.T) {
 		})
 	}
 	cases := map[string]func(*resourceClientMetadata){
-		"identity mismatch":  func(m *resourceClientMetadata) { m.ClientID = "https://other.example.test/client.json" },
-		"confidential auth":  func(m *resourceClientMetadata) { m.TokenEndpointAuthMethod = "client_secret_basic" },
-		"missing auth":       func(m *resourceClientMetadata) { m.TokenEndpointAuthMethod = "" },
-		"machine grant":      func(m *resourceClientMetadata) { m.GrantTypes = []string{"client_credentials"} },
-		"implicit response":  func(m *resourceClientMetadata) { m.ResponseTypes = []string{"token"} },
-		"missing redirects":  func(m *resourceClientMetadata) { m.RedirectURIs = nil },
-		"too many redirects": func(m *resourceClientMetadata) { m.RedirectURIs = make([]string, 17) },
-		"long name":          func(m *resourceClientMetadata) { m.ClientName = strings.Repeat("x", 201) },
+		"missing name":            func(m *resourceClientMetadata) { m.ClientName = "" },
+		"published secret":        func(m *resourceClientMetadata) { m.ClientSecret = json.RawMessage(`"not-a-credential"`) },
+		"published secret expiry": func(m *resourceClientMetadata) { m.ClientSecretExpiresAt = json.RawMessage(`0`) },
+		"identity mismatch":       func(m *resourceClientMetadata) { m.ClientID = "https://other.example.test/client.json" },
+		"confidential auth":       func(m *resourceClientMetadata) { m.TokenEndpointAuthMethod = "client_secret_basic" },
+		"missing auth":            func(m *resourceClientMetadata) { m.TokenEndpointAuthMethod = "" },
+		"machine grant":           func(m *resourceClientMetadata) { m.GrantTypes = []string{"client_credentials"} },
+		"implicit response":       func(m *resourceClientMetadata) { m.ResponseTypes = []string{"token"} },
+		"missing redirects":       func(m *resourceClientMetadata) { m.RedirectURIs = nil },
+		"too many redirects":      func(m *resourceClientMetadata) { m.RedirectURIs = make([]string, 17) },
+		"long name":               func(m *resourceClientMetadata) { m.ClientName = strings.Repeat("x", 201) },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -55,5 +59,12 @@ func TestResourceOAuthMetadataValidation(t *testing.T) {
 				t.Fatal("invalid metadata accepted")
 			}
 		})
+	}
+	for _, suffix := range []string{"", "/a/../client.json", "/%2e/client.json"} {
+		metadata := valid()
+		metadata.ClientID = "https://client.example.test" + suffix
+		if validateResourceClientMetadata(metadata.ClientID, metadata) == nil {
+			t.Fatalf("accepted invalid metadata identity path %q", suffix)
+		}
 	}
 }

@@ -79,18 +79,25 @@ func (s *Server) resolveResourceOAuth(w http.ResponseWriter, r *http.Request) (*
 }
 
 type resourceClientMetadata struct {
-	ClientID                string   `json:"client_id"`
-	ClientName              string   `json:"client_name"`
-	RedirectURIs            []string `json:"redirect_uris"`
-	GrantTypes              []string `json:"grant_types"`
-	ResponseTypes           []string `json:"response_types"`
-	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
+	ClientID                string          `json:"client_id"`
+	ClientName              string          `json:"client_name"`
+	RedirectURIs            []string        `json:"redirect_uris"`
+	GrantTypes              []string        `json:"grant_types"`
+	ResponseTypes           []string        `json:"response_types"`
+	TokenEndpointAuthMethod string          `json:"token_endpoint_auth_method"`
+	ClientSecret            json.RawMessage `json:"client_secret,omitempty"`
+	ClientSecretExpiresAt   json.RawMessage `json:"client_secret_expires_at,omitempty"`
 }
 
 func validateResourceClientMetadata(expected string, metadata resourceClientMetadata) error {
 	u, err := url.Parse(expected)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" || metadata.ClientID != expected || len(metadata.ClientName) > 200 || len(metadata.RedirectURIs) < 1 || len(metadata.RedirectURIs) > 16 || metadata.TokenEndpointAuthMethod != "none" {
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.Path == "" || u.User != nil || u.Fragment != "" || u.RawQuery != "" || metadata.ClientID != expected || strings.TrimSpace(metadata.ClientName) == "" || len(metadata.ClientName) > 200 || len(metadata.RedirectURIs) < 1 || len(metadata.RedirectURIs) > 16 || metadata.TokenEndpointAuthMethod != "none" || len(metadata.ClientSecret) > 0 || len(metadata.ClientSecretExpiresAt) > 0 {
 		return errors.New("invalid published client metadata")
+	}
+	for _, segment := range strings.Split(u.Path, "/") {
+		if segment == "." || segment == ".." {
+			return errors.New("invalid metadata identity path")
+		}
 	}
 	for _, value := range metadata.GrantTypes {
 		if value != "authorization_code" && value != "refresh_token" {
@@ -158,6 +165,10 @@ func (s *Server) ensureResourceMetadataClient(ctx context.Context, resource *OAu
 		return err
 	}
 	digest := sha256.Sum256(raw)
+	grants := metadata.GrantTypes
+	if len(grants) == 0 {
+		grants = []string{"authorization_code"}
+	}
 	tx, err := s.app.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -170,12 +181,12 @@ func (s *Server) ensureResourceMetadataClient(ctx context.Context, resource *OAu
 	err = tx.QueryRow(ctx, `SELECT client_database_id FROM oauth_resource_clients WHERE resource_id=$1 AND client_id=$2`, resource.ID, clientID).Scan(&databaseID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		databaseID = kernel.NewID().String()
-		_, err = tx.Exec(ctx, `INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,pkce_required,authorization_ui,resource_only) VALUES($1,$2,$3,$4,'public',$5,ARRAY['authorization_code','refresh_token'],ARRAY['openid','profile','email','offline_access'],true,'hosted',true)`, databaseID, resource.ApplicationID, "p93_resource_"+databaseID, metadata.ClientName, metadata.RedirectURIs)
+		_, err = tx.Exec(ctx, `INSERT INTO clients(id,application_id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,pkce_required,authorization_ui,resource_only) VALUES($1,$2,$3,$4,'public',$5,$6,ARRAY['openid','profile','email','offline_access'],true,'hosted',true)`, databaseID, resource.ApplicationID, "p93_resource_"+databaseID, metadata.ClientName, metadata.RedirectURIs, grants)
 		if err == nil {
 			_, err = tx.Exec(ctx, `INSERT INTO oauth_resource_clients(application_id,resource_id,client_id,client_database_id,metadata_digest) VALUES($1,$2,$3,$4,$5)`, resource.ApplicationID, resource.ID, clientID, databaseID, digest[:])
 		}
 	} else if err == nil {
-		result, updateErr := tx.Exec(ctx, `UPDATE clients SET name=$1,redirect_uris=$2,updated_at=now() WHERE id=$3 AND application_id=$4 AND resource_only AND disabled_at IS NULL`, metadata.ClientName, metadata.RedirectURIs, databaseID, resource.ApplicationID)
+		result, updateErr := tx.Exec(ctx, `UPDATE clients SET name=$1,redirect_uris=$2,allowed_grants=$5,updated_at=now() WHERE id=$3 AND application_id=$4 AND resource_only AND disabled_at IS NULL`, metadata.ClientName, metadata.RedirectURIs, databaseID, resource.ApplicationID, grants)
 		err = updateErr
 		if err == nil && result.RowsAffected() != 1 {
 			err = errors.New("published client disabled")
@@ -370,6 +381,7 @@ func (s *Server) authorizeResource(w http.ResponseWriter, r *http.Request, provi
 		}
 	}
 	seen = map[string]bool{}
+	workspaceCapability := false
 	for _, key := range capabilities {
 		if seen[key] {
 			fail(fosite.ErrInvalidScope)
@@ -392,6 +404,7 @@ func (s *Server) authorizeResource(w http.ResponseWriter, r *http.Request, provi
 					return
 				}
 			} else {
+				workspaceCapability = true
 				if len(workspaces) == 0 {
 					fail(fosite.ErrAccessDenied)
 					return
@@ -410,6 +423,10 @@ func (s *Server) authorizeResource(w http.ResponseWriter, r *http.Request, provi
 			fail(fosite.ErrInvalidScope)
 			return
 		}
+	}
+	if len(workspaces) > 0 && !workspaceCapability {
+		fail(fosite.ErrInvalidRequest.WithHint("Workspace selection requires an approved workspace capability."))
+		return
 	}
 	if personal {
 		hasPersonal := false

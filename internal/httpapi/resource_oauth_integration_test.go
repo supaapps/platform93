@@ -344,6 +344,37 @@ func TestResourceOAuthPostgresApprovedCapabilityCeiling(t *testing.T) {
 	}
 }
 
+func TestResourceOAuthPostgresClientGrantPolicy(t *testing.T) {
+	f := newResourceOAuthFixture(t)
+	f.exec(`UPDATE clients SET allowed_grants=ARRAY['authorization_code'] WHERE id=$1`, f.client)
+	tokens := f.resourceTokens(f.authorizationForm("billing:read"))
+	if _, present := tokens["refresh_token"]; present {
+		t.Fatal("resource authorization expanded the registered client's grant types")
+	}
+	f.assertCheck(tokens["access_token"].(string), "billing:read", nil, true)
+}
+
+func TestResourceOAuthPostgresRejectsPersonalWorkspaceSelection(t *testing.T) {
+	for _, foreign := range []bool{false, true} {
+		f := newResourceOAuthFixture(t)
+		workspace := kernel.NewID().String()
+		if !foreign {
+			f.exec(`INSERT INTO workspaces(id,application_id,owner_user_id,key,name) VALUES($1,$2,$3,'selected','Selected workspace')`, workspace, f.application, f.user)
+		}
+		form := f.authorizationForm("billing:read")
+		form.Set("workspace_ids", `["`+workspace+`"]`)
+		w := f.call("POST", "/oidc/authorize", form, f.accessToken(false), "192.0.2.1")
+		destination, _ := url.Parse(w.Header().Get("Location"))
+		if destination == nil || destination.Query().Get("error") != "invalid_request" {
+			t.Fatalf("personal-only workspace selection must be invalid_request, not server_error: %d %s %s", w.Code, w.Body, w.Header().Get("Location"))
+		}
+		var count int
+		if err := f.app.DB.QueryRow(context.Background(), `SELECT count(*) FROM oauth_connections`).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("invalid selection persisted a connection: %d %v", count, err)
+		}
+	}
+}
+
 func TestResourceOAuthPostgresInvalidConsent(t *testing.T) {
 	cases := map[string]func(*resourceOAuthFixture, url.Values){
 		"unrequested capability": func(f *resourceOAuthFixture, v url.Values) { v.Set("approved_capabilities", `["billing:write"]`) },

@@ -127,7 +127,9 @@ FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AN
 		}
 		audiences = []string{s.ResourceURI}
 		scopes = append([]string{"openid", "email", "profile", "offline_access"}, s.ResourceScopes...)
-		grants = []string{"authorization_code", "refresh_token"}
+		if !fosite.Arguments(grants).Has("authorization_code") {
+			return nil, fosite.ErrNotFound
+		}
 	}
 	client := &fosite.DefaultClient{
 		ID: clientID, Secret: secret, RedirectURIs: redirects, GrantTypes: grants,
