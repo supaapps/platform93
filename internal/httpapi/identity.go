@@ -377,7 +377,7 @@ func (s *Server) emailStart(w http.ResponseWriter, r *http.Request) {
 	if request.RedirectURI != "" {
 		var redirectAllowed bool
 		err := s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients
-WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris))`, chi.URLParam(r, "application_id"), request.RedirectURI).Scan(&redirectAllowed)
+WHERE application_id=$1 AND disabled_at IS NULL AND NOT resource_only AND $2=ANY(redirect_uris))`, chi.URLParam(r, "application_id"), request.RedirectURI).Scan(&redirectAllowed)
 		if err != nil || (!redirectAllowed && !hostedProviderRedirectAllowed(r, request.RedirectURI)) {
 			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "redirect_uri_not_allowed", "The redirect URI is not registered for this application.")
 			return

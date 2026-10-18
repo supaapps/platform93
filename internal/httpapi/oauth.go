@@ -32,7 +32,7 @@ func (s *Server) resolveOAuthApplication(next http.Handler) http.Handler {
 		application := ""
 		if clientID != "" {
 			_ = s.app.DB.QueryRow(r.Context(), `SELECT application_id FROM clients
-WHERE client_id=$1 AND disabled_at IS NULL`, clientID).Scan(&application)
+WHERE client_id=$1 AND disabled_at IS NULL AND NOT resource_only`, clientID).Scan(&application)
 		}
 		if application == "" {
 			if managementRequest, ok := s.resolveManagementOAuthClient(r, clientID); ok {

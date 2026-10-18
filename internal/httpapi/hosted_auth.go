@@ -191,7 +191,7 @@ func (s *Server) startHostedAuthorization(w http.ResponseWriter, r *http.Request
 	}
 	var id, name, ui string
 	var required bool
-	e := s.app.DB.QueryRow(r.Context(), `SELECT id,name,authorization_ui,pkce_required FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL`, chi.URLParam(r, "application_id"), request.GetClient().GetID()).Scan(&id, &name, &ui, &required)
+	e := s.app.DB.QueryRow(r.Context(), `SELECT id,name,authorization_ui,pkce_required FROM clients WHERE application_id=$1 AND client_id=$2 AND disabled_at IS NULL AND NOT resource_only`, chi.URLParam(r, "application_id"), request.GetClient().GetID()).Scan(&id, &name, &ui, &required)
 	if resource := resourceFromRequest(r); resource != nil {
 		id, e = s.resourceClientDatabaseID(r.Context(), resource, request.GetClient().GetID())
 		if e == nil {

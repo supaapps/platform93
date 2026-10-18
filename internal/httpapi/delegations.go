@@ -47,7 +47,7 @@ func (s *Server) createDelegation(w http.ResponseWriter, r *http.Request) {
 	}
 	var redirectAllowed, userActive bool
 	err = s.app.DB.QueryRow(r.Context(), `SELECT
-EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris)),
+EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND NOT resource_only AND $2=ANY(redirect_uris)),
 EXISTS(SELECT 1 FROM users WHERE id=$3 AND application_id=$1 AND status='active')`, applicationID, request.RedirectURI, request.UserID).
 		Scan(&redirectAllowed, &userActive)
 	if err != nil || !redirectAllowed || !userActive {

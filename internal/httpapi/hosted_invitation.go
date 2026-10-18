@@ -22,7 +22,7 @@ func (s *Server) hostedInvitationClient(ctx context.Context, application, id, ca
 	}
 	var client, start string
 	var redirects []string
-	err := s.app.DB.QueryRow(ctx, `SELECT client_id,initiate_login_uri,redirect_uris FROM clients WHERE id=$1 AND application_id=$2 AND disabled_at IS NULL AND authorization_ui='hosted'`, id, application).Scan(&client, &start, &redirects)
+	err := s.app.DB.QueryRow(ctx, `SELECT client_id,initiate_login_uri,redirect_uris FROM clients WHERE id=$1 AND application_id=$2 AND disabled_at IS NULL AND NOT resource_only AND authorization_ui='hosted'`, id, application).Scan(&client, &start, &redirects)
 	if err != nil || start == "" || !stringSliceContains(redirects, callback) || validateHostedInitiationURI(start) != nil {
 		return "", "", errors.New("configure a hosted client, its registered callback and application sign-in/start URL")
 	}

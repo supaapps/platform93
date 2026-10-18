@@ -419,7 +419,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, chi.URLParam(r, "applicati
 
 func (s *Server) listClients(w http.ResponseWriter, r *http.Request) {
 	query, args, limit, ok := referenceSearch(w, r, `SELECT id,client_id,name,client_type,redirect_uris,allowed_grants,allowed_scopes,created_at,authorization_ui,pkce_required,initiate_login_uri
-FROM clients WHERE application_id=$1 AND disabled_at IS NULL`, []any{chi.URLParam(r, "application_id")}, "id", "name", "client_id")
+FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND NOT resource_only`, []any{chi.URLParam(r, "application_id")}, "id", "name", "client_id")
 	if !ok {
 		return
 	}

@@ -151,6 +151,12 @@ on the resource and are never registered through an unrestricted DCR endpoint.
 Metadata fetches are size/time bounded, reject redirects and non-public network
 targets, and are cached for five minutes. Metadata credentials are not supported.
 
+Published metadata clients are resource-only. Their redirect URIs do not become
+ordinary application sign-in callbacks, invitation destinations, billing return
+URLs, or trusted application CORS origins. Resource login uses the hosted
+interaction and returns to the external client only after explicit resource
+consent; it never grants an ordinary application session to that client.
+
 The callback includes `code`, `state`, and `iss`; validate state and the exact
 expected issuer before exchanging the code. Public clients submit:
 

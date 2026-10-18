@@ -757,7 +757,7 @@ func (s *Server) billingRedirectAllowed(r *http.Request, value string) bool {
 	}
 	var allowed bool
 	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM clients
-WHERE application_id=$1 AND disabled_at IS NULL AND $2=ANY(redirect_uris))`, chi.URLParam(r, "application_id"), value).Scan(&allowed)
+WHERE application_id=$1 AND disabled_at IS NULL AND NOT resource_only AND $2=ANY(redirect_uris))`, chi.URLParam(r, "application_id"), value).Scan(&allowed)
 	return allowed
 }
 func stringSlice(value any) []string {
