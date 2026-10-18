@@ -5,6 +5,29 @@ const org = { id: "01900000-0000-7000-8000-000000000101", name: "Navigation Org"
 const app = { id: "01900000-0000-7000-8000-000000000102", organization_id: org.id, name: "Navigation App", slug: "nav-app", issuer: "http://localhost:8093/oidc" };
 const product = { id: "01900000-0000-7000-8000-000000000103", key: "standard", name: "Standard", version: 1 };
 
+test("one-time client credentials stay visible until explicitly dismissed", async ({ page }) => {
+  await mockAdmin(page);
+  await page.clock.install();
+  await page.route(`**/v1/control/applications/${app.id}/clients`, async (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({ status: 201, json: { id: "machine-fixture", client_secret: "p93_client_test_only" } });
+    }
+    return route.fulfill({ json: { items: [], next_cursor: null } });
+  });
+  await page.goto(`/?context=application&application_id=${app.id}&section=identity&resource=clients`);
+  await page.getByRole("button", { name: "Create OAuth client", exact: true }).click();
+  await page.getByLabel("Client ID", { exact: true }).fill("automation");
+  await page.getByLabel("Name", { exact: true }).fill("Automation");
+  await page.getByLabel("Type", { exact: true }).fill("machine");
+  await page.getByLabel("Grants, comma separated", { exact: true }).fill("client_credentials");
+  await page.getByRole("button", { name: "Create OAuth client", exact: true }).click();
+  await expect(page.locator(".toast-success")).toContainText("p93_client_test_only");
+  await page.clock.runFor(10_000);
+  await expect(page.locator(".toast-success")).toContainText("p93_client_test_only");
+  await page.getByRole("button", { name: "Dismiss notification" }).click();
+  await expect(page.locator(".toast-success")).toHaveCount(0);
+});
+
 test("immutable prices retain configured trial and tax policies", async ({ page }) => {
   await mockAdmin(page);
   const policy = { trial_period_days: 14, single_subscription: true, trial_once_per_subject: true, automatic_tax: true, billing_address_required: true };

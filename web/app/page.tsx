@@ -3283,12 +3283,13 @@ function ControlTable({ title, items, renderActions }: { title: string; items: R
 
 function Toast({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   const failed = message.startsWith(errorMessagePrefix);
+  const persistent = failed || /one-time|store this secret now|store it now/i.test(message);
   const dismissNotification = useEffectEvent(() => onDismiss());
   useEffect(() => {
-    if (failed) return;
+    if (persistent) return;
     const timeout = window.setTimeout(() => dismissNotification(), 4000);
     return () => window.clearTimeout(timeout);
-  }, [failed, message]);
+  }, [persistent, message]);
   return <div className={`toast ${failed ? "toast-error" : "toast-success"}`} role={failed ? "alert" : "status"} aria-live={failed ? "assertive" : "polite"}>
     <div><strong>{failed ? "Request failed" : "Completed"}</strong><span>{toastBody(message)}</span></div>
     <button onClick={onDismiss} aria-label="Dismiss notification">Dismiss</button>
