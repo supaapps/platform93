@@ -13,13 +13,14 @@ import (
 )
 
 type applicationInternalConfig struct {
-	RegistrationMode       string   `json:"registration_mode"`
-	PasswordEnabled        bool     `json:"password_enabled"`
-	PasswordlessEnabled    bool     `json:"passwordless_enabled"`
-	PersonalAPIKeysEnabled bool     `json:"personal_api_keys_enabled"`
-	DelegationEnabled      bool     `json:"delegation_enabled"`
-	UserInvitationsEnabled bool     `json:"user_invitations_enabled"`
-	CustomTokenClaimKeys   []string `json:"custom_token_claim_keys"`
+	RegistrationMode             string   `json:"registration_mode"`
+	PasswordEnabled              bool     `json:"password_enabled"`
+	PasswordlessEnabled          bool     `json:"passwordless_enabled"`
+	PersonalAPIKeysEnabled       bool     `json:"personal_api_keys_enabled"`
+	DelegationEnabled            bool     `json:"delegation_enabled"`
+	UserInvitationsEnabled       bool     `json:"user_invitations_enabled"`
+	ResourceAuthorizationEnabled bool     `json:"resource_authorization_enabled"`
+	CustomTokenClaimKeys         []string `json:"custom_token_claim_keys"`
 }
 
 func defaultApplicationInternalConfig() applicationInternalConfig {
@@ -80,7 +81,7 @@ func (s *Server) updateInternalApplicationConfig(w http.ResponseWriter, r *http.
 	allowed := map[string]bool{
 		"registration_mode": true, "password_enabled": true, "passwordless_enabled": true,
 		"personal_api_keys_enabled": true, "delegation_enabled": true, "user_invitations_enabled": true,
-		"custom_token_claim_keys": true,
+		"custom_token_claim_keys": true, "resource_authorization_enabled": true,
 	}
 	for key := range raw {
 		if !allowed[key] {
@@ -135,6 +136,11 @@ func (s *Server) updateInternalApplicationConfig(w http.ResponseWriter, r *http.
 		case "user_invitations_enabled":
 			if json.Unmarshal(value, &current.UserInvitationsEnabled) != nil {
 				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_internal_config", "user_invitations_enabled must be boolean.")
+				return
+			}
+		case "resource_authorization_enabled":
+			if string(value) == "null" || json.Unmarshal(value, &current.ResourceAuthorizationEnabled) != nil {
+				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_internal_config", "resource_authorization_enabled must be boolean.")
 				return
 			}
 		case "custom_token_claim_keys":

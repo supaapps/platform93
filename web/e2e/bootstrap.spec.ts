@@ -421,6 +421,7 @@ test("validates public configuration and applies internal application policy", a
     personal_api_keys_enabled: true,
     delegation_enabled: true,
     user_invitations_enabled: false,
+    resource_authorization_enabled: false,
     custom_token_claim_keys: [],
   });
   expect(internalIfMatch).toBe('"v2"');

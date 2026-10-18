@@ -1,0 +1,12 @@
+{
+  "specversion": "1.0",
+  "id": "01900000-0000-7000-8000-000000000011",
+  "source": "https://platform93.example",
+  "type": "resource.created",
+  "contract_source": "platform93",
+  "subject": "resource/01900000-0000-7000-8000-000000000004",
+  "time": "2026-10-18T10:00:00Z",
+  "application_id": "01900000-0000-7000-8000-000000000002",
+  "schema_version": "1.0",
+  "data": { "resource_id": "01900000-0000-7000-8000-000000000004", "version": 1 }
+}

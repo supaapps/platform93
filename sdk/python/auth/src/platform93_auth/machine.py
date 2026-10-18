@@ -6,6 +6,7 @@ from typing import NotRequired, TypedDict, cast
 from urllib.parse import quote
 
 import httpx
+from .resource_models import ResourceAccessCheckRequest, ResourceAccessCheckResponse
 
 
 JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
@@ -230,6 +231,9 @@ class MachineClient:
 
     def list_users(self) -> UserPage:
         return cast(UserPage, self._request("GET", "/users"))
+
+    def check_resource_access(self, request: ResourceAccessCheckRequest) -> ResourceAccessCheckResponse:
+        return cast(ResourceAccessCheckResponse, self._request("POST", "/service/resource-access/check", dict(request)))
 
     def get_user(self, user_id: str) -> User:
         return cast(User, self._request("GET", f"/users/{quote(user_id, safe='')}"))

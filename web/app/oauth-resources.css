@@ -1,0 +1,12 @@
+.oauth-resources { min-width: 0; }
+.oauth-resources > p { color: var(--muted); line-height: 1.6; }
+.oauth-resources > a { display: inline-block; margin: 18px 0; }
+.oauth-resources :is(code, pre, article a) { overflow-wrap: anywhere; }
+.oauth-resources pre { white-space: pre-wrap; padding: 18px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; line-height: 1.6; }
+.oauth-resources .inline-editor { margin: 20px 0; padding: 20px; background: var(--p93-light-raised); border-left: 4px solid var(--acid); }
+.oauth-resources .inline-editor fieldset { min-width: 0; margin: 0 0 18px; padding: 16px 0; border: 0; border-top: 1px solid var(--line); }
+.oauth-resources .inline-editor legend { color: var(--ink); font-size: 12px; font-weight: 700; padding-right: 10px; }
+.oauth-resources .inline-editor button { margin: 14px 12px 0 0; }
+.oauth-resources .inline-editor small { text-transform: none; letter-spacing: 0; line-height: 1.6; }
+.oauth-resources section[aria-label="Connection detail"] > a { display: inline-block; margin: 14px; }
+@media (max-width: 760px) { .oauth-resources .inline-editor { padding: 14px; } .oauth-resources .table article { flex-wrap: wrap; gap: 12px; } }

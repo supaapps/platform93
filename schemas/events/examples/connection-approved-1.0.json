@@ -1,0 +1,12 @@
+{
+  "specversion": "1.0",
+  "id": "01900000-0000-7000-8000-000000000013",
+  "source": "https://platform93.example",
+  "type": "connection.approved",
+  "contract_source": "platform93",
+  "subject": "connection/01900000-0000-7000-8000-000000000005",
+  "time": "2026-10-18T10:02:00Z",
+  "application_id": "01900000-0000-7000-8000-000000000002",
+  "schema_version": "1.0",
+  "data": { "connection_id": "01900000-0000-7000-8000-000000000005", "resource_id": "01900000-0000-7000-8000-000000000004", "version": 1 }
+}

@@ -1,7 +1,7 @@
 import { useSyncExternalStore, type MouseEvent } from "react";
 
 const navigationEvent = "platform93:navigation";
-const keys = ["context", "organization_id", "application_id", "section", "resource", "id", "panel"] as const;
+const keys = ["context", "organization_id", "application_id", "section", "resource", "id", "panel", "connection_id"] as const;
 export type AdminRoute = Partial<Record<typeof keys[number], string>>;
 
 function subscribe(callback: () => void) {

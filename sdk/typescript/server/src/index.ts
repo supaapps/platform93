@@ -9,7 +9,11 @@ import {
   type PublishCustomEvent,
   type PublishedEvent,
   type User,
+  type ResourceAccessCheckRequest,
+  type ResourceAccessCheckResponse,
 } from "@supaapps/platform93-sdk";
+export * from "./resource.js";
+export type { OAuthResource, ResourceCapability, OAuthConnection, ResourceAccessCheckRequest, ResourceAccessCheckResponse } from "@supaapps/platform93-sdk";
 
 export type Platform93Claims = JWTPayload & {
   application_id: string;
@@ -182,6 +186,9 @@ export class Platform93MachineClient {
   resendInvitation(id: string) { return this.request<generated.InvitationResent>("POST", `/invitations/${encodeURIComponent(id)}/resend`); }
   revokeInvitation(id: string) { return this.request<void>("DELETE", `/invitations/${encodeURIComponent(id)}`); }
   listUsers() { return this.request<Page<User>>("GET", "/users"); }
+  checkResourceAccess(input: ResourceAccessCheckRequest) {
+    return this.request<ResourceAccessCheckResponse>("POST", "/service/resource-access/check", input);
+  }
   getUser(id: string) { return this.request<User>("GET", `/users/${encodeURIComponent(id)}`); }
   listWorkspaces() { return this.request<generated.WorkspacePage>("GET", "/workspaces"); }
   getWorkspace(id: string) { return this.request<generated.Workspace>("GET", `/service/workspaces/${encodeURIComponent(id)}`); }

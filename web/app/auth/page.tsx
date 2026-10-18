@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { ProviderIcon } from "../provider-icon";
+import { ResourceConsentForm, type ResourceConsent } from "./resource-consent";
 import "./hosted.css";
 
 type Branding = {
@@ -17,6 +18,7 @@ type View = {
   requested_scopes: string[]; providers: string[]; password_enabled: boolean;
   passwordless_enabled: boolean; registration_enabled: boolean; ui_locales: string;
   verification_pending?: boolean;
+  resource_consent?: ResourceConsent;
 };
 type Result = View | { redirect_url: string };
 type PasskeyOptions = { options: { publicKey: Omit<PublicKeyCredentialRequestOptions, "challenge" | "allowCredentials"> & { challenge: string; allowCredentials?: { id: string; type: "public-key"; transports?: AuthenticatorTransport[] }[] } } };
@@ -152,7 +154,7 @@ export default function HostedAuthentication() {
         {view.user && !view.user.email_verified && <details open={verificationSent}><summary>Verify your email address</summary>{verificationSent ? <form onSubmit={(event) => { event.preventDefault(); const code = new FormData(event.currentTarget).get("code"); void action({ action: "verify_email", code }).then((result) => { if (result) setNotice("Email verified."); }); }}><label>Verification code<input required name="code" maxLength={8} autoComplete="one-time-code" /></label><button disabled={busy}>Verify email</button></form> : <button disabled={busy} onClick={() => void action({ action: "verify_email_start" }).then((result) => { if (result) setNotice("A verification code has been sent."); })}>Send verification code</button>}</details>}
         {view.consent_required && <><p>This application requests:</p><ul>{view.requested_scopes.map((scope) => <li key={scope}>{({ openid: "Your account identifier", email: "Your email and verification status", profile: "Your name and profile", offline_access: "Access while you are away" } as Record<string, string>)[scope] || scope}</li>)}</ul></>}
         {view.requested_scopes.includes("email") && !view.user?.email_verified && <p>Verify your email before sharing it with this application.</p>}
-        <button className="hosted-primary" disabled={busy || view.requested_scopes.includes("email") && !view.user?.email_verified} onClick={() => void action({ action: "approve" })}>{busy ? "Continuing..." : "Continue"}</button>
+        {view.resource_consent ? <ResourceConsentForm key={JSON.stringify([view.interaction_id, view.user, view.resource_consent])} consent={view.resource_consent} disabled={busy || view.requested_scopes.includes("email") && !view.user?.email_verified} approve={(body) => void action(body)} /> : <button className="hosted-primary" disabled={busy || view.requested_scopes.includes("email") && !view.user?.email_verified} onClick={() => void action({ action: "approve" })}>{busy ? "Continuing..." : "Continue"}</button>}
         <div className="hosted-links"><button disabled={busy} onClick={() => void action({ action: "switch_account" })}>Use another account</button><button disabled={busy} onClick={() => void action({ action: "deny" })}>Cancel</button></div>
       </div> : view.stage === "invitation" ? <div><p>Accept your invitation to continue to this application.</p>{view.providers.length ? view.providers.map((provider) => <button className="hosted-primary" disabled={busy} key={provider} onClick={() => void action({ action: "provider", provider })}><ProviderIcon provider={provider} /> Accept with {provider}</button>) : <button className="hosted-primary" disabled={busy} onClick={() => void action({ action: "invitation" })}>{busy ? "Accepting..." : "Accept invitation"}</button>}<button className="hosted-cancel" disabled={busy} onClick={() => void action({ action: "deny" })}>Cancel</button></div> : <>
         {loginStage && view.providers.length > 0 && <div className="hosted-providers">{view.providers.map((provider) => <button key={provider} disabled={busy} onClick={() => void action({ action: "provider", provider })}><ProviderIcon provider={provider} /><span>Continue with {provider.charAt(0).toUpperCase() + provider.slice(1)}</span></button>)}</div>}

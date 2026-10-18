@@ -916,8 +916,10 @@ func (s *Server) discovery(w http.ResponseWriter, r *http.Request) {
 		"response_types_supported": []string{"code"}, "response_modes_supported": []string{"query"},
 		"grant_types_supported":            []string{"authorization_code", "refresh_token", "client_credentials"},
 		"code_challenge_methods_supported": []string{"S256"}, "id_token_signing_alg_values_supported": []string{"RS256"},
-		"token_endpoint_auth_methods_supported": []string{"none", "client_secret_basic", "client_secret_post"},
-		"scopes_supported":                      []string{"openid", "profile", "email", "offline_access"}, "subject_types_supported": []string{"public"},
+		"authorization_response_iss_parameter_supported": true,
+		"client_id_metadata_document_supported":          true,
+		"token_endpoint_auth_methods_supported":          []string{"none", "client_secret_basic", "client_secret_post"},
+		"scopes_supported":                               []string{"openid", "profile", "email", "offline_access"}, "subject_types_supported": []string{"public"},
 		"claims_supported": []string{"sub", "iss", "aud", "exp", "iat", "auth_time", "nonce", "actor_type", "application_id", "scope", "roles", "email", "email_verified", "given_name", "family_name", "locale", "is_org_verified", "custom_claims"},
 	})
 }

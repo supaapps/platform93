@@ -70,6 +70,9 @@ jobs:
           jq -e 'select(.Action == "pass" and .Test == "TestGoogleProvisioningProfileDefaultsAndConcurrentLink")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestGoogleProvisioningAuditFailureRollsBack")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestGoogleProvisioningRevalidatesActiveApplication")' /tmp/integration-tests.json >/dev/null
+          for TEST in TestResourceRegistryPostgres TestResourceOAuthPostgresIsolation TestResourceOAuthPostgresConsentVersion TestResourceOAuthPostgresRefreshNarrowing TestResourceOAuthPostgresResourceBinding TestResourceOAuthPostgresLiveInvalidation TestResourceOAuthPostgresRevocationAndReplay TestResourceOAuthPostgresWorkspaceOwner; do
+            jq -e --arg test "$TEST" 'select(.Action == "pass" and .Test == $test)' /tmp/integration-tests.json >/dev/null
+          done
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
       - run: go run ./cmd/platform93 migrate
       - run: go run github.com/pressly/goose/v3/cmd/goose@v3.24.3 -dir migrations postgres "$PLATFORM93_DATABASE_URL" down
@@ -107,6 +110,7 @@ jobs:
       - run: composer install --no-interaction --prefer-dist
       - run: composer audit --no-interaction
       - run: php sdk/php/tests/conformance.php && php sdk/php/tests/auth_conformance.php
+      - run: php sdk/php/tests/resource_authorization.php
       - run: find sdk/php/src -name '*.php' -print0 | xargs -0 -n1 php -l
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
@@ -116,6 +120,7 @@ jobs:
       - run: pip-audit
       - run: python -m pip check
       - run: PYTHONPATH=sdk/python/auth/src python sdk/python/auth/tests/conformance.py
+      - run: PYTHONPATH=sdk/python/auth/src python -m unittest discover -s sdk/python/auth/tests -p 'test_resources.py'
       - run: PYTHONPATH=sdk/python/webhooks/src python sdk/python/webhooks/tests/conformance.py
 
   consumers:
