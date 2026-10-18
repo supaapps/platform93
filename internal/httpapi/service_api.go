@@ -74,7 +74,7 @@ func (s *Server) serviceSubjectBilling(w http.ResponseWriter, r *http.Request) {
 	var email, taxID *string
 	var version int64
 	_ = s.app.DB.QueryRow(r.Context(), `SELECT name,email,tax_id,version FROM billing_profiles WHERE id=$1`, profileID).Scan(&name, &email, &taxID, &version)
-	rows, err := s.app.DB.Query(r.Context(), `SELECT id,price_id,status,current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,external_reference,created_at,updated_at
+	rows, err := s.app.DB.Query(r.Context(), `SELECT id,price_id,status,current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,external_reference,created_at,updated_at,past_due_since,provider_connection_id
 FROM subscriptions WHERE application_id=$1 AND subject_type=$2 AND subject_id=$3 ORDER BY created_at DESC`, applicationID, subjectType, subjectID)
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "database_error", "Billing information could not be loaded.")
@@ -83,14 +83,15 @@ FROM subscriptions WHERE application_id=$1 AND subject_type=$2 AND subject_id=$3
 	defer rows.Close()
 	subscriptions := []map[string]any{}
 	for rows.Next() {
-		var id, price, status string
+		var id, price, status, providerID string
 		var periodStart, periodEnd, cancelAt, canceledAt, trialEnd *time.Time
+		var pastDueSince *time.Time
 		var cancel bool
 		var external *string
 		var created, updated time.Time
-		if rows.Scan(&id, &price, &status, &periodStart, &periodEnd, &cancelAt, &canceledAt, &trialEnd, &cancel, &external, &created, &updated) == nil {
-			subscriptions = append(subscriptions, map[string]any{"id": id, "price_id": price, "status": status, "current_period_start": periodStart, "current_period_end": periodEnd, "cancel_at": cancelAt, "canceled_at": canceledAt, "trial_end": trialEnd, "cancel_at_period_end": cancel, "external_reference": external, "created_at": created, "updated_at": updated})
+		if rows.Scan(&id, &price, &status, &periodStart, &periodEnd, &cancelAt, &canceledAt, &trialEnd, &cancel, &external, &created, &updated, &pastDueSince, &providerID) == nil {
+			subscriptions = append(subscriptions, map[string]any{"id": id, "price_id": price, "status": status, "current_period_start": periodStart, "current_period_end": periodEnd, "cancel_at": cancelAt, "canceled_at": canceledAt, "trial_end": trialEnd, "cancel_at_period_end": cancel, "external_reference": external, "created_at": created, "updated_at": updated, "past_due_since": pastDueSince, "provider_id": providerID, "subject_type": subjectType, "subject_id": subjectID})
 		}
 	}
-	kernel.WriteJSON(w, 200, map[string]any{"subject_type": subjectType, "subject_id": subjectID, "billing_profile": map[string]any{"id": profileID, "name": name, "email": email, "tax_id": taxID, "version": version}, "subscriptions": subscriptions})
+	kernel.WriteJSON(w, 200, map[string]any{"subject_type": subjectType, "subject_id": subjectID, "billing_profile": map[string]any{"id": profileID, "name": name, "email": email, "tax_id": taxID, "version": version, "subject_type": subjectType, "subject_id": subjectID}, "subscriptions": subscriptions})
 }

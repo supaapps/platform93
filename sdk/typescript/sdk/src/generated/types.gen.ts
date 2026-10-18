@@ -625,6 +625,13 @@ export type PortalSession = {
     portal_uri: string;
 };
 
+export type SubjectBillingSummary = {
+    subject_type: 'user' | 'workspace';
+    subject_id: Uuid;
+    billing_profile: BillingProfile;
+    subscriptions: Array<Subscription>;
+};
+
 export type Subscription = {
     id: Uuid;
     subject_type: 'user' | 'workspace';
@@ -635,6 +642,10 @@ export type Subscription = {
     status: string;
     current_period_start?: string | null;
     current_period_end?: string | null;
+    /**
+     * First observed transition into the current past-due episode; repeated events do not extend it. Cleared on recovery.
+     */
+    past_due_since?: string | null;
     cancel_at_period_end?: boolean;
     external_reference?: string | null;
     created_at?: string;
@@ -6638,7 +6649,7 @@ export type ServiceGetSubjectBillingResponses = {
     /**
      * Subject billing profile and subscription summary
      */
-    200: BillingSummary;
+    200: SubjectBillingSummary;
 };
 
 export type ServiceGetSubjectBillingResponse = ServiceGetSubjectBillingResponses[keyof ServiceGetSubjectBillingResponses];

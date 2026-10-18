@@ -101,12 +101,13 @@ WHERE provider_connection_id=$1 AND provider_subscription_id=$2`, connectionID, 
 	var subscriptionID, productID string
 	err = tx.QueryRow(ctx, `INSERT INTO subscriptions
 (id,application_id,subject_type,subject_id,price_id,provider_connection_id,provider_subscription_id,provider_item_id,status,
-current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,metadata,external_reference)
-VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),$9,$10,$11,$12,$13,$14,$15,$16,$17)
+current_period_start,current_period_end,cancel_at,canceled_at,trial_end,cancel_at_period_end,metadata,external_reference,past_due_since)
+VALUES($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),$9,$10,$11,$12,$13,$14,$15,$16,$17,CASE WHEN $9='past_due' THEN now() END)
 ON CONFLICT(provider_connection_id,provider_subscription_id) DO UPDATE SET
 price_id=EXCLUDED.price_id,provider_item_id=COALESCE(EXCLUDED.provider_item_id,subscriptions.provider_item_id),status=EXCLUDED.status,
 current_period_start=EXCLUDED.current_period_start,current_period_end=EXCLUDED.current_period_end,cancel_at=EXCLUDED.cancel_at,
 canceled_at=EXCLUDED.canceled_at,trial_end=EXCLUDED.trial_end,cancel_at_period_end=EXCLUDED.cancel_at_period_end,
+past_due_since=CASE WHEN EXCLUDED.status='past_due' THEN COALESCE(subscriptions.past_due_since,EXCLUDED.past_due_since) END,
 metadata=EXCLUDED.metadata,external_reference=COALESCE(EXCLUDED.external_reference,subscriptions.external_reference),updated_at=now() RETURNING id`, kernel.NewID(), applicationID, subjectType, subjectID, priceID,
 		connectionID, providerSubscriptionID, providerItemID, status, periodStart, periodEnd, unixTimeValue(object["cancel_at"]),
 		unixTimeValue(object["canceled_at"]), unixTimeValue(object["trial_end"]), boolValue(object["cancel_at_period_end"]), metadata, externalReference).

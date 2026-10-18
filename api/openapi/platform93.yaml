@@ -3156,7 +3156,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BillingSummary'
+                $ref: '#/components/schemas/SubjectBillingSummary'
         '403':
           $ref: '#/components/responses/Problem'
   /v1/control/applications/{application_id}/delegations/{delegation_id}/revoke:
@@ -10842,6 +10842,22 @@ components:
           type: string
           format: uri
       additionalProperties: false
+    SubjectBillingSummary:
+      type: object
+      additionalProperties: false
+      required: [subject_type, subject_id, billing_profile, subscriptions]
+      properties:
+        subject_type:
+          type: string
+          enum: [user, workspace]
+        subject_id:
+          $ref: '#/components/schemas/UUID'
+        billing_profile:
+          $ref: '#/components/schemas/BillingProfile'
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscription'
     Subscription:
       type: object
       required:
@@ -10878,6 +10894,10 @@ components:
             - string
             - 'null'
           format: date-time
+        past_due_since:
+          type: [string, 'null']
+          format: date-time
+          description: First observed transition into the current past-due episode; repeated events do not extend it. Cleared on recovery.
         cancel_at_period_end:
           type: boolean
         external_reference:
