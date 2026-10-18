@@ -1791,12 +1791,16 @@ function PriceCreator({ productID, application, setMessage, onChanged }: { produ
     const form = new FormData(target);
     const mode = String(form.get("mode"));
     try {
+      const checkoutConfig: unknown = JSON.parse(String(form.get("checkout_config") ?? "{}"));
+      if (checkoutConfig === null || typeof checkoutConfig !== "object" || Array.isArray(checkoutConfig)) {
+        throw new Error("Checkout configuration must be a JSON object.");
+      }
       await api.request("POST", `/v1/control/applications/${application.id}/products/${productID}/prices`, {
         key: form.get("key"), mode, amount_minor: Number(form.get("amount_minor")), currency: form.get("currency"),
         currency_exponent: 2, interval_unit: mode === "recurring" ? form.get("interval_unit") : undefined,
         interval_count: mode === "recurring" ? Number(form.get("interval_count")) : undefined,
         validity_seconds: mode === "local" ? Number(form.get("validity_seconds")) : undefined,
-        grace_seconds: 0, tax_behavior: form.get("tax_behavior"), checkout_config: {},
+        grace_seconds: 0, tax_behavior: form.get("tax_behavior"), checkout_config: checkoutConfig,
       });
       target.reset();
       setMode("recurring");
@@ -1804,7 +1808,22 @@ function PriceCreator({ productID, application, setMessage, onChanged }: { produ
       onChanged();
     } catch (error) { setMessage(readError(error)); }
   }
-  return <form className="detail-form" onSubmit={(event) => void submit(event)}><strong>Create immutable price</strong><p className="full-field">This price will snapshot the product entitlement defaults above.</p><label><span>Price key</span><input required name="key" placeholder="e.g. monthly-standard" /></label><label><span>Price mode</span><SelectControl label="Price mode" name="mode" value={mode} onValueChange={(value) => setMode(value)}><option value="recurring">Recurring</option><option value="one_time">One time</option><option value="local">Local entitlement</option></SelectControl></label><label><span>Amount in minor units</span><input required name="amount_minor" min="0" type="number" placeholder="e.g. 1990" /><small>For EUR, 1990 means EUR 19.90.</small></label><label><span>Currency</span><input required name="currency" minLength={3} maxLength={3} defaultValue="EUR" /></label><label><span>Tax behavior</span><SelectControl label="Tax behavior" name="tax_behavior" defaultValue="inclusive"><option value="inclusive">Tax inclusive</option><option value="exclusive">Tax exclusive</option><option value="unspecified">Unspecified</option></SelectControl></label>{mode === "recurring" && <><label><span>Billing interval</span><SelectControl label="Billing interval" name="interval_unit" defaultValue="month"><option>day</option><option>week</option><option>month</option><option>year</option></SelectControl></label><label><span>Interval count</span><input name="interval_count" min="1" type="number" defaultValue="1" /></label></>}{mode === "local" && <label><span>Local validity in seconds</span><input required name="validity_seconds" min="1" type="number" placeholder="e.g. 2592000" /></label>}<button>Create price</button></form>;
+  return <form className="detail-form" onSubmit={(event) => void submit(event)}>
+    <strong>Create immutable price</strong>
+    <p className="full-field">This price will snapshot the product entitlement defaults above.</p>
+    <label><span>Price key</span><input required name="key" placeholder="e.g. monthly-standard" /></label>
+    <label><span>Price mode</span><SelectControl label="Price mode" name="mode" value={mode} onValueChange={(value) => setMode(value)}><option value="recurring">Recurring</option><option value="one_time">One time</option><option value="local">Local entitlement</option></SelectControl></label>
+    <label><span>Amount in minor units</span><input required name="amount_minor" min="0" type="number" placeholder="e.g. 1990" /><small>For EUR, 1990 means EUR 19.90.</small></label>
+    <label><span>Currency</span><input required name="currency" minLength={3} maxLength={3} defaultValue="EUR" /></label>
+    <label><span>Tax behavior</span><SelectControl label="Tax behavior" name="tax_behavior" defaultValue="inclusive"><option value="inclusive">Tax inclusive</option><option value="exclusive">Tax exclusive</option><option value="unspecified">Unspecified</option></SelectControl></label>
+    {mode === "recurring" && <>
+      <label><span>Billing interval</span><SelectControl label="Billing interval" name="interval_unit" defaultValue="month"><option>day</option><option>week</option><option>month</option><option>year</option></SelectControl></label>
+      <label><span>Interval count</span><input name="interval_count" min="1" type="number" defaultValue="1" /></label>
+    </>}
+    {mode === "local" && <label><span>Local validity in seconds</span><input required name="validity_seconds" min="1" type="number" placeholder="e.g. 2592000" /></label>}
+    <label className="full-field"><span>Checkout configuration (JSON)</span><textarea name="checkout_config" defaultValue="{}" /></label>
+    <button>Create price</button>
+  </form>;
 }
 
 function ProviderTest({ providerID, application, setMessage }: { providerID: string; application: Application; setMessage: (value: string) => void }) {

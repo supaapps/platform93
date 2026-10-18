@@ -5,6 +5,27 @@ const org = { id: "01900000-0000-7000-8000-000000000101", name: "Navigation Org"
 const app = { id: "01900000-0000-7000-8000-000000000102", organization_id: org.id, name: "Navigation App", slug: "nav-app", issuer: "http://localhost:8093/oidc" };
 const product = { id: "01900000-0000-7000-8000-000000000103", key: "standard", name: "Standard", version: 1 };
 
+test("immutable prices retain configured trial and tax policies", async ({ page }) => {
+  await mockAdmin(page);
+  const policy = { trial_period_days: 14, single_subscription: true, trial_once_per_subject: true, automatic_tax: true, billing_address_required: true };
+  const requests: Record<string, unknown>[] = [];
+  await page.route(`**/v1/control/applications/${app.id}/products/${product.id}/prices`, async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({ status: 201, json: { id: "new-price" } });
+  });
+  await page.goto(`/?context=application&application_id=${app.id}&section=catalog&resource=products&id=${product.id}`);
+  await page.getByLabel("Price key", { exact: true }).fill("monthly-standard");
+  await page.getByLabel("Amount in minor units").fill("1200");
+  await page.getByLabel("Checkout configuration (JSON)").fill("[]");
+  await page.getByRole("button", { name: "Create price", exact: true }).click();
+  await expect(page.getByText("Checkout configuration must be a JSON object.")).toBeVisible();
+  expect(requests).toHaveLength(0);
+  await page.getByLabel("Checkout configuration (JSON)").fill(JSON.stringify(policy));
+  await page.getByRole("button", { name: "Create price", exact: true }).click();
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0]).toMatchObject({ checkout_config: policy, tax_behavior: "inclusive", amount_minor: 1200 });
+});
+
 test("catalog products can be activated, archived and restored with version checks", async ({ page }) => {
   await mockAdmin(page);
   let status = "draft";
