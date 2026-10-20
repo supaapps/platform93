@@ -1,5 +1,15 @@
 # Upgrades
 
+## Application administration and invitations
+
+The release adding application-user administration requires a forward migration
+and an updated invitation client flow. Invitation URLs/codes no longer establish
+sessions by themselves; recipients authenticate independently. Existing pending
+invitations remain valid, while pre-upgrade invitation-only authorization codes
+expire and in-flight provider invitations must restart. Administrative invitation
+mutations require audit reasons, idempotency keys and explicit versions as applicable.
+See [the administration and onboarding guide](application-user-administration.md).
+
 Platform93 uses forward-only application migrations during normal upgrades. Before an
 upgrade, retain a tested PostgreSQL backup, the matching installation master key, the
 current image digest, and the current Helm values.

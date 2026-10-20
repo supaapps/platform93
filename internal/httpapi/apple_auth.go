@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -180,6 +181,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 	}
 	if flow == "invitation" && invitationID != nil {
 		external := externalProviderIdentity{Subject: claims.Subject, Email: claims.Email, FirstName: firstName, LastName: lastName, TrustedEmail: true}
+		r = r.WithContext(context.WithValue(r.Context(), invitationProviderChallengeKey{}, challengeID))
 		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, provider, external, retainToken)
 		if completeErr != nil {
 			s.releaseExternalAuthChallenge(r, challengeID)

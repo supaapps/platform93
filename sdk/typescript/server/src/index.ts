@@ -170,6 +170,8 @@ export class Platform93MachineClient {
     this.expiresAt = 0;
   }
 
+  administration(): import("@supaapps/platform93-sdk").ApplicationAdministrationClient { return this.api.application().administration(); }
+
   async token() {
     if (this.accessToken && Date.now() < this.expiresAt - 30_000) return this.accessToken;
     if (this.tokenRequest) return this.tokenRequest;
@@ -180,11 +182,11 @@ export class Platform93MachineClient {
   sendNotification(input: MachineNotification, idempotencyKey: string) {
     return this.request<generated.QueuedNotification>("POST", "/notifications", input, idempotencyKey);
   }
-  createInvitation(input: CreateInvitation) { return this.request<Invitation>("POST", "/invitations", input); }
+  createInvitation(input: CreateInvitation, idempotencyKey: string): Promise<import("@supaapps/platform93-sdk").InvitationDeliveryResult> { return this.administration().createInvitation(input, idempotencyKey); }
   listInvitations() { return this.request<Page<Invitation>>("GET", "/invitations"); }
   getInvitation(id: string) { return this.request<Invitation>("GET", `/invitations/${encodeURIComponent(id)}`); }
-  resendInvitation(id: string) { return this.request<generated.InvitationResent>("POST", `/invitations/${encodeURIComponent(id)}/resend`); }
-  revokeInvitation(id: string) { return this.request<void>("DELETE", `/invitations/${encodeURIComponent(id)}`); }
+  resendInvitation(id: string, reason: string, etag: string, idempotencyKey: string): Promise<import("@supaapps/platform93-sdk").InvitationRotationResult> { return this.administration().rotateInvitation(id, {send_email:true,reason}, etag, idempotencyKey); }
+  revokeInvitation(id: string, reason: string, etag: string) { return this.administration().revokeInvitation(id, reason, etag); }
   listUsers() { return this.request<Page<User>>("GET", "/users"); }
   checkResourceAccess(input: ResourceAccessCheckRequest) {
     return this.request<ResourceAccessCheckResponse>("POST", "/service/resource-access/check", input);

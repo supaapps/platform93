@@ -29,6 +29,9 @@ class QueuedNotification(TypedDict):
 
 
 class InvitationInput(TypedDict):
+    send_email: NotRequired[bool]
+    onboarding_method: NotRequired[str]
+    reason: NotRequired[str]
     email: str
     workspace_id: NotRequired[str]
     application_role_keys: NotRequired[list[str]]
@@ -179,6 +182,9 @@ class PublishedEvent(TypedDict):
 
 
 class MachineClient:
+    def administration(self):
+        from .administration import ApplicationAdministrationClient
+        return ApplicationAdministrationClient(self.base_url, self.application_id, self._access_token, client=self.client)
     """Server-only Platform93 client with cached OAuth client credentials."""
 
     def __init__(
@@ -214,8 +220,8 @@ class MachineClient:
     def send_notification(self, notification: NotificationInput, idempotency_key: str) -> QueuedNotification:
         return cast(QueuedNotification, self._request("POST", "/notifications", notification, idempotency_key))
 
-    def create_invitation(self, invitation: InvitationInput) -> Invitation:
-        return cast(Invitation, self._request("POST", "/invitations", invitation))
+    def create_invitation(self, invitation: InvitationInput, idempotency_key: str):
+        return self.administration().create_invitation(invitation, idempotency_key)
 
     def list_invitations(self) -> InvitationPage:
         return cast(InvitationPage, self._request("GET", "/invitations"))
@@ -223,11 +229,11 @@ class MachineClient:
     def get_invitation(self, invitation_id: str) -> Invitation:
         return cast(Invitation, self._request("GET", f"/invitations/{quote(invitation_id, safe='')}"))
 
-    def resend_invitation(self, invitation_id: str) -> InvitationResent:
-        return cast(InvitationResent, self._request("POST", f"/invitations/{quote(invitation_id, safe='')}/resend"))
+    def resend_invitation(self, invitation_id: str, reason: str, etag: str, idempotency_key: str):
+        return self.administration().rotate_invitation(invitation_id, True, reason, etag, idempotency_key)
 
-    def revoke_invitation(self, invitation_id: str) -> None:
-        self._request("DELETE", f"/invitations/{quote(invitation_id, safe='')}")
+    def revoke_invitation(self, invitation_id: str, reason: str, etag: str) -> None:
+        self.administration().revoke_invitation(invitation_id, reason, etag)
 
     def list_users(self) -> UserPage:
         return cast(UserPage, self._request("GET", "/users"))

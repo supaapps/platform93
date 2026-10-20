@@ -85,7 +85,7 @@ EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND client_id LIKE 'p93_res
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if err = goose.Down(db, "."); err != nil {
+	if err = goose.DownTo(db, ".",7); err != nil {
 		t.Fatal(err)
 	}
 	assertLegacyBoundary()

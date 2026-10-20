@@ -132,6 +132,9 @@ func TestAppleInvitationRetentionRollsBackAcceptance(t *testing.T) {
 	}
 	request := requestWithRoute(t, http.MethodGet, "/", nil, map[string]string{"application_id": application}, kernel.Actor{})
 	external := externalProviderIdentity{Subject: "invited-apple", Email: "invited@example.test", TrustedEmail: true}
+	if _, err := server.app.DB.Exec(t.Context(), `UPDATE application_invitations SET inviter_type='user',inviter_id=$2 WHERE id=$1`, invitation, owner); err != nil {
+		t.Fatal(err)
+	}
 	complete := func(token string) (string, error) {
 		return server.completeApplicationInvitationExternalIdentity(request, invitation, provider, external, func(tx pgx.Tx, userID string) error {
 			return server.retainAppleTokenTx(t.Context(), tx, application, userID, external.Subject, provider, token)

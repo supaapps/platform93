@@ -367,6 +367,14 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 		}
 	})
 	t.Run("hosted invitation starts fresh application login", func(t *testing.T) {
+		inviter := kernel.NewID().String()
+		if _, err := db.Exec(ctx, `INSERT INTO control_users(id,email,normalized_email) VALUES($1,$2,$2)`, inviter, inviter+"@example.test"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(ctx, `INSERT INTO organization_memberships(organization_id,control_user_id,role) VALUES($1,$2,'admin')`, org, inviter); err != nil {
+			t.Fatal(err)
+		}
+		configureInvitationSMTP(t, &Server{app: app}, application)
 		if _, err := db.Exec(ctx, `UPDATE clients SET initiate_login_uri='https://client.example.test/auth/start' WHERE id=$1`, client); err != nil {
 			t.Fatal(err)
 		}
@@ -376,6 +384,9 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer db.Exec(ctx, `DELETE FROM application_invitations WHERE id=$1`, invitation)
+		if _, err := db.Exec(ctx, `UPDATE application_invitations SET inviter_id=$2 WHERE id=$1`, invitation, inviter); err != nil {
+			t.Fatal(err)
+		}
 		for attempt := 0; attempt < 11; attempt++ {
 			invalid := call("GET", "/auth/invitations/"+invitation+"?link_token=invalid-token", "", "", "text/html")
 			if attempt == 10 && invalid.Code != http.StatusTooManyRequests {
@@ -402,6 +413,11 @@ func TestHostedAuthenticationCodeFlow(t *testing.T) {
 			t.Fatalf("restart lost invitation: %d %s", w.Code, w.Body.String())
 		}
 		w = call("POST", base+"/actions", `{"action":"invitation"}`, csrf, "application/json")
+		if w.Code != 200 || read(w)["stage"] != "email_code" {
+			t.Fatalf("independent invitation authentication: %d %s", w.Code, w.Body)
+		}
+		code := invitationAuthenticationCode(t, &Server{app: app}, application, "invited@example.test")
+		w = call("POST", base+"/actions", `{"action":"email_verify","code":"`+code+`"}`, csrf, "application/json")
 		if w.Code != 200 || read(w)["stage"] != "consent" {
 			t.Fatalf("accept: %d %s", w.Code, w.Body.String())
 		}

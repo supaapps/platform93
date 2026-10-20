@@ -11,6 +11,7 @@ import {
   type ExternalAuthFlow,
   type ExternalAuthProvider,
   type InvitationCredential,
+  type InvitationAuthenticationChallenge,
   type MFAChallenge,
   type MFAVerify,
   type PasswordSignIn,
@@ -349,6 +350,20 @@ export class Platform93Auth extends EventTarget {
     const authorization = await this.client.application().exchangeInvitation({ ...input, code_challenge: codeChallenge });
     return this.resolve(this.client.application().redeemInvitation({ authorization_code: authorization.authorization_code, code_verifier: codeVerifier }));
   }
+  async startInvitationEmailAuthentication(input: InvitationCredential): Promise<InvitationAuthenticationChallenge> {
+    const verifier = randomBase64URL(32);
+    const challenge = await this.client.application().startInvitationEmailAuthentication({ ...input, code_challenge: await sha256Base64URL(verifier) });
+    this.saveAuthorizationVerifier("invitation", challenge.challenge_id, verifier, challenge.expires_in);
+    return challenge;
+  }
+  async acceptEmailInvitation(input: InvitationCredential, challengeId: string, proof: { code: string; linkToken?: never } | { linkToken: string; code?: never }) {
+    const verifier = this.loadAuthorizationVerifier("invitation", challengeId);
+    if (!verifier) throw new Error("Start invitation email authentication in this browser before accepting");
+    const authorization = await this.client.application().exchangeInvitation({ ...input, code_challenge: await sha256Base64URL(verifier), authentication_challenge_id: challengeId, ...(proof.code ? { authentication_code: proof.code } : { authentication_link_token: proof.linkToken }) });
+    const result = await this.resolve(this.client.application().redeemInvitation({ authorization_code: authorization.authorization_code, code_verifier: verifier }));
+    this.removeAuthorizationVerifier("invitation", challengeId, verifier);
+    return result;
+  }
   async startApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationCredential): Promise<ExternalAuthRequest> {
     if (this.loadAuthorizationVerifier("provider", provider)) {
       throw new Error(`Platform93 ${provider} authentication already has a request in progress`);
@@ -479,21 +494,21 @@ export class Platform93Auth extends EventTarget {
     this.dispatchEvent(new Event("change"));
   }
 
-  private authorizationVerifierKey(kind: "provider" | "enrollment", identifier: string) {
+  private authorizationVerifierKey(kind: "provider" | "enrollment" | "invitation", identifier: string) {
     const storageIdentifier = kind === "enrollment" ? identifier.split(":", 1)[0] : identifier;
     return `platform93.${this.applicationId}.pkce.${kind}.${storageIdentifier}`;
   }
 
-  private saveAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string, verifier: string, expiresIn: number, requestId = randomBase64URL(24)) {
+  private saveAuthorizationVerifier(kind: "provider" | "enrollment" | "invitation", identifier: string, verifier: string, expiresIn: number, requestId = randomBase64URL(24)) {
     const expiresAt = Date.now() + (Number.isFinite(expiresIn) ? Math.max(1, Math.min(600, expiresIn)) : 600) * 1000;
     this.authorizationStateStore.setItem(this.authorizationVerifierKey(kind, identifier), JSON.stringify({ verifier, expiresAt, requestId }));
     return requestId;
   }
 
-  private loadAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string) {
+  private loadAuthorizationVerifier(kind: "provider" | "enrollment" | "invitation", identifier: string) {
     return this.loadAuthorizationRecord(kind, identifier)?.verifier;
   }
-  private loadAuthorizationRecord(kind: "provider" | "enrollment", identifier: string): AuthorizationVerifier | undefined {
+  private loadAuthorizationRecord(kind: "provider" | "enrollment" | "invitation", identifier: string): AuthorizationVerifier | undefined {
     const key = this.authorizationVerifierKey(kind, identifier);
     const encoded = this.authorizationStateStore.getItem(key);
     if (!encoded) return undefined;
@@ -512,7 +527,7 @@ export class Platform93Auth extends EventTarget {
     return undefined;
   }
 
-  private removeAuthorizationVerifier(kind: "provider" | "enrollment", identifier: string, expectedVerifier: string) {
+  private removeAuthorizationVerifier(kind: "provider" | "enrollment" | "invitation", identifier: string, expectedVerifier: string) {
     const key = this.authorizationVerifierKey(kind, identifier);
     if (this.loadAuthorizationVerifier(kind, identifier) !== expectedVerifier) return false;
     this.authorizationStateStore.removeItem(key);
@@ -525,12 +540,12 @@ export class Platform93Auth extends EventTarget {
     }
     this.cancelExternalAuth(provider, requestId);
   }
-  private assertAuthorizationCurrent(kind: "provider" | "enrollment", identifier: string, verifier: string, cause?: unknown) {
+  private assertAuthorizationCurrent(kind: "provider" | "enrollment" | "invitation", identifier: string, verifier: string, cause?: unknown) {
     if (this.loadAuthorizationVerifier(kind, identifier) !== verifier) {
       throw new ExternalAuthRecoveryError("Platform93 external authentication request was cancelled, expired or replaced", "cancelled", cause);
     }
   }
-  private async resolveAuthorizationExchange(kind: "provider" | "enrollment", identifier: string, verifier: string, response: Promise<AuthenticationResult>, correctableCodes: string[] = []) {
+  private async resolveAuthorizationExchange(kind: "provider" | "enrollment" | "invitation", identifier: string, verifier: string, response: Promise<AuthenticationResult>, correctableCodes: string[] = []) {
     let result: AuthenticationResult;
     try { result = await response; }
     catch (error) {

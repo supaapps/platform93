@@ -37,6 +37,8 @@ type hostedPrivateState struct {
 	InvitationID          string   `json:"invitation_id,omitempty"`
 	InvitationToken       string   `json:"invitation_token,omitempty"`
 	InvitationMethod      string   `json:"invitation_method,omitempty"`
+	InvitationEmail       string   `json:"invitation_email,omitempty"`
+	InvitationCode        string   `json:"invitation_code,omitempty"`
 	RecoveryChallenge     string   `json:"recovery_challenge,omitempty"`
 	VerificationChallenge string   `json:"verification_challenge,omitempty"`
 	WebAuthnCeremony      string   `json:"webauthn_ceremony,omitempty"`
@@ -54,6 +56,14 @@ type hostedInteraction struct {
 	LockToken     string
 	SessionID     *string
 }
+
+func hostedInvitationProof(i *hostedInteraction) map[string]any {
+	if i.Private.InvitationToken != "" {
+		return map[string]any{"invitation_id": i.Private.InvitationID, "link_token": i.Private.InvitationToken}
+	}
+	return map[string]any{"email": i.Private.InvitationEmail, "code": i.Private.InvitationCode}
+}
+
 type hostedActionRequest struct {
 	ApprovedCapabilities []string        `json:"approved_capabilities,omitempty"`
 	PersonalAccess       bool            `json:"personal_access,omitempty"`
@@ -424,7 +434,7 @@ func (s *Server) writeHostedView(w http.ResponseWriter, r *http.Request, i *host
 	if live {
 		stage = "consent"
 	}
-	if !live && i.Private.InvitationID != "" && i.Private.MFAChallenge == "" {
+	if !live && i.Private.InvitationID != "" && i.Private.MFAChallenge == "" && i.Private.EmailChallenge == "" {
 		stage = "invitation"
 		providers = []string{}
 		if i.Private.InvitationMethod != "email" {
@@ -546,6 +556,14 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 	case "email_verify":
 		body = map[string]any{"challenge_id": i.Private.EmailChallenge, "code": input.Code}
 		handler = s.emailVerify
+		if i.Private.InvitationID != "" {
+			digest := sha256.Sum256([]byte(i.Private.Verifier))
+			body = hostedInvitationProof(i)
+			body["code_challenge"] = base64.RawURLEncoding.EncodeToString(digest[:])
+			body["authentication_challenge_id"] = i.Private.EmailChallenge
+			body["authentication_code"] = input.Code
+			handler = s.exchangeInvitation
+		}
 	case "mfa":
 		body = map[string]any{"challenge_id": i.Private.MFAChallenge, "code": input.Code, "recovery_code": input.RecoveryCode}
 		handler = s.verifyMFA
@@ -605,7 +623,13 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 			body["email"] = input.Email
 			body["code"] = input.Code
 		}
-		handler = s.exchangeInvitation
+		if i.Private.InvitationID == "" {
+			i.Private.InvitationID = input.InvitationID
+			i.Private.InvitationToken = input.LinkToken
+			i.Private.InvitationEmail = input.Email
+			i.Private.InvitationCode = input.Code
+		}
+		handler = s.startInvitationEmailAuthentication
 	case "verify_email_start":
 		if !live {
 			kernel.WriteProblem(w, r, 401, "hosted_login_required", "Sign in first.")
@@ -628,7 +652,7 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 	response := s.hostedInvoke(r, i.ApplicationID, body, handler)
 	var result map[string]any
 	_ = json.Unmarshal(response.body.Bytes(), &result)
-	if input.Action == "invitation" && response.status < 400 {
+	if (input.Action == "invitation" || input.Action == "email_verify") && response.status < 400 {
 		if code, ok := result["authorization_code"].(string); ok {
 			response = s.hostedInvoke(r, i.ApplicationID, map[string]any{"authorization_code": code, "code_verifier": i.Private.Verifier}, s.redeemInvitationAuthorizationCode)
 			_ = json.Unmarshal(response.body.Bytes(), &result)
@@ -652,8 +676,13 @@ func (s *Server) hostedAction(w http.ResponseWriter, r *http.Request) {
 		kernel.WriteJSON(w, 200, result)
 		return
 	}
-	if input.Action == "email_start" {
+	if input.Action == "email_start" || input.Action == "invitation" {
 		i.Private.EmailChallenge, _ = result["challenge_id"].(string)
+		if input.Action == "invitation" {
+			if id, ok := result["invitation_id"].(string); ok {
+				i.Private.InvitationID = id
+			}
+		}
 	}
 	if input.Action == "reset_start" {
 		i.Private.RecoveryChallenge, _ = result["challenge_id"].(string)
@@ -873,6 +902,14 @@ func (s *Server) hostedReturnExchange(w http.ResponseWriter, r *http.Request) {
 		}
 		body = map[string]any{"challenge_id": input.ChallengeID, "link_token": input.LinkToken}
 		handler = s.emailVerify
+		if i.Private.InvitationID != "" {
+			digest := sha256.Sum256([]byte(i.Private.Verifier))
+			body = hostedInvitationProof(i)
+			body["code_challenge"] = base64.RawURLEncoding.EncodeToString(digest[:])
+			body["authentication_challenge_id"] = i.Private.EmailChallenge
+			body["authentication_link_token"] = input.LinkToken
+			handler = s.exchangeInvitation
+		}
 	} else {
 		if input.Provider != "" && input.Provider != i.Private.Provider {
 			kernel.WriteProblem(w, r, 401, "hosted_provider_mismatch", "This provider does not belong to the current sign-in request.")
@@ -898,6 +935,10 @@ func (s *Server) hostedReturnExchange(w http.ResponseWriter, r *http.Request) {
 	response := s.hostedInvoke(r, i.ApplicationID, body, handler)
 	var result map[string]any
 	_ = json.Unmarshal(response.body.Bytes(), &result)
+	if code, ok := result["authorization_code"].(string); ok && response.status < 400 {
+		response = s.hostedInvoke(r, i.ApplicationID, map[string]any{"authorization_code": code, "code_verifier": i.Private.Verifier}, s.redeemInvitationAuthorizationCode)
+		_ = json.Unmarshal(response.body.Bytes(), &result)
+	}
 	if response.status >= 400 {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(response.status)

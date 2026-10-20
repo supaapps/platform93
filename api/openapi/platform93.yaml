@@ -3167,15 +3167,14 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
-        '409': {$ref: '#/components/responses/CreationConflict'}
-        '422': {$ref: '#/components/responses/Problem'}
-        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
-          description: Invitation created and email queued
+          description: Successful application operation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApplicationInvitation'
+                $ref: '#/components/schemas/InvitationDeliveryResult'
+        '403':
+          $ref: '#/components/responses/Problem'
   /v1/applications/{application_id}/invitations/{invitation_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3216,13 +3215,19 @@ paths:
         - Control
       responses:
         '202':
-          description: Invitation credentials rotated and email queued
+          description: Successful application operation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvitationResent'
-        '429':
+                $ref: '#/components/schemas/InvitationRotationResult'
+        '403':
           $ref: '#/components/responses/Problem'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RotateApplicationInvitation'
   /v1/applications/{application_id}/users:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3237,6 +3242,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserPage'
+        '403':
+          $ref: '#/components/responses/Problem'
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
+    post:
+      operationId: createApplicationManagedUser
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationManagedUserCreate'
+      responses:
+        '201':
+          description: Successful application operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
         '403':
           $ref: '#/components/responses/Problem'
   /v1/applications/{application_id}/users/{user_id}:
@@ -3258,6 +3288,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateApplicationManagedUser
+      tags:
+        - Identity
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationManagedUserUpdate'
+      responses:
+        '204':
+          description: Operation completed
         '403':
           $ref: '#/components/responses/Problem'
   /v1/applications/{application_id}/workspaces:
@@ -3423,15 +3475,14 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
-        '409': {$ref: '#/components/responses/CreationConflict'}
-        '422': {$ref: '#/components/responses/Problem'}
-        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
-          description: Application or workspace invitation created and email queued
+          description: Successful application operation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApplicationInvitation'
+                $ref: '#/components/schemas/InvitationDeliveryResult'
+        '403':
+          $ref: '#/components/responses/Problem'
   /v1/control/applications/{application_id}/invitations/{invitation_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -3481,13 +3532,19 @@ paths:
         - controlCookie: []
       responses:
         '202':
-          description: Invitation credentials rotated and localized email queued
+          description: Successful application operation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvitationResent'
-        '429':
+                $ref: '#/components/schemas/InvitationRotationResult'
+        '403':
           $ref: '#/components/responses/Problem'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RotateApplicationInvitation'
   /v1/control/applications/{application_id}/users:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -6231,15 +6288,14 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateInvitation'
       responses:
-        '409': {$ref: '#/components/responses/CreationConflict'}
-        '422': {$ref: '#/components/responses/Problem'}
-        '500': {$ref: '#/components/responses/CreationFailure'}
         '201':
-          description: Workspace invitation created and email queued
+          description: Successful application operation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApplicationInvitation'
+                $ref: '#/components/schemas/InvitationDeliveryResult'
+        '403':
+          $ref: '#/components/responses/Problem'
   /v1/applications/{application_id}/workspaces/{workspace_id}/invitations/{invitation_id}:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -6279,13 +6335,19 @@ paths:
         - Control
       responses:
         '202':
-          description: Workspace invitation credentials rotated and email queued
+          description: Successful application operation
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/InvitationResent'
-        '429':
+                $ref: '#/components/schemas/InvitationRotationResult'
+        '403':
           $ref: '#/components/responses/Problem'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RotateApplicationInvitation'
   /v1/applications/{application_id}/workspaces/{workspace_id}/access:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -8854,6 +8916,481 @@ paths:
       responses:
         '204':
           description: Application restored
+  /v1/applications/{application_id}/users/{user_id}/attributes:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    patch:
+      operationId: updateApplicationManagedUserAttributes
+      tags:
+        - Identity
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationManagedAttributesUpdate'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/users/{user_id}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    post:
+      operationId: suspendApplicationManagedUser
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationAdministrationReason'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/users/{user_id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    post:
+      operationId: restoreApplicationManagedUser
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationAdministrationReason'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/users/{user_id}/verify-email:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    post:
+      operationId: verifyApplicationManagedUserEmail
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationAdministrationReason'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/users/{user_id}/unverify-email:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    post:
+      operationId: unverifyApplicationManagedUserEmail
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationAdministrationReason'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/users/{user_id}/verify-organization:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    post:
+      operationId: verifyApplicationManagedUserOrganization
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationAdministrationReason'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/users/{user_id}/unverify-organization:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    post:
+      operationId: unverifyApplicationManagedUserOrganization
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationAdministrationReason'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/users/{user_id}/sessions/revoke:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    post:
+      operationId: revokeApplicationManagedUserSessions
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationAdministrationReason'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/users/{user_id}/sessions:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    get:
+      operationId: listApplicationManagedUserSessions
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: Successful application operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationManagedSessionPage'
+        '403':
+          $ref: '#/components/responses/Problem'
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
+  /v1/applications/{application_id}/roles:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    get:
+      operationId: listApplicationAssignableRoles
+      tags:
+        - Identity
+      responses:
+        '200':
+          description: Successful application operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RolePage'
+        '403':
+          $ref: '#/components/responses/Problem'
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
+  /v1/applications/{application_id}/role-assignments:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    get:
+      operationId: listApplicationUserRoleAssignments
+      tags:
+        - Identity
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/UUID'
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
+      responses:
+        '200':
+          description: Successful application operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationUserRoleAssignmentPage'
+        '403':
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: assignApplicationUserRole
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationUserRoleAssignment'
+      responses:
+        '201':
+          description: Successful application operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleAssignmentRecord'
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/role-assignments/{assignment_id}:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: assignment_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    delete:
+      operationId: removeApplicationUserRole
+      tags:
+        - Identity
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplicationAdministrationReason'
+      responses:
+        '204':
+          description: Operation completed
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/invitations/{invitation_id}/rotate:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - name: invitation_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/UUID'
+    post:
+      operationId: rotateApplicationInvitation
+      tags:
+        - Identity
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^"v[0-9a-f]+"$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RotateApplicationInvitation'
+      responses:
+        '202':
+          description: Successful application operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationRotationResult'
+        '403':
+          $ref: '#/components/responses/Problem'
+  /v1/applications/{application_id}/auth/invitations/email/start:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+    post:
+      operationId: startInvitationEmailAuthentication
+      tags:
+        - Identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationEmailAuthenticationStart'
+      responses:
+        '202':
+          description: Successful application operation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAuthenticationChallenge'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security: []
+  /v1/control/applications/{application_id}/invitations/{invitation_id}/rotate:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - {name: invitation_id, in: path, required: true, schema: {$ref: '#/components/schemas/UUID'}}
+    post:
+      operationId: rotateControlApplicationInvitation
+      tags: [Control]
+      security: [{controlBearer: []}, {controlCookie: []}]
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RotateApplicationInvitation'}
+      responses:
+        '202':
+          description: New one-time invitation credential
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InvitationRotationResult'}
+  /v1/applications/{application_id}/workspaces/{workspace_id}/invitations/{invitation_id}/rotate:
+    parameters:
+      - $ref: '#/components/parameters/ApplicationID'
+      - {name: workspace_id, in: path, required: true, schema: {$ref: '#/components/schemas/UUID'}}
+      - {name: invitation_id, in: path, required: true, schema: {$ref: '#/components/schemas/UUID'}}
+    post:
+      operationId: rotateWorkspaceApplicationInvitation
+      tags: [Identity]
+      parameters:
+        - $ref: '#/components/parameters/RequiredIdempotencyKey'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RotateApplicationInvitation'}
+      responses:
+        '202':
+          description: New one-time invitation credential
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InvitationRotationResult'}
 components:
   securitySchemes:
     hostedCookie:
@@ -9398,6 +9935,302 @@ components:
           schema:
             $ref: '#/components/schemas/OwnershipTransferResult'
   schemas:
+    ApplicationManagedSession:
+      type: object
+      additionalProperties: false
+      required: [id, user_agent, authenticated_at, mfa_authenticated_at, amr, delegation_id, expires_at, last_used_at, revoked_at, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/UUID'}
+        user_agent: {type: [string, 'null']}
+        authenticated_at: {type: string, format: date-time}
+        mfa_authenticated_at: {type: [string, 'null'], format: date-time}
+        amr: {type: array, items: {type: string}}
+        delegation_id: {type: [string, 'null'], format: uuid}
+        expires_at: {type: string, format: date-time}
+        last_used_at: {type: [string, 'null'], format: date-time}
+        revoked_at: {type: [string, 'null'], format: date-time}
+        created_at: {type: string, format: date-time}
+    ApplicationManagedSessionPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ApplicationManagedSession'}}
+        next_cursor: {type: [string, 'null']}
+    ApplicationUserRoleAssignmentRecord:
+      type: object
+      additionalProperties: false
+      required: [id, role_id]
+      properties:
+        id: {$ref: '#/components/schemas/UUID'}
+        user_id: {type: [string, 'null'], format: uuid}
+        client_id: {type: [string, 'null'], format: uuid}
+        role_id: {$ref: '#/components/schemas/UUID'}
+        workspace_id: {type: [string, 'null'], format: uuid}
+        role_key: {type: string}
+        role_scope: {enum: [application, workspace]}
+        created_at: {type: string, format: date-time}
+    ApplicationUserRoleAssignmentPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor, user_version]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ApplicationUserRoleAssignmentRecord'}}
+        next_cursor: {type: [string, 'null']}
+        user_version: {type: integer, format: int64}
+    InvitationAuthenticationChallenge:
+      type: object
+      additionalProperties: false
+      required: [challenge_id, invitation_id, expires_in]
+      properties:
+        challenge_id: {$ref: '#/components/schemas/UUID'}
+        invitation_id: {$ref: '#/components/schemas/UUID'}
+        expires_in: {type: integer}
+    ApplicationManagedUserCreate:
+      type: object
+      required:
+        - email
+        - reason
+      properties:
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        username:
+          type: string
+        locale:
+          type: string
+        email_verified:
+          type: boolean
+        is_org_verified:
+          type: boolean
+        custom_attributes:
+          type: object
+          additionalProperties: true
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      additionalProperties: false
+    ApplicationManagedUserUpdate:
+      type: object
+      required:
+        - reason
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        username:
+          type: string
+        locale:
+          type: string
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      additionalProperties: false
+    ApplicationManagedAttributesUpdate:
+      type: object
+      required:
+        - custom_attributes
+        - reason
+      properties:
+        custom_attributes:
+          type: object
+          additionalProperties: true
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      additionalProperties: false
+    ApplicationAdministrationReason:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      additionalProperties: false
+    ApplicationUserRoleAssignment:
+      type: object
+      required:
+        - user_id
+        - role_id
+        - reason
+      properties:
+        user_id:
+          $ref: '#/components/schemas/UUID'
+        role_id:
+          $ref: '#/components/schemas/UUID'
+        workspace_id:
+          $ref: '#/components/schemas/UUID'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      additionalProperties: false
+    RotateApplicationInvitation:
+      type: object
+      required: []
+      properties:
+        send_email:
+          type: boolean
+          default: true
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+      additionalProperties: false
+    InvitationEmailAuthenticationStart:
+      type: object
+      required:
+        - code_challenge
+      properties:
+        invitation_id:
+          $ref: '#/components/schemas/UUID'
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+          writeOnly: true
+        link_token:
+          type: string
+          writeOnly: true
+        code_challenge:
+          type: string
+          minLength: 43
+          maxLength: 43
+          writeOnly: true
+      additionalProperties: false
+    InvitationDeliveryResult:
+      type: object
+      required:
+        - id
+        - invitation_url
+        - version
+        - email_queued
+      properties:
+        hosted_client_id:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        hosted_redirect_uri:
+          type:
+            - string
+            - 'null'
+          maxLength: 2048
+        id:
+          $ref: '#/components/schemas/UUID'
+        application_id:
+          $ref: '#/components/schemas/UUID'
+        workspace_id:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        email:
+          type: string
+          format: email
+        application_role_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleKey'
+        workspace_role_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoleKey'
+        onboarding_method:
+          enum:
+            - email
+            - google
+            - apple
+            - microsoft
+            - facebook
+            - linkedin
+          default: email
+        status:
+          enum:
+            - pending
+            - accepted
+            - revoked
+            - expired
+        code:
+          type: string
+          writeOnly: true
+        link_token:
+          type: string
+          writeOnly: true
+        link:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+        accepted_user_id:
+          type:
+            - string
+            - 'null'
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        invitation_url:
+          type: string
+          format: uri
+          description: One-time credential URL. Never logged or returned by list/detail.
+        email_queued:
+          type: boolean
+        version:
+          type: integer
+          format: int64
+        last_sent_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        resend_available_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    InvitationRotationResult:
+      type: object
+      required:
+        - id
+        - invitation_url
+        - version
+        - email_queued
+        - expires_at
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        invitation_url:
+          type: string
+          format: uri
+        version:
+          type: integer
+          format: int64
+        email_queued:
+          type: boolean
+        last_sent_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        resend_available_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+      additionalProperties: false
     HostedCopy:
       type: object
       additionalProperties: false
@@ -10692,10 +11525,14 @@ components:
         - expires_at
       properties:
         hosted_client_id:
-          type: [string, 'null']
+          type:
+            - string
+            - 'null'
           format: uuid
         hosted_redirect_uri:
-          type: [string, 'null']
+          type:
+            - string
+            - 'null'
           maxLength: 2048
         id:
           $ref: '#/components/schemas/UUID'
@@ -10718,7 +11555,13 @@ components:
           items:
             $ref: '#/components/schemas/RoleKey'
         onboarding_method:
-          enum: [email, google, apple, microsoft, facebook, linkedin]
+          enum:
+            - email
+            - google
+            - apple
+            - microsoft
+            - facebook
+            - linkedin
           default: email
         status:
           enum:
@@ -10744,6 +11587,35 @@ components:
             - 'null'
           format: uuid
         created_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+        last_sent_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        resend_available_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        revoked_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        expiration_recorded_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        updated_at:
           type: string
           format: date-time
       additionalProperties: false
@@ -15347,7 +16219,10 @@ components:
         - email_verified
         - is_org_verified
         - status
+        - version
       properties:
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
         id:
           $ref: '#/components/schemas/UUID'
         application_id:
@@ -15463,8 +16338,11 @@ components:
       required:
         - email
       properties:
-        hosted_client_id: {$ref: '#/components/schemas/UUID'}
-        hosted_redirect_uri: {type: string, format: uri}
+        hosted_client_id:
+          $ref: '#/components/schemas/UUID'
+        hosted_redirect_uri:
+          type: string
+          format: uri
         email:
           type: string
           format: email
@@ -15481,7 +16359,13 @@ components:
             type: string
           maxItems: 20
         onboarding_method:
-          enum: [email, google, apple, microsoft, facebook, linkedin]
+          enum:
+            - email
+            - google
+            - apple
+            - microsoft
+            - facebook
+            - linkedin
           default: email
         expires_in:
           type: integer
@@ -15489,6 +16373,13 @@ components:
           minimum: 300
           maximum: 2592000
           default: 604800
+        send_email:
+          type: boolean
+          default: true
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
       additionalProperties: false
     ExchangeInvitation:
       type: object
@@ -15521,6 +16412,14 @@ components:
           minLength: 43
           maxLength: 43
           pattern: ^[A-Za-z0-9_-]{43}$
+          writeOnly: true
+        authentication_challenge_id:
+          $ref: '#/components/schemas/UUID'
+        authentication_code:
+          type: string
+          writeOnly: true
+        authentication_link_token:
+          type: string
           writeOnly: true
       additionalProperties: false
     RedeemInvitation:
@@ -15622,6 +16521,7 @@ components:
         - built_in
         - version
       properties:
+        created_at: {type: string, format: date-time}
         key:
           $ref: '#/components/schemas/RoleKey'
         name:

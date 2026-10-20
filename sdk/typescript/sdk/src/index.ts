@@ -1,4 +1,6 @@
 export * as generated from "./generated/index.js";
+export * from "./administration.js";
+import { ApplicationAdministrationClient } from "./administration.js";
 export type * from "./resources.js";
 import type { OAuthConnection } from "./resources.js";
 
@@ -90,6 +92,8 @@ export class Platform93Client {
 export class ApplicationClient {
   constructor(private readonly client: Platform93Client, readonly id: string) {}
   private path(path: string) { return `/v1/applications/${encodeURIComponent(this.id)}${path}`; }
+  administration() { return new ApplicationAdministrationClient(this.client, this.id); }
+  startInvitationEmailAuthentication(input: InvitationExchange) { return this.client.request<import("./administration.js").InvitationAuthenticationChallenge>("POST", this.path("/auth/invitations/email/start"), input); }
   publicConfig() { return this.client.request<RuntimeConfig>("GET", this.path("/public-config")); }
   listCatalog() { return this.client.request<Page<Product>>("GET", this.path("/catalog/products")); }
   signUp(input: PasswordSignUp) { return this.client.request<AuthenticationResult>("POST", this.path("/auth/password/sign-up"), input); }
@@ -112,7 +116,7 @@ export class ApplicationClient {
   startExternalEmailEnrollment(input: ExternalEmailEnrollmentStart) { return this.client.request<ExternalEmailEnrollmentChallenge>("POST", this.path("/auth/external-email/start"), input); }
   verifyExternalEmailEnrollment(input: ExternalEmailEnrollmentVerify) { return this.client.request<AuthenticationResult>("POST", this.path("/auth/external-email/verify"), input); }
   startApplicationInvitationProvider(provider: ExternalAuthProvider, input: InvitationExchange) { return this.client.request<ExternalAuthAuthorization>("POST", this.path(`/auth/invitations/providers/${provider}/start`), input); }
-  exchangeInvitation(input: InvitationExchange) { return this.client.request<InvitationAuthorizationCode>("POST", this.path("/auth/invitations/exchange"), input); }
+  exchangeInvitation(input: InvitationExchange) { return this.client.request<InvitationAuthorizationCode>("POST", this.path("/auth/invitations/exchange"), input, input.authentication_challenge_id ? { headers: { Authorization: "" } } : {}); }
   redeemInvitation(input: { authorization_code: string; code_verifier: string }) { return this.client.request<AuthenticationResult>("POST", this.path("/auth/invitations/token"), input); }
   verifyMFA(input: MFAVerify) { return this.client.request<TokenResponse>("POST", this.path("/auth/mfa/verify"), input); }
   authMethods(email?: string) { return this.client.request<AuthMethods>("POST", this.path("/auth/methods"), email ? { email } : {}); }
@@ -229,10 +233,10 @@ export type BillingAddress = { id: string; name: string; line1: string; line2: s
 export type PublishCustomEvent<T extends Record<string, unknown> = Record<string, unknown>> = { type: string; subject: string; data: T; correlation_id?: string; causation_id?: string };
 export type PublishedEvent<T extends Record<string, unknown> = Record<string, unknown>> = PublishCustomEvent<T> & { specversion: "1.0"; id: string; source: string; schema_version: string };
 export type InvitationOnboardingMethod = "email" | ExternalAuthProvider;
-export type CreateInvitation = { email: string; workspace_id?: string; application_role_keys?: string[]; workspace_role_keys?: string[]; onboarding_method?: InvitationOnboardingMethod; expires_in?: number; hosted_client_id?: string; hosted_redirect_uri?: string };
+export type CreateInvitation = { email: string; workspace_id?: string; application_role_keys?: string[]; workspace_role_keys?: string[]; onboarding_method?: InvitationOnboardingMethod; expires_in?: number; hosted_client_id?: string; hosted_redirect_uri?: string; send_email?: boolean; reason?: string };
 export type { HostedBranding, HostedBrandingSettings, HostedAuthView, HostedAuthActionWritable, HostedAuthReturnWritable } from "./generated/types.gen.js";
 export type Invitation = { id: string; application_id: string; email: string; workspace_id?: string | null; hosted_client_id?: string | null; hosted_redirect_uri?: string | null; application_role_keys: string[]; workspace_role_keys: string[]; onboarding_method: InvitationOnboardingMethod; status: "pending" | "accepted" | "revoked" | "expired"; expires_at: string; last_sent_at: string; resend_available_at: string };
 export type InvitationCredential = { email: string; code: string; invitation_id?: never; link_token?: never } | { invitation_id: string; link_token: string; email?: never; code?: never };
-export type InvitationExchange = InvitationCredential & { code_challenge: string };
+export type InvitationExchange = InvitationCredential & { code_challenge: string; authentication_challenge_id?: string; authentication_code?: string; authentication_link_token?: string };
 export type InvitationAuthorizationCode = { authorization_code: string; expires_in: number };
 export type WorkspaceAccessEntry = { entry_type: "user"; status: "owner" | "active"; user_id: string; email: string; first_name: string; last_name: string; role_keys: string[] } | { entry_type: "invitation"; status: "pending" | "expired"; invitation_id: string; email: string; role_keys: string[]; expires_at: string; last_sent_at: string; resend_available_at: string };

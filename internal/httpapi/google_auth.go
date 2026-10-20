@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -238,6 +239,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 	if flow == "invitation" && invitationID != nil {
 		external := externalProviderIdentity{Subject: claims.Subject, Email: claims.Email, FirstName: claims.FirstName, LastName: claims.LastName, TrustedEmail: true}
 		config, configErr := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), "google")
+		r = r.WithContext(context.WithValue(r.Context(), invitationProviderChallengeKey{}, challengeID))
 		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, config, external)
 		if configErr != nil || completeErr != nil {
 			s.releaseExternalAuthChallenge(r, challengeID)

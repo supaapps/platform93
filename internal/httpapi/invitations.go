@@ -35,6 +35,8 @@ type invitationRequest struct {
 	ExpiresIn           int64    `json:"expires_in,omitempty"`
 	HostedClientID      string   `json:"hosted_client_id,omitempty"`
 	HostedRedirectURI   string   `json:"hosted_redirect_uri,omitempty"`
+	SendEmail           *bool    `json:"send_email,omitempty"`
+	Reason              string   `json:"reason,omitempty"`
 }
 
 func (s *Server) createControlInvitation(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +44,7 @@ func (s *Server) createControlInvitation(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) createApplicationInvitation(w http.ResponseWriter, r *http.Request) {
-	if actor(r).Type != "client" || !actorHasPermission(actor(r), applicationPermission(r, "invitations/manage")) {
+	if (actor(r).Type != "client" && actor(r).Type != "user") || !actorHasPermission(actor(r), applicationPermission(r, "invitations/manage")) {
 		kernel.WriteProblem(w, r, http.StatusForbidden, "invitation_management_required", "A machine client with invitation management permission is required.")
 		return
 	}
@@ -54,10 +56,15 @@ func (s *Server) createWorkspaceInvitation(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, applicationManaged bool) {
+	if current := actor(r); current.DelegatedBy != "" || (current.Type != "user" && current.Type != "client" && current.Type != "control_user") {
+		kernel.WriteProblem(w, r, 403, "direct_application_actor_required", "A direct application user, authorized machine client, or control administrator is required.")
+		return
+	}
 	var request invitationRequest
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
 	}
+	sendEmail := request.SendEmail == nil || *request.SendEmail
 	applicationID := chi.URLParam(r, "application_id")
 	parsedApplicationID, parseErr := uuid.Parse(applicationID)
 	if parseErr != nil {
@@ -66,6 +73,10 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, applic
 	}
 	if request.WorkspaceID == "" {
 		request.WorkspaceID = chi.URLParam(r, "workspace_id")
+	}
+	if routeWorkspace := chi.URLParam(r, "workspace_id"); routeWorkspace != "" && routeWorkspace != request.WorkspaceID {
+		kernel.WriteProblem(w, r, 422, "workspace_mismatch", "The invitation workspace must match the route.")
+		return
 	}
 	if len(request.WorkspaceRoleKeys) == 0 {
 		request.WorkspaceRoleKeys = request.RoleKeys
@@ -107,8 +118,9 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, applic
 			kernel.WriteProblem(w, r, http.StatusForbidden, "user_invitations_disabled", "Application users are not allowed to invite users.")
 			return
 		}
-		canManageWorkspaceInvitations := s.canAccessWorkspace(r, true) || s.canAccessWorkspace(r, false) && actorHasPermission(current, workspacePermission(r, "invitations/manage"))
-		if applicationManaged || request.WorkspaceID == "" || len(request.ApplicationRoleKeys) > 0 || !canManageWorkspaceInvitations {
+		canManageWorkspaceInvitations := !applicationManaged && request.WorkspaceID != "" && (s.canAccessWorkspace(r, true) || s.canAccessWorkspace(r, false) && actorHasPermission(current, workspacePermission(r, "invitations/manage")))
+		appManager := applicationManaged && actorHasPermission(current, applicationPermission(r, "invitations/manage"))
+		if !appManager && (request.WorkspaceID == "" || len(request.ApplicationRoleKeys) > 0 || !canManageWorkspaceInvitations) {
 			kernel.WriteProblem(w, r, http.StatusForbidden, "workspace_invitation_required", "This user may only invite users into an authorized workspace.")
 			return
 		}
@@ -147,7 +159,15 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, applic
 	if request.WorkspaceID != "" {
 		variables["workspace_id"], variables["workspace_name"] = request.WorkspaceID, workspaceName
 	}
-	templateID, locale, payload, renderErr := s.renderSystemNotification(r.Context(), &applicationID, templateKey, normalized, variables)
+	var templateID, locale string
+	var payload []byte
+	var renderErr error
+	if sendEmail && !s.invitationEmailAvailable(w, r) {
+		return
+	}
+	if sendEmail {
+		templateID, locale, payload, renderErr = s.renderSystemNotification(r.Context(), &applicationID, templateKey, normalized, variables)
+	}
 	if renderErr != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "invitation_template_unavailable", "The invitation email template is unavailable or invalid.")
 		return
@@ -158,15 +178,29 @@ func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request, applic
 		return
 	}
 	defer rollback(tx, r.Context())
+	if current.Type == "user" || current.Type == "client" {
+		if !s.invitationMutationEnabled(r, tx) {
+			kernel.WriteProblem(w, r, 403, "user_invitations_disabled", "Application user invitations are disabled.")
+			return
+		}
+		if !requireAdministrationKey(w, r) || !administrationReason(w, r, request.Reason) {
+			return
+		}
+		live, authorityErr := s.applicationAdminScopes(r, tx, current)
+		if authorityErr != nil || s.validateInvitationRolesAuthority(r, tx, current, live, request.WorkspaceID, request.ApplicationRoleKeys, request.WorkspaceRoleKeys) != nil {
+			kernel.WriteProblem(w, r, 403, "invitation_authority_required", "Current invitation and role permissions are required.")
+			return
+		}
+	}
 	var workspace any
 	if request.WorkspaceID != "" {
 		workspace = request.WorkspaceID
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO application_invitations
 (id,application_id,workspace_id,normalized_email,link_credential_digest,code_credential_digest,application_roles,workspace_roles,onboarding_method,expires_at,inviter_type,inviter_id,last_sent_at,resend_available_at,hosted_client_id,hosted_redirect_uri)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now(),now()+interval '60 seconds',$13,$14)`, id, applicationID, workspace, normalized,
-		s.app.Vault.Digest(link), s.app.Vault.Digest(code), request.ApplicationRoleKeys, request.WorkspaceRoleKeys, request.OnboardingMethod, expiresAt, current.Type, nullableActorID(current.ID), nullableActorID(request.HostedClientID), nullableText(request.HostedRedirectURI))
-	if err == nil {
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,CASE WHEN $15 THEN now() END,now()+interval '60 seconds',$13,$14)`, id, applicationID, workspace, normalized,
+		s.app.Vault.Digest(link), s.app.Vault.Digest(code), request.ApplicationRoleKeys, request.WorkspaceRoleKeys, request.OnboardingMethod, expiresAt, current.Type, nullableActorID(current.ID), nullableActorID(request.HostedClientID), nullableText(request.HostedRedirectURI), sendEmail)
+	if err == nil && sendEmail {
 		ciphertext, encryptErr := s.app.Vault.Encrypt(payload, "notification:"+notificationID.String())
 		if encryptErr != nil {
 			err = encryptErr
@@ -180,14 +214,22 @@ VALUES($1,$2,$3,$4,$5,$6,'queued')`, notificationID, applicationID, templateID, 
 			map[string]any{"invitation_id": id, "workspace_id": workspace, "application_role_keys": request.ApplicationRoleKeys, "workspace_role_keys": request.WorkspaceRoleKeys, "onboarding_method": request.OnboardingMethod, "status": "pending"})
 	}
 	if err == nil {
+		err = s.auditApplicationAdministration(r, tx, "invitation.created", id.String(), request.Reason)
+	}
+	if err == nil {
 		err = tx.Commit(r.Context())
 	}
 	if err != nil {
 		writeCreationProblem(w, r, err, "invitation_conflict", "A pending invitation already exists.", "invitation_creation_failed", "application_invitations_pending_email")
 		return
 	}
-	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"id": id, "application_id": applicationID, "email": normalized, "workspace_id": workspace, "application_role_keys": request.ApplicationRoleKeys,
-		"workspace_role_keys": request.WorkspaceRoleKeys, "onboarding_method": request.OnboardingMethod, "status": "pending", "expires_at": expiresAt, "last_sent_at": s.app.Now(), "resend_available_at": s.app.Now().Add(time.Minute),
+	var lastSent any
+	if sendEmail {
+		lastSent = s.app.Now()
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	kernel.WriteJSON(w, http.StatusCreated, map[string]any{"invitation_url": linkURI, "version": int64(1), "email_queued": sendEmail, "id": id, "application_id": applicationID, "email": normalized, "workspace_id": workspace, "application_role_keys": request.ApplicationRoleKeys,
+		"workspace_role_keys": request.WorkspaceRoleKeys, "onboarding_method": request.OnboardingMethod, "status": "pending", "expires_at": expiresAt, "last_sent_at": lastSent, "resend_available_at": s.app.Now().Add(time.Minute),
 		"hosted_client_id": nullableActorID(request.HostedClientID), "hosted_redirect_uri": nullableText(request.HostedRedirectURI)})
 }
 
@@ -281,7 +323,7 @@ func (s *Server) listInvitations(w http.ResponseWriter, r *http.Request) {
 	if !s.canManageInvitations(w, r, workspaceID) {
 		return
 	}
-	query := `SELECT id,workspace_id,normalized_email,application_roles,workspace_roles,onboarding_method,expires_at,accepted_at,revoked_at,last_sent_at,resend_available_at,created_at,hosted_client_id,hosted_redirect_uri
+	query := `SELECT id,workspace_id,normalized_email,application_roles,workspace_roles,onboarding_method,expires_at,accepted_at,revoked_at,last_sent_at,resend_available_at,created_at,hosted_client_id,hosted_redirect_uri,version
 FROM application_invitations WHERE application_id=$1`
 	args := []any{applicationID}
 	if workspaceID != "" {
@@ -301,9 +343,11 @@ FROM application_invitations WHERE application_id=$1`
 		var workspace *string
 		var hostedClientID, hostedRedirectURI *string
 		var appRoles, workspaceRoles []string
-		var expires, sent, resend, created time.Time
+		var expires, resend, created time.Time
+		var sent *time.Time
+		var version int64
 		var accepted, revoked *time.Time
-		if rows.Scan(&id, &workspace, &email, &appRoles, &workspaceRoles, &onboardingMethod, &expires, &accepted, &revoked, &sent, &resend, &created, &hostedClientID, &hostedRedirectURI) == nil {
+		if rows.Scan(&id, &workspace, &email, &appRoles, &workspaceRoles, &onboardingMethod, &expires, &accepted, &revoked, &sent, &resend, &created, &hostedClientID, &hostedRedirectURI, &version) == nil {
 			status := "pending"
 			if accepted != nil {
 				status = "accepted"
@@ -314,7 +358,7 @@ FROM application_invitations WHERE application_id=$1`
 			}
 			items = append(items, map[string]any{"id": id, "application_id": applicationID, "workspace_id": workspace, "email": email, "application_role_keys": appRoles,
 				"workspace_role_keys": workspaceRoles, "onboarding_method": onboardingMethod, "status": status, "expires_at": expires, "accepted_at": accepted, "revoked_at": revoked,
-				"last_sent_at": sent, "resend_available_at": resend, "created_at": created, "hosted_client_id": hostedClientID, "hosted_redirect_uri": hostedRedirectURI})
+				"version": version, "last_sent_at": sent, "resend_available_at": resend, "created_at": created, "hosted_client_id": hostedClientID, "hosted_redirect_uri": hostedRedirectURI})
 		}
 	}
 	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
@@ -326,11 +370,13 @@ func (s *Server) getInvitation(w http.ResponseWriter, r *http.Request) {
 	var hostedClientID, hostedRedirectURI *string
 	var email, onboardingMethod string
 	var applicationRoles, workspaceRoles []string
-	var expiresAt, lastSentAt, resendAvailableAt, createdAt, updatedAt time.Time
+	var expiresAt, resendAvailableAt, createdAt, updatedAt time.Time
+	var lastSentAt *time.Time
+	var version int64
 	var acceptedAt, revokedAt, expirationRecordedAt *time.Time
 	err := s.app.DB.QueryRow(r.Context(), `SELECT workspace_id,normalized_email,application_roles,workspace_roles,onboarding_method,expires_at,accepted_at,revoked_at,
-last_sent_at,resend_available_at,expiration_recorded_at,created_at,updated_at,hosted_client_id,hosted_redirect_uri FROM application_invitations WHERE id=$1 AND application_id=$2`, invitationID, applicationID).
-		Scan(&workspaceID, &email, &applicationRoles, &workspaceRoles, &onboardingMethod, &expiresAt, &acceptedAt, &revokedAt, &lastSentAt, &resendAvailableAt, &expirationRecordedAt, &createdAt, &updatedAt, &hostedClientID, &hostedRedirectURI)
+last_sent_at,resend_available_at,expiration_recorded_at,created_at,updated_at,hosted_client_id,hosted_redirect_uri,version FROM application_invitations WHERE id=$1 AND application_id=$2`, invitationID, applicationID).
+		Scan(&workspaceID, &email, &applicationRoles, &workspaceRoles, &onboardingMethod, &expiresAt, &acceptedAt, &revokedAt, &lastSentAt, &resendAvailableAt, &expirationRecordedAt, &createdAt, &updatedAt, &hostedClientID, &hostedRedirectURI, &version)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "invitation_not_found", "The invitation was not found.")
 		return
@@ -350,91 +396,15 @@ last_sent_at,resend_available_at,expiration_recorded_at,created_at,updated_at,ho
 	} else if expirationRecordedAt != nil || expiresAt.Before(s.app.Now()) {
 		status = "expired"
 	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"id": invitationID, "application_id": applicationID, "workspace_id": workspaceID, "email": email,
+	w.Header().Set("ETag", kernel.ETag(version))
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{"version": version, "id": invitationID, "application_id": applicationID, "workspace_id": workspaceID, "email": email,
 		"application_role_keys": applicationRoles, "workspace_role_keys": workspaceRoles, "onboarding_method": onboardingMethod, "status": status, "expires_at": expiresAt,
 		"accepted_at": acceptedAt, "revoked_at": revokedAt, "last_sent_at": lastSentAt, "resend_available_at": resendAvailableAt,
 		"created_at": createdAt, "updated_at": updatedAt, "hosted_client_id": hostedClientID, "hosted_redirect_uri": hostedRedirectURI})
 }
 
 func (s *Server) resendInvitation(w http.ResponseWriter, r *http.Request) {
-	current := actor(r)
-	applicationID, invitationID := chi.URLParam(r, "application_id"), chi.URLParam(r, "invitation_id")
-	var workspaceID *string
-	var email, onboardingMethod string
-	var appRoles, workspaceRoles []string
-	var resendAvailable time.Time
-	err := s.app.DB.QueryRow(r.Context(), `SELECT workspace_id,normalized_email,application_roles,workspace_roles,onboarding_method,resend_available_at
-FROM application_invitations WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`, invitationID, applicationID).
-		Scan(&workspaceID, &email, &appRoles, &workspaceRoles, &onboardingMethod, &resendAvailable)
-	if err != nil {
-		kernel.WriteProblem(w, r, http.StatusNotFound, "invitation_not_found", "A pending invitation was not found.")
-		return
-	}
-	resolvedWorkspaceID := ""
-	if workspaceID != nil {
-		resolvedWorkspaceID = *workspaceID
-	}
-	if !s.canManageInvitations(w, r, resolvedWorkspaceID) {
-		return
-	}
-	if resendAvailable.After(s.app.Now()) {
-		retry := int(time.Until(resendAvailable).Seconds()) + 1
-		w.Header().Set("Retry-After", fmtInt(retry))
-		kernel.WriteProblem(w, r, http.StatusTooManyRequests, "invitation_resend_cooldown", "The invitation can be resent after the cooldown.")
-		return
-	}
-	code, link := randomCode(8), ""
-	link, _ = secure.RandomToken("p93_invite_", 32)
-	workspace := ""
-	if workspaceID != nil {
-		workspace = *workspaceID
-	}
-	linkURI, templateKey, workspaceName, presentationErr := s.invitationPresentation(r.Context(), applicationID, invitationID, link, workspace, onboardingMethod)
-	if presentationErr != nil {
-		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invitation_redirect_unconfigured", "Configure the application's invitation redirect before resending invitations.")
-		return
-	}
-	roles := append(append([]string{}, appRoles...), workspaceRoles...)
-	expires := s.app.Now().Add(7 * 24 * time.Hour)
-	variables := map[string]any{"invitation_code": code, "invitation_link": linkURI, "role_keys": strings.Join(roles, ", "), "expires_at": templateTimestamp(expires), "inviter_name": s.inviterDisplayName(r.Context(), applicationID, current)}
-	if workspace != "" {
-		variables["workspace_id"], variables["workspace_name"] = workspace, workspaceName
-	}
-	templateID, locale, payload, renderErr := s.renderSystemNotification(r.Context(), &applicationID, templateKey, email, variables)
-	if renderErr != nil {
-		kernel.WriteProblem(w, r, http.StatusInternalServerError, "invitation_template_unavailable", "The invitation email template is unavailable.")
-		return
-	}
-	notificationID := kernel.NewID()
-	tx, err := s.app.DB.Begin(r.Context())
-	if err != nil {
-		kernel.WriteProblem(w, r, 500, "database_error", "The invitation could not be resent.")
-		return
-	}
-	defer rollback(tx, r.Context())
-	result, err := tx.Exec(r.Context(), `UPDATE application_invitations SET link_credential_digest=$1,code_credential_digest=$2,expires_at=$3,
-last_sent_at=now(),resend_available_at=now()+interval '60 seconds',updated_at=now() WHERE id=$4 AND application_id=$5 AND resend_available_at<=now()
-AND accepted_at IS NULL AND revoked_at IS NULL`, s.app.Vault.Digest(link), s.app.Vault.Digest(code), expires, invitationID, applicationID)
-	if err == nil && result.RowsAffected() != 1 {
-		err = pgx.ErrNoRows
-	}
-	if err == nil {
-		ciphertext, encryptErr := s.app.Vault.Encrypt(payload, "notification:"+notificationID.String())
-		if encryptErr != nil {
-			err = encryptErr
-		} else {
-			_, err = tx.Exec(r.Context(), `INSERT INTO notifications(id,application_id,template_id,recipient,locale,payload_ciphertext,status) VALUES($1,$2,$3,$4,$5,$6,'queued')`, notificationID, applicationID, templateID, email, locale, ciphertext)
-		}
-	}
-	parsed, parseErr := uuid.Parse(applicationID)
-	if err == nil && parseErr == nil {
-		_, err = s.app.Emit(r.Context(), tx, &parsed, "application_invitation.resent", "application_invitation/"+invitationID, current, map[string]any{"invitation_id": invitationID, "status": "pending", "expires_at": expires})
-	}
-	if err != nil || parseErr != nil || tx.Commit(r.Context()) != nil {
-		kernel.WriteProblem(w, r, http.StatusConflict, "invitation_resend_conflict", "The invitation changed or is still in its cooldown.")
-		return
-	}
-	kernel.WriteJSON(w, http.StatusAccepted, map[string]any{"id": invitationID, "last_sent_at": s.app.Now(), "resend_available_at": s.app.Now().Add(time.Minute), "expires_at": expires})
+	s.rotateInvitation(w, r, true)
 }
 
 func fmtInt(value int) string { return strconv.Itoa(value) }
@@ -454,7 +424,8 @@ WHERE i.application_id=$1 AND u.id=$2 AND i.accepted_at IS NULL AND i.revoked_at
 		var id, email, onboardingMethod string
 		var workspace *string
 		var appRoles, workspaceRoles []string
-		var expires, sent, created time.Time
+		var expires, created time.Time
+		var sent *time.Time
 		if rows.Scan(&id, &workspace, &email, &appRoles, &workspaceRoles, &onboardingMethod, &expires, &sent, &created) == nil {
 			items = append(items, map[string]any{"id": id, "application_id": chi.URLParam(r, "application_id"), "workspace_id": workspace, "email": email, "application_role_keys": appRoles, "workspace_role_keys": workspaceRoles, "onboarding_method": onboardingMethod, "status": "pending", "expires_at": expires, "last_sent_at": sent, "created_at": created})
 		}
@@ -467,6 +438,14 @@ func (s *Server) revokeWorkspaceInvitation(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) revokeInvitation(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Reason string `json:"reason"`
+	}
+	if actor(r).Type != "control_user" {
+		if !kernel.DecodeJSON(w, r, &input) || !administrationReason(w, r, input.Reason) {
+			return
+		}
+	}
 	applicationID, invitationID := chi.URLParam(r, "application_id"), chi.URLParam(r, "invitation_id")
 	var workspaceID *string
 	if err := s.app.DB.QueryRow(r.Context(), `SELECT workspace_id FROM application_invitations
@@ -478,6 +457,10 @@ WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL
 	if workspaceID != nil {
 		resolvedWorkspaceID = *workspaceID
 	}
+	if routeWorkspace := chi.URLParam(r, "workspace_id"); routeWorkspace != "" && routeWorkspace != resolvedWorkspaceID {
+		kernel.WriteProblem(w, r, 404, "invitation_not_found", "The invitation was not found.")
+		return
+	}
 	if !s.canManageInvitations(w, r, resolvedWorkspaceID) {
 		return
 	}
@@ -487,7 +470,15 @@ WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL
 		return
 	}
 	defer rollback(tx, r.Context())
-	result, err := tx.Exec(r.Context(), `UPDATE application_invitations SET revoked_at=now(),updated_at=now()
+	var version int64
+	if err = tx.QueryRow(r.Context(), `SELECT version FROM application_invitations WHERE application_id=$1 AND id=$2 AND accepted_at IS NULL AND revoked_at IS NULL FOR UPDATE`, applicationID, invitationID).Scan(&version); err != nil {
+		kernel.WriteProblem(w, r, 404, "invitation_not_found", "The invitation was not found.")
+		return
+	}
+	if actor(r).Type != "control_user" && !administrationIfMatch(w, r, version) {
+		return
+	}
+	result, err := tx.Exec(r.Context(), `UPDATE application_invitations SET revoked_at=now(),version=version+1,updated_at=now()
 WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL`, invitationID, applicationID)
 	if err != nil || result.RowsAffected() != 1 {
 		kernel.WriteProblem(w, r, http.StatusNotFound, "invitation_not_found", "A pending invitation was not found.")
@@ -496,6 +487,9 @@ WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL
 	parsed, parseErr := uuid.Parse(applicationID)
 	if parseErr == nil {
 		_, err = s.app.Emit(r.Context(), tx, &parsed, "application_invitation.revoked", "application_invitation/"+invitationID, actor(r), map[string]any{"invitation_id": invitationID, "workspace_id": workspaceID, "status": "revoked"})
+	}
+	if err == nil {
+		err = s.auditApplicationAdministration(r, tx, "invitation.revoked", invitationID, input.Reason)
 	}
 	if parseErr != nil || err != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "invitation_revoke_failed", "The invitation could not be revoked.")
@@ -506,26 +500,27 @@ WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL
 
 func (s *Server) canManageInvitations(w http.ResponseWriter, r *http.Request, workspaceID string) bool {
 	current := actor(r)
-	switch current.Type {
-	case "control_user":
+	if current.Type == "control_user" {
 		return true
-	case "client":
-		if actorHasPermission(current, applicationPermission(r, "invitations/manage")) ||
-			workspaceID != "" && actorHasPermission(current, applicationPermission(r, "workspaces/"+workspaceID+"/invitations/manage")) {
-			return true
-		}
-	case "user":
-		config, err := s.internalApplicationConfig(r)
-		if err == nil && config.UserInvitationsEnabled && workspaceID != "" {
-			request := r.Clone(r.Context())
-			routeContext := chi.NewRouteContext()
-			if existing := chi.RouteContext(r.Context()); existing != nil {
-				*routeContext = *existing
-			}
-			routeContext.URLParams.Add("workspace_id", workspaceID)
-			request = request.WithContext(context.WithValue(request.Context(), chi.RouteCtxKey, routeContext))
-			if s.canAccessWorkspace(request, true) || s.canAccessWorkspace(request, false) && actorHasPermission(current, applicationPermission(r, "workspaces/"+workspaceID+"/invitations/manage")) {
-				return true
+	}
+	if current.Type == "client" && (actorHasPermission(current, applicationPermission(r, "invitations/manage")) || workspaceID != "" && actorHasPermission(current, applicationPermission(r, "workspaces/"+workspaceID+"/invitations/manage"))) {
+		return true
+	}
+	if current.Type == "user" && current.DelegatedBy == "" {
+		tx, err := s.app.DB.Begin(r.Context())
+		if err == nil {
+			defer rollback(tx, r.Context())
+			live, e := s.applicationAdminScopes(r, tx, current)
+			if e == nil {
+				if workspaceID != "" {
+					var owner bool
+					if err := tx.QueryRow(r.Context(), `SELECT owner_user_id=$3 FROM workspaces WHERE application_id=$1 AND id=$2 AND deleted_at IS NULL`, chi.URLParam(r, "application_id"), workspaceID, current.ID).Scan(&owner); err == nil && owner {
+						return true
+					}
+				}
+				if administrationAllows(current, live, applicationPermission(r, "invitations/manage")) || workspaceID != "" && administrationAllows(current, live, applicationPermission(r, "workspaces/"+workspaceID+"/invitations/manage")) {
+					return true
+				}
 			}
 		}
 	}
@@ -534,13 +529,21 @@ func (s *Server) canManageInvitations(w http.ResponseWriter, r *http.Request, wo
 }
 
 func (s *Server) exchangeInvitation(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		InvitationID  string `json:"invitation_id,omitempty"`
-		Email         string `json:"email,omitempty"`
-		Code          string `json:"code,omitempty"`
-		LinkToken     string `json:"link_token,omitempty"`
-		CodeChallenge string `json:"code_challenge"`
+	if r.Header.Get("Authorization") != "" {
+		var authenticated *http.Request
+		buffer := newBufferedResponse()
+		s.requireUser(http.HandlerFunc(func(_ http.ResponseWriter, verified *http.Request) {
+			if actor(verified).Type == "user" && actor(verified).DelegatedBy == "" {
+				authenticated = verified
+			}
+		})).ServeHTTP(buffer, r)
+		if authenticated == nil {
+			kernel.WriteProblem(w, r, 401, "invitation_identity_mismatch", "A direct application-user session is required.")
+			return
+		}
+		r = authenticated
 	}
+	var request invitationCredential
 	if !kernel.DecodeJSON(w, r, &request) {
 		return
 	}
@@ -578,7 +581,8 @@ func (s *Server) exchangeInvitation(w http.ResponseWriter, r *http.Request) {
 	var workspaceID *string
 	var appRoles, workspaceRoles []string
 	var codeDigest, linkDigest []byte
-	query := `SELECT id,workspace_id,normalized_email,application_roles,workspace_roles,onboarding_method,code_credential_digest,link_credential_digest
+	var invitationVersion int64
+	query := `SELECT id,workspace_id,normalized_email,application_roles,workspace_roles,onboarding_method,code_credential_digest,link_credential_digest,version
 FROM application_invitations WHERE application_id=$1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`
 	args := []any{applicationID}
 	if request.InvitationID != "" {
@@ -589,11 +593,18 @@ FROM application_invitations WHERE application_id=$1 AND accepted_at IS NULL AND
 		args = append(args, request.Email, s.app.Vault.Digest(strings.ToUpper(request.Code)))
 	}
 	query += ` FOR UPDATE`
-	err = tx.QueryRow(r.Context(), query, args...).Scan(&invitationID, &workspaceID, &email, &appRoles, &workspaceRoles, &onboardingMethod, &codeDigest, &linkDigest)
+	err = tx.QueryRow(r.Context(), query, args...).Scan(&invitationID, &workspaceID, &email, &appRoles, &workspaceRoles, &onboardingMethod, &codeDigest, &linkDigest, &invitationVersion)
 	valid := err == nil && onboardingMethod == "email" && ((request.Code != "" && request.Email == email && equalBytes(codeDigest, s.app.Vault.Digest(strings.ToUpper(request.Code)))) ||
 		(request.LinkToken != "" && equalBytes(linkDigest, s.app.Vault.Digest(request.LinkToken))))
 	if !valid {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_invitation", "The invitation is invalid, expired, or already used.")
+		return
+	}
+	if err = s.revalidateInvitationAuthority(r, tx, invitationID); err != nil {
+		kernel.WriteProblem(w, r, 403, "invitation_authority_revoked", "The inviter no longer has the required authority.")
+		return
+	}
+	if !s.verifyInvitationRecipient(w, r, tx, invitationID, email, invitationVersion, request) {
 		return
 	}
 	var userID, status string
@@ -631,7 +642,7 @@ VALUES($1,$2,$3,$3,now())`, userID, applicationID, email)
 		err = assignInvitationRoles(r.Context(), tx, applicationID, userID, roleWorkspaceID, appRoles, workspaceRoles)
 	}
 	if err == nil {
-		result, updateErr := tx.Exec(r.Context(), `UPDATE application_invitations SET accepted_at=now(),updated_at=now() WHERE id=$1 AND accepted_at IS NULL AND revoked_at IS NULL`, invitationID)
+		result, updateErr := tx.Exec(r.Context(), `UPDATE application_invitations SET accepted_at=now(),version=version+1,updated_at=now() WHERE id=$1 AND accepted_at IS NULL AND revoked_at IS NULL`, invitationID)
 		err = updateErr
 		if err == nil && result.RowsAffected() != 1 {
 			err = pgx.ErrNoRows

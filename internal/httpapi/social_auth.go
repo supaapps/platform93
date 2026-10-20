@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
@@ -160,6 +161,7 @@ RETURNING id,auth_provider_config_id,flow,requested_by_user_id,invitation_id,app
 		return
 	}
 	if flow == "invitation" && invitationID != nil {
+		r = r.WithContext(context.WithValue(r.Context(), invitationProviderChallengeKey{}, challengeID))
 		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, config, external)
 		if completeErr != nil {
 			s.releaseExternalAuthChallenge(r, challengeID)

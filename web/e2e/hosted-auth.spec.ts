@@ -11,6 +11,20 @@ const initial = {
   branding: { display_name: "Example", accent_color: "#17261f", background_color: "#f6f8fa", layout: "centered", default_locale: "en", copy: { en: { heading: "Welcome back", help: "Secure access to your application." } } },
 };
 
+test("email invitations request independent identity proof before acceptance", async ({page}) => {
+  let view={...initial,stage:"invitation",providers:[] as string[]};
+  const actions:Record<string,unknown>[]=[];
+  await page.route(`**${endpoint}`,route=>route.fulfill({json:view}));
+  await page.route(`**${endpoint}/actions`,route=>{const body=route.request().postDataJSON();actions.push(body);if(body.action==="invitation")view={...view,stage:"email_code"};return route.fulfill({json:view});});
+  await page.goto(`/auth/?interaction=${interaction}`);
+  await expect(page.getByRole("button",{name:"Accept invitation",exact:true})).toHaveCount(0);
+  await page.getByRole("button",{name:"Send verification code",exact:true}).click();
+  await page.getByLabel("Code",{exact:true}).fill("ABCD2345");
+  await page.getByRole("button",{name:"Verify and continue",exact:true}).click();
+  expect(actions[0]).toEqual({action:"invitation"});
+  expect(actions[1]).toMatchObject({action:"email_verify",code:"ABCD2345"});
+});
+
 test("resource consent cannot select unavailable contexts and ordinary approve stays unchanged", async ({ page }) => {
   const view = { ...initial, stage: "consent", user: { name: "User", email: "user@example.test", email_verified: true } };
   let resource = true;

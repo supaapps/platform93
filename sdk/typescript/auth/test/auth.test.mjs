@@ -20,6 +20,25 @@ const recoveryAuth = (fetch, authorizationStateStore = new MemoryAuthorizationSt
 });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
+test("email invitation acceptance requires independent proof and retains PKCE", async () => {
+  const requests=[];
+  const auth=recoveryAuth(async(url,init)=>{
+    const body=JSON.parse(init.body);requests.push({url,body});
+    if(String(url).endsWith("/email/start"))return Response.json({challenge_id:"independent",invitation_id:"invitation",expires_in:600},{status:202});
+    if(String(url).endsWith("/exchange"))return Response.json({authorization_code:"pkce-code",expires_in:300});
+    return Response.json(tokens("invited"));
+  });
+  const invitation={invitation_id:"invitation",link_token:"invitation-only"};
+  await assert.rejects(auth.acceptEmailInvitation(invitation,"independent",{code:"ABCD2345"}));
+  await auth.startInvitationEmailAuthentication(invitation);
+  await auth.acceptEmailInvitation(invitation,"independent",{code:"ABCD2345"});
+  assert.equal(requests[1].body.authentication_code,"ABCD2345");
+  assert.equal(requests[1].body.authentication_challenge_id,"independent");
+  assert.equal(requests[0].body.code_challenge,requests[1].body.code_challenge);
+  assert.equal(createHash("sha256").update(requests[2].body.code_verifier).digest("base64url"),requests[0].body.code_challenge);
+  assert.equal(auth.snapshot().status,"authenticated");
+});
+
 test("abandoned invitation provider requests can be cancelled after reload before normal login", async () => {
   const store = new MemoryAuthorizationStateStore();
   const bodies = [];

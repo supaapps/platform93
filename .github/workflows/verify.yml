@@ -48,6 +48,9 @@ jobs:
         run: |
           go test -json -count=1 ./internal/httpapi ./internal/objectstorage ./internal/jobs | tee /tmp/integration-tests.json
           jq -e 'select(.Action == "pass" and .Test == "TestWorkspaceOwnershipAndClientScopeInvariants")' /tmp/integration-tests.json >/dev/null
+          for TEST in TestApplicationAdministrationPermissionsPostgres TestApplicationAdministrationRolesAndSensitiveActionsPostgres TestApplicationInvitationsIndependentAuthenticationPostgres TestApplicationInvitationRotationAndRevocationPostgres TestApplicationAdministrationIsolationAndAtomicityPostgres TestApplicationInvitationGoogleIdentityBoundaryPostgres TestApplicationAdministrationResponseContractsPostgres TestApplicationInvitationWorkspaceOwnerPostgres; do
+            jq -e --arg test "$TEST" 'select(.Action == "pass" and .Test == $test)' /tmp/integration-tests.json >/dev/null
+          done
           jq -e 'select(.Action == "pass" and .Test == "TestExternalIdentityRegistrationPolicyAndLinking")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestOAuthTokenSecurity")' /tmp/integration-tests.json >/dev/null
           jq -e 'select(.Action == "pass" and .Test == "TestExternalEmailEnrollmentResendCooldownIsAtomic/successful_enrollment_persists_email_metadata_and_rejects_replay")' /tmp/integration-tests.json >/dev/null
@@ -114,6 +117,7 @@ jobs:
       - run: composer audit --no-interaction
       - run: php sdk/php/tests/conformance.php && php sdk/php/tests/auth_conformance.php
       - run: php sdk/php/tests/resource_authorization.php
+      - run: php sdk/php/tests/administration.php
       - run: find sdk/php/src -name '*.php' -print0 | xargs -0 -n1 php -l
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
@@ -124,6 +128,7 @@ jobs:
       - run: python -m pip check
       - run: PYTHONPATH=sdk/python/auth/src python sdk/python/auth/tests/conformance.py
       - run: PYTHONPATH=sdk/python/auth/src python -m unittest discover -s sdk/python/auth/tests -p 'test_resources.py'
+      - run: PYTHONPATH=sdk/python/auth/src python -m unittest discover -s sdk/python/auth/tests -p 'test_administration.py'
       - run: PYTHONPATH=sdk/python/webhooks/src python sdk/python/webhooks/tests/conformance.py
 
   consumers:
