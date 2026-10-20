@@ -55,7 +55,7 @@ func (s *Server) manageApplicationUserRole(w http.ResponseWriter, r *http.Reques
 	app, id := chi.URLParam(r, "application_id"), chi.URLParam(r, "assignment_id")
 	if r.Method == "DELETE" {
 		var user *string
-		if err := tx.QueryRow(r.Context(), `SELECT user_id,role_id,workspace_id FROM role_assignments WHERE application_id=$1 AND id=$2 FOR UPDATE`, app, id).Scan(&user, &in.RoleID, &in.WorkspaceID); err != nil || user == nil {
+		if err := tx.QueryRow(r.Context(), `SELECT user_id,role_id,workspace_id FROM role_assignments WHERE application_id=$1 AND id=$2`, app, id).Scan(&user, &in.RoleID, &in.WorkspaceID); err != nil || user == nil {
 			kernel.WriteProblem(w, r, 404, "role_assignment_not_found", "The user role assignment was not found.")
 			return
 		}
@@ -91,7 +91,11 @@ func (s *Server) manageApplicationUserRole(w http.ResponseWriter, r *http.Reques
 	}
 	if err == nil {
 		if r.Method == "DELETE" {
-			_, err = tx.Exec(r.Context(), `DELETE FROM role_assignments WHERE application_id=$1 AND id=$2`, app, id)
+			result, deleteErr := tx.Exec(r.Context(), `DELETE FROM role_assignments WHERE application_id=$1 AND id=$2 AND user_id=$3 AND role_id=$4 AND workspace_id IS NOT DISTINCT FROM $5::uuid`, app, id, in.UserID, in.RoleID, in.WorkspaceID)
+			err = deleteErr
+			if err == nil && result.RowsAffected() != 1 {
+				err = fmt.Errorf("assignment changed concurrently")
+			}
 		} else {
 			id = kernel.NewID().String()
 			_, err = tx.Exec(r.Context(), `INSERT INTO role_assignments(id,application_id,user_id,role_id,workspace_id) VALUES($1,$2,$3,$4,$5)`, id, app, in.UserID, in.RoleID, in.WorkspaceID)

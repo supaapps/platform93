@@ -6,6 +6,12 @@ the hosted control panel, SMTP, provider credentials, application settings, bill
 connections, or organization administration. A role named `admin` has no special
 meaning: only its explicitly assigned permissions grant access.
 
+These are application-wide capabilities, not a role hierarchy: a caller allowed
+to suspend users or revoke sessions can target another administrator in the same
+application. Grant these permissions only to trusted administrators. Separate
+role-assignment ceilings still prevent granting or removing roles outside the
+caller's own effective permissions.
+
 ## Initial configuration
 
 A Platform user creates an application role and assigns it to the initial
@@ -101,8 +107,10 @@ outstanding email/provider acceptance challenges. Previously accepted, revoked,
 or expired invitations cannot be rotated. List/detail responses never contain
 the secret URL. Idempotent creation/rotation retries can recover the same result
 for the original authorized caller; these response receipts are encrypted.
+Receipts do not extend credential expiry or reverse later rotation/revocation;
+a replayed response may contain a URL that has since become unusable.
 
-Application-user creation, resend, and rotation require
+Invitation creation, resend, and rotation by application users require
 `user_invitations_enabled=true`, even for administrators. Disabling this setting
 does not block existing invitation acceptance, inspection, or revocation.
 Machine/control invitation exceptions remain separate. Roles included in an
@@ -135,12 +143,25 @@ const result = await auth.acceptEmailInvitation(invitation, challenge.challenge_
 ```
 
 Email challenge delivery requires active SMTP and enabled passwordless login.
+If passwordless login is disabled, use an existing verified recipient session or
+enable email authentication before onboarding a new email-only recipient.
 An already verified matching session can accept without another email. The
 independent email link also works in the originating PKCE browser context through
 `acceptEmailInvitation(..., { linkToken })`. Its `challenge_id` and `link_token`
 query fields identify the authentication proof, not the original invitation
 credential. Preserve the original invitation context privately and remove
 credential parameters from the address bar promptly.
+
+An existing account with a password, linked provider, MFA method, active personal
+key, or non-email session must have been email-verified before this invitation was
+created. Otherwise acceptance returns `invited_account_review_required` without
+consuming the invitation or granting roles. Later email verification alone does
+not bypass this guard. This prevents account pre-hijacking: mailbox proof must not
+leave an attacker's earlier credentials usable. A Platform administrator must
+review and secure the account, revoke the old invitation, and issue a new one
+after establishing the legitimate recipient. Do not merely toggle verification
+or reissue invitations without reviewing credentials. Credential-free silent
+accounts can complete independent mailbox authentication normally.
 
 Use `startApplicationInvitationProvider("google", invitation)` for Google-specific
 invitations and the normal provider-exchange SDK continuation. Google verifies
@@ -150,6 +171,8 @@ the recipient independently. PKCE, provider state/nonce, and MFA remain required
 
 Administrative requests require exact application audience/actor validation,
 current active authority intersected with token scopes, and live session checks.
+After creating a workspace, refresh the owner's token before administering its
+invitations: live ownership alone cannot expand a token's original scope ceiling.
 Sensitive human changes require authentication within ten minutes. Machine
 clients use explicit permissions rather than human recent-authentication checks.
 PATs, delegated sessions, resource tokens, and control tokens cannot substitute
@@ -159,7 +182,14 @@ authenticate to any control-plane route.
 Role assignment/removal requires `roles:assign` and every permission represented
 by the selected role. Workspace roles remain workspace-bound and cannot make an
 owner into a member. Role changes and status/session changes use atomic audit and
-event/outbox transactions. Third-party APIs verifying ordinary JWTs offline still
+event/outbox transactions. Removing a workspace role does not remove workspace
+membership; remove membership separately when that is intended. DELETE mutation
+requests include a JSON body with an audit `reason`.
+
+Control invitation resend retains its existing optional version-header behavior;
+application-user and machine invitation changes require explicit versions.
+
+Third-party APIs verifying ordinary JWTs offline still
 observe revocation or permission changes only at their normal token expiry.
 
 This release intentionally tightens invitation authentication: pending invitations

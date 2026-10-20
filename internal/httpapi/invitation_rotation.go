@@ -26,13 +26,17 @@ func (s *Server) rotateInvitation(w http.ResponseWriter, r *http.Request, resend
 	if !resend && !requireAdministrationKey(w, r) {
 		return
 	}
+	if actor(r).Type != "control_user" && (!administrationReason(w, r, in.Reason) || !requireAdministrationKey(w, r)) {
+		return
+	}
 	app, id := chi.URLParam(r, "application_id"), chi.URLParam(r, "invitation_id")
 	var workspace, hostedClient, hostedRedirect *string
 	var email, method string
 	var appRoles, workspaceRoles []string
 	var available time.Time
 	var version int64
-	err := s.app.DB.QueryRow(r.Context(), `SELECT workspace_id,normalized_email,application_roles,workspace_roles,onboarding_method,resend_available_at,version,hosted_client_id,hosted_redirect_uri FROM application_invitations WHERE application_id=$1 AND id=$2 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`, app, id).Scan(&workspace, &email, &appRoles, &workspaceRoles, &method, &available, &version, &hostedClient, &hostedRedirect)
+	var lastSent *time.Time
+	err := s.app.DB.QueryRow(r.Context(), `SELECT workspace_id,normalized_email,application_roles,workspace_roles,onboarding_method,resend_available_at,version,hosted_client_id,hosted_redirect_uri,last_sent_at FROM application_invitations WHERE application_id=$1 AND id=$2 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`, app, id).Scan(&workspace, &email, &appRoles, &workspaceRoles, &method, &available, &version, &hostedClient, &hostedRedirect, &lastSent)
 	if err != nil {
 		kernel.WriteProblem(w, r, 404, "invitation_not_found", "The pending invitation was not found.")
 		return
@@ -85,7 +89,7 @@ func (s *Server) rotateInvitation(w http.ResponseWriter, r *http.Request, resend
 		return
 	}
 	expires := s.app.Now().Add(7 * 24 * time.Hour)
-	var sent *time.Time
+	sent := lastSent
 	var templateID, locale, cipher, notification string
 	if send {
 		if !s.invitationEmailAvailable(w, r) {
@@ -128,9 +132,6 @@ func (s *Server) rotateInvitation(w http.ResponseWriter, r *http.Request, resend
 		return
 	}
 	if actor(r).Type != "control_user" {
-		if !administrationReason(w, r, in.Reason) || !requireAdministrationKey(w, r) {
-			return
-		}
 		live, e := s.applicationAdminScopes(r, tx, actor(r))
 		if e != nil || s.validateInvitationRolesAuthority(r, tx, actor(r), live, ws, appRoles, workspaceRoles) != nil {
 			kernel.WriteProblem(w, r, 403, "invitation_authority_required", "Current invitation and role permissions are required.")

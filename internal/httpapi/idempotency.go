@@ -107,14 +107,12 @@ FROM idempotency_records WHERE application_id IS NOT DISTINCT FROM $1::uuid AND 
 		} else {
 			headers, _ := json.Marshal(map[string][]string{"Content-Type": buffer.header.Values("Content-Type"), "Cache-Control": buffer.header.Values("Cache-Control"), "ETag": buffer.header.Values("ETag")})
 			stored := buffer.body.Bytes()
-			if buffer.header.Get("Cache-Control") == "no-store" {
-				cipher, e := s.app.Vault.Encrypt(stored, "idempotency:"+recordID.String())
-				if e != nil {
-					kernel.WriteProblem(w, r, 503, "idempotency_unavailable", "The response could not be stored safely.")
-					return
-				}
-				stored = []byte("p93_encrypted:" + cipher)
+			cipher, e := s.app.Vault.Encrypt(stored, "idempotency:"+recordID.String())
+			if e != nil {
+				kernel.WriteProblem(w, r, 503, "idempotency_unavailable", "The response could not be stored safely.")
+				return
 			}
+			stored = []byte("p93_encrypted:" + cipher)
 			_, _ = s.app.DB.Exec(r.Context(), `UPDATE idempotency_records SET response_status=$1,response_headers=$2,
 response_body=$3,locked_until=NULL WHERE id=$4`, buffer.status, headers, stored, recordID)
 		}

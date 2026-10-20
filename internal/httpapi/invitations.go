@@ -319,6 +319,7 @@ func (s *Server) invitationPresentation(ctx context.Context, applicationID, invi
 }
 
 func (s *Server) listInvitations(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	applicationID, workspaceID := chi.URLParam(r, "application_id"), chi.URLParam(r, "workspace_id")
 	if !s.canManageInvitations(w, r, workspaceID) {
 		return
@@ -330,7 +331,15 @@ FROM application_invitations WHERE application_id=$1`
 		query += ` AND workspace_id=$2`
 		args = append(args, workspaceID)
 	}
-	query += ` ORDER BY created_at DESC,id DESC LIMIT 101`
+	params := r.URL.Query()
+	if !params.Has("limit") {
+		params.Set("limit", "20")
+	}
+	r.URL.RawQuery = params.Encode()
+	query, args, limit, valid := referenceSearch(w, r, query, args, "id", "normalized_email")
+	if !valid {
+		return
+	}
 	rows, err := s.app.DB.Query(r.Context(), query, args...)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "database_error", "Invitations could not be loaded.")
@@ -361,10 +370,16 @@ FROM application_invitations WHERE application_id=$1`
 				"version": version, "last_sent_at": sent, "resend_available_at": resend, "created_at": created, "hosted_client_id": hostedClientID, "hosted_redirect_uri": hostedRedirectURI})
 		}
 	}
-	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": nil})
+	if rows.Err() != nil {
+		kernel.WriteProblem(w, r, 503, "invitations_unavailable", "Invitations could not be loaded.")
+		return
+	}
+	items, cursor := referencePage(items, limit, func(item map[string]any) string { return item["id"].(string) })
+	kernel.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": cursor})
 }
 
 func (s *Server) getInvitation(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	applicationID, invitationID := chi.URLParam(r, "application_id"), chi.URLParam(r, "invitation_id")
 	var workspaceID *string
 	var hostedClientID, hostedRedirectURI *string
@@ -478,6 +493,13 @@ WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL
 	if actor(r).Type != "control_user" && !administrationIfMatch(w, r, version) {
 		return
 	}
+	if actor(r).Type != "control_user" {
+		live, err := s.applicationAdminScopes(r, tx, actor(r))
+		if err != nil || !(administrationAllows(actor(r), live, applicationPermission(r, "invitations/manage")) || workspaceID != nil && administrationAllows(actor(r), live, applicationPermission(r, "workspaces/"+*workspaceID+"/invitations/manage"))) {
+			kernel.WriteProblem(w, r, 403, "invitation_management_required", "Current invitation management permission is required.")
+			return
+		}
+	}
 	result, err := tx.Exec(r.Context(), `UPDATE application_invitations SET revoked_at=now(),version=version+1,updated_at=now()
 WHERE id=$1 AND application_id=$2 AND accepted_at IS NULL AND revoked_at IS NULL`, invitationID, applicationID)
 	if err != nil || result.RowsAffected() != 1 {
@@ -503,21 +525,12 @@ func (s *Server) canManageInvitations(w http.ResponseWriter, r *http.Request, wo
 	if current.Type == "control_user" {
 		return true
 	}
-	if current.Type == "client" && (actorHasPermission(current, applicationPermission(r, "invitations/manage")) || workspaceID != "" && actorHasPermission(current, applicationPermission(r, "workspaces/"+workspaceID+"/invitations/manage"))) {
-		return true
-	}
-	if current.Type == "user" && current.DelegatedBy == "" {
+	if (current.Type == "user" || current.Type == "client") && current.DelegatedBy == "" {
 		tx, err := s.app.DB.Begin(r.Context())
 		if err == nil {
 			defer rollback(tx, r.Context())
 			live, e := s.applicationAdminScopes(r, tx, current)
 			if e == nil {
-				if workspaceID != "" {
-					var owner bool
-					if err := tx.QueryRow(r.Context(), `SELECT owner_user_id=$3 FROM workspaces WHERE application_id=$1 AND id=$2 AND deleted_at IS NULL`, chi.URLParam(r, "application_id"), workspaceID, current.ID).Scan(&owner); err == nil && owner {
-						return true
-					}
-				}
 				if administrationAllows(current, live, applicationPermission(r, "invitations/manage")) || workspaceID != "" && administrationAllows(current, live, applicationPermission(r, "workspaces/"+workspaceID+"/invitations/manage")) {
 					return true
 				}
@@ -608,7 +621,22 @@ FROM application_invitations WHERE application_id=$1 AND accepted_at IS NULL AND
 		return
 	}
 	var userID, status string
-	err = tx.QueryRow(r.Context(), `SELECT id,status FROM users WHERE application_id=$1 AND normalized_email=$2 FOR UPDATE`, applicationID, email).Scan(&userID, &status)
+	var establishedRecipient bool
+	// Verification after invitation creation must not bless credentials planted
+	// on an unverified account before the mailbox owner arrives.
+	err = tx.QueryRow(r.Context(), `SELECT u.id,u.status,
+ (u.email_verified_at IS NOT NULL AND u.email_verified_at<i.created_at) OR NOT (
+ u.password_hash IS NOT NULL OR
+ EXISTS(SELECT 1 FROM user_identities x WHERE x.application_id=u.application_id AND x.user_id=u.id) OR
+ EXISTS(SELECT 1 FROM user_authentication_methods x WHERE x.application_id=u.application_id AND x.user_id=u.id AND x.status<>'disabled') OR
+ EXISTS(SELECT 1 FROM personal_api_keys x WHERE x.application_id=u.application_id AND x.user_id=u.id AND x.revoked_at IS NULL) OR
+ EXISTS(SELECT 1 FROM user_sessions x WHERE x.application_id=u.application_id AND x.user_id=u.id AND x.revoked_at IS NULL AND x.amr && ARRAY['pwd','password','google','apple','facebook','microsoft','linkedin','webauthn','totp']))
+ FROM users u JOIN application_invitations i ON i.application_id=u.application_id AND i.id=$3
+ WHERE u.application_id=$1 AND u.normalized_email=$2 FOR UPDATE OF u`, applicationID, email, invitationID).Scan(&userID, &status, &establishedRecipient)
+	if err == nil && !establishedRecipient {
+		kernel.WriteProblem(w, r, http.StatusConflict, "invited_account_review_required", "Existing account credentials require administrator review before accepting this invitation.")
+		return
+	}
 	if err == pgx.ErrNoRows {
 		if limitErr := enforceUserLimit(r.Context(), tx, applicationID); limitErr != nil {
 			kernel.WriteProblem(w, r, http.StatusConflict, "invited_user_creation_failed", "The invited account could not be created.")

@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/supaapps/platform93/internal/generated"
 	"github.com/supaapps/platform93/internal/identity"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -407,9 +408,112 @@ func TestApplicationInvitationWorkspaceOwnerPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := map[string]any{"email": "member-" + workspace + "@example.test", "workspace_role_keys": []string{"reader"}, "send_email": false, "reason": "Invite a workspace member"}
+	expectAdministrationStatus(t, f.request(t, "POST", "/workspaces/"+workspace+"/invitations", body, f.access, "stale-owner-invitation-key", ""), 403)
+	response := httptest.NewRecorder()
+	f.server.issueSession(response, requestWithRoute(t, "POST", "/", nil, map[string]string{"application_id": f.app}, kernel.Actor{}), f.user, []string{"pwd"})
+	var refreshed struct {
+		Access string `json:"access_token"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &refreshed); err != nil || refreshed.Access == "" {
+		t.Fatalf("refresh owner scopes: %d %s", response.Code, response.Body)
+	}
+	f.access = refreshed.Access
 	expectAdministrationStatus(t, f.request(t, "POST", "/workspaces/"+workspace+"/invitations", body, f.access, "owner-invitation-key", ""), 201)
 	expectAdministrationStatus(t, f.request(t, "GET", "/workspaces/"+workspace+"/invitations", nil, f.access, "", ""), 200)
 	expectAdministrationStatus(t, f.request(t, "GET", "/users", nil, f.access, "", ""), 403)
 	body["workspace_id"] = kernel.NewID().String()
 	expectAdministrationStatus(t, f.request(t, "POST", "/workspaces/"+workspace+"/invitations", body, f.access, "foreign-workspace-key", ""), 422)
+}
+
+func TestApplicationAdministrationIdempotencyEncryptionPostgres(t *testing.T) {
+	f := newApplicationAdministrationFixture(t, []string{"users:read"})
+	for _, cacheControl := range []string{"", "private, no-store"} {
+		t.Run(cacheControl, func(t *testing.T) {
+			key := "encryption-key-" + kernel.NewID().String()
+			handler := f.server.idempotent(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Cache-Control", cacheControl)
+				kernel.WriteJSON(w, 201, map[string]any{"value": "private-result"})
+			}))
+			invoke := func() *httptest.ResponseRecorder {
+				r := requestWithRoute(t, "POST", "/", nil, map[string]string{"application_id": f.app}, kernel.Actor{Type: "user", ID: f.user})
+				r.Header.Set("Idempotency-Key", key)
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, r)
+				return w
+			}
+			first, replay := invoke(), invoke()
+			expectAdministrationStatus(t, first, 201)
+			expectAdministrationStatus(t, replay, 201)
+			if first.Body.String() != replay.Body.String() || replay.Header().Get("Idempotent-Replayed") != "true" {
+				t.Fatal("encrypted receipt did not replay")
+			}
+			var stored []byte
+			if err := f.server.app.DB.QueryRow(t.Context(), `SELECT response_body FROM idempotency_records WHERE application_id=$1 AND idempotency_key=$2`, f.app, key).Scan(&stored); err != nil || !strings.HasPrefix(string(stored), "p93_encrypted:") || strings.Contains(string(stored), "private-result") {
+				t.Fatalf("response was not encrypted: %v", err)
+			}
+		})
+	}
+}
+
+func TestApplicationInvitationPreRegisteredAccountPostgres(t *testing.T) {
+	for _, credential := range []string{"password", "identity", "mfa", "personal_key", "none", "verified"} {
+		t.Run(credential, func(t *testing.T) {
+			f := newApplicationAdministrationFixture(t, []string{"invitations:manage"})
+			db := f.server.app.DB
+			if credential != "verified" {
+				if _, err := db.Exec(t.Context(), `UPDATE users SET email_verified_at=NULL WHERE id=$1`, f.target); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var err error
+			switch credential {
+			case "password", "verified":
+				_, err = db.Exec(t.Context(), `UPDATE users SET password_hash='preexisting-test-hash' WHERE id=$1`, f.target)
+			case "identity":
+				_, err = db.Exec(t.Context(), `INSERT INTO user_identities(application_id,user_id,provider,provider_subject) VALUES($1,$2,'google',$3)`, f.app, f.target, kernel.NewID().String())
+			case "mfa":
+				_, err = db.Exec(t.Context(), `INSERT INTO user_authentication_methods(application_id,user_id,method_type) VALUES($1,$2,'totp')`, f.app, f.target)
+			case "personal_key":
+				_, err = db.Exec(t.Context(), `INSERT INTO personal_api_keys(application_id,user_id,token_prefix,token_digest,expires_at) VALUES($1,$2,'test',$3,now()+interval '1 day')`, f.app, f.target, f.server.app.Vault.Digest(f.target))
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			created := f.request(t, "POST", "/invitations", map[string]any{"email": f.target + "@example.test", "send_email": false, "reason": "Onboard recipient"}, f.access, "pre-registered-invitation", "")
+			expectAdministrationStatus(t, created, 201)
+			var invitation struct {
+				ID  string `json:"id"`
+				URL string `json:"invitation_url"`
+			}
+			if err = json.Unmarshal(created.Body.Bytes(), &invitation); err != nil {
+				t.Fatal(err)
+			}
+			uri, _ := url.Parse(invitation.URL)
+			sum := sha256.Sum256([]byte("abcdefghijklmnopqrstuvwxyzABCDEFGH012345678"))
+			challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+			proof := kernel.NewID().String()
+			if _, err = db.Exec(t.Context(), `INSERT INTO invitation_email_challenges(id,application_id,invitation_id,invitation_version,code_challenge,code_digest,link_digest,expires_at) VALUES($1,$2,$3,1,$4,$5,$6,now()+interval '5 minutes')`, proof, f.app, invitation.ID, challenge, f.server.app.Vault.Digest("ABCD2345"), f.server.app.Vault.Digest("independent-proof")); err != nil {
+				t.Fatal(err)
+			}
+			input := map[string]any{"invitation_id": invitation.ID, "link_token": uri.Query().Get("link_token"), "code_challenge": challenge, "authentication_challenge_id": proof, "authentication_code": "ABCD2345"}
+			if credential == "none" || credential == "verified" {
+				expectAdministrationStatus(t, f.request(t, "POST", "/auth/invitations/exchange", input, "", "", ""), 200)
+				return
+			}
+			for attempt := 0; attempt < 2; attempt++ {
+				response := f.request(t, "POST", "/auth/invitations/exchange", input, "", "", "")
+				expectAdministrationStatus(t, response, 409)
+				if !strings.Contains(response.Body.String(), "invited_account_review_required") {
+					t.Fatal(response.Body.String())
+				}
+				var untouched bool
+				if err = db.QueryRow(t.Context(), `SELECT i.accepted_at IS NULL AND c.consumed_at IS NULL FROM application_invitations i JOIN invitation_email_challenges c ON c.invitation_id=i.id WHERE i.id=$1`, invitation.ID).Scan(&untouched); err != nil || !untouched {
+					t.Fatal("failed acceptance consumed credentials", err)
+				}
+				if _, err = db.Exec(t.Context(), `UPDATE users SET email_verified_at=now() WHERE id=$1`, f.target); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
 }

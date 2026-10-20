@@ -37,17 +37,6 @@ func (s *Server) validateInvitationRolesAuthority(r *http.Request, tx pgx.Tx, cu
 		if ws == nil || len(appRoles) > 0 {
 			return fmt.Errorf("application invitation authority required")
 		}
-		if current.Type == "user" {
-			var owner bool
-			err := tx.QueryRow(r.Context(), `SELECT owner_user_id=$3 FROM workspaces WHERE application_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE`, app, *ws, current.ID).Scan(&owner)
-			if err != nil {
-				return err
-			}
-			if owner {
-				wildcard, _ := platformauthz.CanonicalScope(app, ws, "*")
-				current.Permissions = append(append([]string{}, current.Permissions...), wildcard)
-			}
-		}
 		scope, _ := platformauthz.CanonicalScope(app, ws, "invitations:manage")
 		if !administrationAllows(current, live, scope) {
 			return fmt.Errorf("workspace invitation authority required")

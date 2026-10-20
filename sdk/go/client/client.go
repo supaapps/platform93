@@ -172,7 +172,7 @@ type Invitation struct {
 	WorkspaceRoleKeys   []string   `json:"workspace_role_keys"`
 	Status              string     `json:"status"`
 	ExpiresAt           time.Time  `json:"expires_at"`
-	LastSentAt          time.Time  `json:"last_sent_at"`
+	LastSentAt          *time.Time `json:"last_sent_at"`
 	ResendAvailableAt   time.Time  `json:"resend_available_at"`
 	AcceptedAt          *time.Time `json:"accepted_at"`
 	RevokedAt           *time.Time `json:"revoked_at"`

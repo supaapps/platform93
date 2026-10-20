@@ -122,6 +122,7 @@ func administrationAllows(current kernel.Actor, live []string, scope string) boo
 }
 
 func (s *Server) beginApplicationAdministration(w http.ResponseWriter, r *http.Request, permission string, sensitive bool) (pgx.Tx, []string, bool) {
+	w.Header().Set("Cache-Control", "no-store")
 	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
 		kernel.WriteProblem(w, r, 503, "administration_unavailable", "User administration is unavailable.")

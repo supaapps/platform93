@@ -7181,7 +7181,17 @@ export type ListApplicationInvitationsData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/applications/{application_id}/invitations';
 };
 
@@ -7578,7 +7588,17 @@ export type ListApplicationInvitationsControlData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/invitations';
 };
 
@@ -10643,7 +10663,17 @@ export type ListMyWorkspaceInvitationsData = {
         application_id: Uuid;
         workspace_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/applications/{application_id}/workspaces/{workspace_id}/invitations';
 };
 

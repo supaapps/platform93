@@ -3147,6 +3147,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listApplicationInvitations
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       responses:
@@ -3449,6 +3453,10 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     get:
       operationId: listApplicationInvitationsControl
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       security:
@@ -6268,6 +6276,10 @@ paths:
           $ref: '#/components/schemas/UUID'
     get:
       operationId: listMyWorkspaceInvitations
+      parameters:
+        - $ref: '#/components/parameters/ReferenceQuery'
+        - $ref: '#/components/parameters/ReferenceLimit'
+        - $ref: '#/components/parameters/ReferenceCursor'
       tags:
         - Control
       responses:
