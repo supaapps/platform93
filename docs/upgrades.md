@@ -10,6 +10,38 @@ expire and in-flight provider invitations must restart. Administrative invitatio
 mutations require audit reasons, idempotency keys and explicit versions as applicable.
 See [the administration and onboarding guide](application-user-administration.md).
 
+Compatibility details for this upgrade:
+
+- An existing credential-bearing account not verified before invitation creation
+  returns `invited_account_review_required` (409), including pending invitations.
+  Later verification alone cannot bypass the guard. Secure the account first,
+  then revoke/reissue the invitation. An application administrator may verify an
+  address with `users:email_verification:manage` and manage invitations with
+  `invitations:manage`, but cannot inspect/remove passwords, MFA or linked
+  identities through these new APIs; those require existing account/control
+  recovery workflows. Do not merely mark an unsafe account verified.
+- Invitation list responses now default to 20 records, ordered by ascending UUID,
+  with search, bounded limits and `next_cursor`. Follow pagination rather than
+  assuming the response includes every invitation.
+- Workspace owners refresh their token after workspace creation before managing
+  invitations. Live ownership does not expand the token's original permissions.
+- Administrative DELETE calls include a JSON audit `reason`. Application/machine
+  invitation mutations require explicit versions where applicable. Control
+  resend retains its existing optional version-header behavior.
+- Resend uses the shared credential-rotation operation: old invitation codes,
+  links and outstanding authentication challenges become invalid. Copy-only
+  rotation does not send an email or change the last successful queue timestamp.
+- Machine token permission paths already come from persisted role assignments
+  and direct grants, not the client's OAuth protocol-scope allowlist alone.
+  Invitation administration now also rechecks those grants live, so revocation
+  takes effect without waiting for token expiry. Existing machine service-read
+  contracts retain their ordinary token checks.
+- New idempotency response receipts are encrypted; old plaintext receipts remain
+  readable until normal retention cleanup. If encryption fails after a committed
+  mutation, a 503 cannot imply rollback. Do not retry with a different key: inspect
+  the resource before further action. Such an incomplete receipt cannot recover
+  a one-time URL; use explicit invitation rotation if needed after the cooldown.
+
 Platform93 uses forward-only application migrations during normal upgrades. Before an
 upgrade, retain a tested PostgreSQL backup, the matching installation master key, the
 current image digest, and the current Helm values.

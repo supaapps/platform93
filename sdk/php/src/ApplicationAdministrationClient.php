@@ -9,6 +9,7 @@ use RuntimeException;
 /**
  * @phpstan-import-type User from MachineClient
  * @phpstan-import-type InvitationInput from MachineClient
+ * @phpstan-import-type Invitation from MachineClient
  * @phpstan-type ManagedUserCreate array{email:string,reason:string,first_name?:string,last_name?:string,username?:string,locale?:string,email_verified?:bool,is_org_verified?:bool,custom_attributes?:array<string,mixed>}
  * @phpstan-type ManagedUserUpdate array{reason:string,first_name?:string,last_name?:string,username?:string,locale?:string}
  * @phpstan-type RoleAssignment array{id:string,user_id:?string,role_id:string,workspace_id:?string,role_key?:string,role_scope?:string}
@@ -44,11 +45,11 @@ final class ApplicationAdministrationClient
         $this->request('POST', '/users/' . rawurlencode($id) . '/' . $action, ['reason'=>$reason], $idempotencyKey, $etag);
     }
     /** @return array{items:list<Session>,next_cursor:?string} */
-    public function listSessions(string $id): array { return $this->request('GET', '/users/' . rawurlencode($id) . '/sessions'); }
+    public function listSessions(string $id, string $query = '', ?string $cursor = null, int $limit = 20): array { return $this->request('GET', '/users/' . rawurlencode($id) . '/sessions?' . http_build_query(['query'=>$query,'cursor'=>$cursor,'limit'=>$limit])); }
     /** @return array{items:list<Role>,next_cursor:?string} */
-    public function listRoles(): array { return $this->request('GET', '/roles'); }
+    public function listRoles(string $query = '', ?string $cursor = null, int $limit = 20): array { return $this->request('GET', '/roles?' . http_build_query(['query'=>$query,'cursor'=>$cursor,'limit'=>$limit])); }
     /** @return array{items:list<RoleAssignment>,next_cursor:?string,user_version:int} */
-    public function listAssignments(string $userId): array { return $this->request('GET', '/role-assignments?user_id=' . rawurlencode($userId)); }
+    public function listAssignments(string $userId, string $query = '', ?string $cursor = null, int $limit = 20): array { return $this->request('GET', '/role-assignments?' . http_build_query(['user_id'=>$userId,'query'=>$query,'cursor'=>$cursor,'limit'=>$limit])); }
     /** @return RoleAssignment */
     public function assignRole(string $userId, string $roleId, ?string $workspaceId, string $reason, string $etag, string $idempotencyKey): array
     {
@@ -59,6 +60,10 @@ final class ApplicationAdministrationClient
     public function removeRole(string $id, string $reason, string $etag): void { $this->request('DELETE', '/role-assignments/' . rawurlencode($id), ['reason'=>$reason], null, $etag); }
     /** @param InvitationInput $input @return InvitationDelivery */
     public function createInvitation(array $input, string $idempotencyKey): array { return $this->request('POST', '/invitations', $input, $idempotencyKey); }
+    /** @return array{items:list<Invitation>,next_cursor:?string} */
+    public function listInvitations(string $query = '', ?string $cursor = null, int $limit = 20): array { return $this->request('GET', '/invitations?' . http_build_query(['query'=>$query,'cursor'=>$cursor,'limit'=>$limit])); }
+    /** @return Invitation */
+    public function getInvitation(string $id): array { return $this->request('GET', '/invitations/' . rawurlencode($id)); }
     /** @return InvitationDelivery */
     public function rotateInvitation(string $id, bool $sendEmail, string $reason, string $etag, string $idempotencyKey): array { return $this->request('POST', '/invitations/' . rawurlencode($id) . '/rotate', ['send_email'=>$sendEmail,'reason'=>$reason], $idempotencyKey, $etag); }
     public function revokeInvitation(string $id, string $reason, string $etag): void { $this->request('DELETE', '/invitations/' . rawurlencode($id), ['reason'=>$reason], null, $etag); }

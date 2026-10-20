@@ -8557,6 +8557,10 @@ export type ExchangeApplicationInvitationErrors = {
      * RFC 9457 problem
      */
     401: Problem;
+    /**
+     * Existing account credentials require review (invited_account_review_required), or concurrent acceptance failed. No invitation or authentication proof is consumed on account-review failure.
+     */
+    409: Problem;
 };
 
 export type ExchangeApplicationInvitationError = ExchangeApplicationInvitationErrors[keyof ExchangeApplicationInvitationErrors];

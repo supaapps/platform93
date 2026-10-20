@@ -162,6 +162,10 @@ review and secure the account, revoke the old invitation, and issue a new one
 after establishing the legitimate recipient. Do not merely toggle verification
 or reissue invitations without reviewing credentials. Credential-free silent
 accounts can complete independent mailbox authentication normally.
+An application administrator with `users:email_verification:manage` can change
+verification, but that permission does not include password, MFA or identity
+recovery. Use the existing account/control workflows to secure such credentials;
+then an authorized invitation manager may revoke and reissue the invitation.
 
 Use `startApplicationInvitationProvider("google", invitation)` for Google-specific
 invitations and the normal provider-exchange SDK continuation. Google verifies

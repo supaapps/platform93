@@ -14,4 +14,7 @@ $api->createUser(['email'=>'person@example.test','reason'=>'Onboard'],'create-ke
 $api->updateUser('created',['first_name'=>'Person','reason'=>'Correct profile'],'"v1"');
 $result=$api->createInvitation(['email'=>'person@example.test','onboarding_method'=>'google','send_email'=>false,'reason'=>'Invite'],'invite-key');
 if (!in_array('Idempotency-Key: create-key',$calls[0][2],true)||!in_array('If-Match: "v1"',$calls[1][2],true)||$result['email_queued']!==false) { throw new RuntimeException('Missing administrative request constraints'); }
+$api->listAssignments('recipient','reader & owner','next',15);
+parse_str(parse_url($calls[3][1],PHP_URL_QUERY),$query);
+if ($query!==['user_id'=>'recipient','query'=>'reader & owner','cursor'=>'next','limit'=>'15']) { throw new RuntimeException('Pagination lost recipient or query'); }
 echo "Application administration SDK checks passed\n";

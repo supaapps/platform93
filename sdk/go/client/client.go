@@ -209,9 +209,9 @@ func (c *Client) CreateInvitation(ctx context.Context, input CreateInvitation, i
 	return c.Administration().CreateInvitation(ctx, input, idempotencyKey)
 }
 
-func (c *Client) ListInvitations(ctx context.Context) (Page[Invitation], error) {
+func (c *Client) ListInvitations(ctx context.Context, options ...AdministrationSearch) (Page[Invitation], error) {
 	var output Page[Invitation]
-	err := c.request(ctx, http.MethodGet, "/invitations", nil, "", &output)
+	err := c.request(ctx, http.MethodGet, administrationSearch("/invitations", options), nil, "", &output)
 	return output, err
 }
 

@@ -18,4 +18,10 @@ test("application administration uses the user bearer, versions and idempotency 
   assert.equal(calls[1].init.headers["If-Match"],'"v1"');
   assert.equal(calls[2].body.send_email,false);
   assert.equal(calls[3].init.headers["If-Match"],'"v1"');
+  await admin.listUserRoleAssignments("recipient", { query: "reader & owner", cursor: "next", limit: 15 });
+  const query = new URL(calls[4].url).searchParams;
+  assert.equal(query.get("user_id"), "recipient");
+  assert.equal(query.get("query"), "reader & owner");
+  assert.equal(query.get("cursor"), "next");
+  assert.equal(query.get("limit"), "15");
 });

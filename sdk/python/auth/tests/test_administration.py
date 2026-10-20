@@ -24,6 +24,11 @@ class AdministrationTests(unittest.TestCase):
         self.assertEqual(calls[0].headers["Idempotency-Key"], "create-key")
         self.assertEqual(calls[1].headers["If-Match"], '"v1"')
         self.assertFalse(json.loads(calls[2].content)["send_email"])
+        api.list_assignments("recipient", query="reader & owner", cursor="next", limit=15)
+        self.assertEqual(calls[3].url.params["user_id"], "recipient")
+        self.assertEqual(calls[3].url.params["query"], "reader & owner")
+        self.assertEqual(calls[3].url.params["cursor"], "next")
+        self.assertEqual(calls[3].url.params["limit"], "15")
 
 
 if __name__ == "__main__":

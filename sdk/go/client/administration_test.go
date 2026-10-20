@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -41,5 +42,12 @@ func TestApplicationAdministrationForwardsUserToken(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatal("unexpected OAuth or control request")
+	}
+}
+
+func TestAdministrationSearchPreservesRecipient(t *testing.T) {
+	u, err := url.Parse(administrationSearch("/role-assignments?user_id=recipient", []AdministrationSearch{{Query: "reader & owner", Cursor: "next", Limit: 15}}))
+	if err != nil || u.Query().Get("user_id") != "recipient" || u.Query().Get("query") != "reader & owner" || u.Query().Get("cursor") != "next" || u.Query().Get("limit") != "15" {
+		t.Fatal("administration pagination lost query or recipient", u, err)
 	}
 }

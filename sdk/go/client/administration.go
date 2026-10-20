@@ -70,6 +70,31 @@ type RotateInvitation struct {
 }
 type Administration struct{ client *Client }
 
+type AdministrationSearch struct {
+	Query  string
+	Cursor string
+	Limit  int
+}
+
+func administrationSearch(path string, options []AdministrationSearch) string {
+	if len(options) == 0 {
+		return path
+	}
+	u, _ := url.Parse(path)
+	q := u.Query()
+	if options[0].Query != "" {
+		q.Set("query", options[0].Query)
+	}
+	if options[0].Cursor != "" {
+		q.Set("cursor", options[0].Cursor)
+	}
+	if options[0].Limit > 0 {
+		q.Set("limit", strconv.Itoa(options[0].Limit))
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 func (c *Client) Administration() *Administration { return &Administration{client: c} }
 func (a *Administration) ListUsers(ctx context.Context, search, cursor string, limit int) (Page[User], error) {
 	query := url.Values{"query": {search}, "cursor": {cursor}}
@@ -110,19 +135,19 @@ type InvalidAdministrationAction struct{}
 func (*InvalidAdministrationAction) Error() string {
 	return "invalid application administration action"
 }
-func (a *Administration) ListSessions(ctx context.Context, id string) (Page[UserSession], error) {
+func (a *Administration) ListSessions(ctx context.Context, id string, options ...AdministrationSearch) (Page[UserSession], error) {
 	var out Page[UserSession]
-	err := a.client.request(ctx, "GET", "/users/"+url.PathEscape(id)+"/sessions", nil, "", &out)
+	err := a.client.request(ctx, "GET", administrationSearch("/users/"+url.PathEscape(id)+"/sessions", options), nil, "", &out)
 	return out, err
 }
-func (a *Administration) ListRoles(ctx context.Context) (Page[ApplicationRole], error) {
+func (a *Administration) ListRoles(ctx context.Context, options ...AdministrationSearch) (Page[ApplicationRole], error) {
 	var out Page[ApplicationRole]
-	err := a.client.request(ctx, "GET", "/roles", nil, "", &out)
+	err := a.client.request(ctx, "GET", administrationSearch("/roles", options), nil, "", &out)
 	return out, err
 }
-func (a *Administration) ListAssignments(ctx context.Context, user string) (Page[UserRoleAssignment], error) {
+func (a *Administration) ListAssignments(ctx context.Context, user string, options ...AdministrationSearch) (Page[UserRoleAssignment], error) {
 	var out Page[UserRoleAssignment]
-	err := a.client.request(ctx, "GET", "/role-assignments?user_id="+url.QueryEscape(user), nil, "", &out)
+	err := a.client.request(ctx, "GET", administrationSearch("/role-assignments?user_id="+url.QueryEscape(user), options), nil, "", &out)
 	return out, err
 }
 func (a *Administration) AssignRole(ctx context.Context, in ManagedRoleAssignment, etag, key string) (UserRoleAssignment, error) {
@@ -139,6 +164,14 @@ func (a *Administration) CreateInvitation(ctx context.Context, in CreateInvitati
 	var out InvitationDelivery
 	err := a.client.request(ctx, "POST", "/invitations", in, key, &out)
 	return out, err
+}
+
+func (a *Administration) ListInvitations(ctx context.Context, options ...AdministrationSearch) (Page[Invitation], error) {
+	return a.client.ListInvitations(ctx, options...)
+}
+
+func (a *Administration) GetInvitation(ctx context.Context, id string) (Invitation, error) {
+	return a.client.GetInvitation(ctx, id)
 }
 func (a *Administration) RotateInvitation(ctx context.Context, id string, in RotateInvitation, etag, key string) (InvitationDelivery, error) {
 	var out InvitationDelivery

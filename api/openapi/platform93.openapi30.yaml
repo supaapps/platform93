@@ -4587,6 +4587,14 @@ paths:
                 $ref: '#/components/schemas/InvitationExchangeResult'
         '401':
           $ref: '#/components/responses/Problem'
+        '409':
+          description: >-
+            Existing account credentials require review (invited_account_review_required), or concurrent acceptance failed. No invitation or authentication
+            proof is consumed on account-review failure.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /v1/applications/{application_id}/auth/invitations/providers/{provider}/start:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'

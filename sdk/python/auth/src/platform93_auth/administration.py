@@ -104,14 +104,14 @@ class ApplicationAdministrationClient:
             raise ValueError("Invalid administration action")
         self._request("POST", f"/users/{quote(user_id, safe='')}/{action}", {"reason": reason}, key=idempotency_key, etag=etag)
 
-    def list_sessions(self, user_id: str) -> SessionPage:
-        return cast(SessionPage, self._request("GET", f"/users/{quote(user_id, safe='')}/sessions"))
+    def list_sessions(self, user_id: str, *, query: str = "", cursor: str = "", limit: int = 20) -> SessionPage:
+        return cast(SessionPage, self._request("GET", f"/users/{quote(user_id, safe='')}/sessions", params={"query": query, "cursor": cursor, "limit": str(limit)}))
 
-    def list_roles(self) -> RolePage:
-        return cast(RolePage, self._request("GET", "/roles"))
+    def list_roles(self, *, query: str = "", cursor: str = "", limit: int = 20) -> RolePage:
+        return cast(RolePage, self._request("GET", "/roles", params={"query": query, "cursor": cursor, "limit": str(limit)}))
 
-    def list_assignments(self, user_id: str) -> RoleAssignmentPage:
-        return cast(RoleAssignmentPage, self._request("GET", "/role-assignments", params={"user_id": user_id}))
+    def list_assignments(self, user_id: str, *, query: str = "", cursor: str = "", limit: int = 20) -> RoleAssignmentPage:
+        return cast(RoleAssignmentPage, self._request("GET", "/role-assignments", params={"user_id": user_id, "query": query, "cursor": cursor, "limit": str(limit)}))
 
     def assign_role(self, user_id: str, role_id: str, reason: str, etag: str, idempotency_key: str, workspace_id: str | None = None) -> RoleAssignment:
         data: dict[str, object] = {"user_id": user_id, "role_id": role_id, "reason": reason}
@@ -125,8 +125,8 @@ class ApplicationAdministrationClient:
     def create_invitation(self, invitation: InvitationInput, idempotency_key: str) -> InvitationDelivery:
         return cast(InvitationDelivery, self._request("POST", "/invitations", dict(invitation), key=idempotency_key))
 
-    def list_invitations(self) -> InvitationPage:
-        return cast(InvitationPage, self._request("GET", "/invitations"))
+    def list_invitations(self, *, query: str = "", cursor: str = "", limit: int = 20) -> InvitationPage:
+        return cast(InvitationPage, self._request("GET", "/invitations", params={"query": query, "cursor": cursor, "limit": str(limit)}))
 
     def get_invitation(self, invitation_id: str) -> Invitation:
         return cast(Invitation, self._request("GET", f"/invitations/{quote(invitation_id, safe='')}"))
