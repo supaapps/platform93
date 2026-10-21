@@ -4404,6 +4404,7 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     post:
       operationId: exchangeApplicationInvitation
+      description: Accept an invitation after independent recipient authentication. Credential-bearing accounts not verified before invitation creation require fresh invitation-bound mailbox proof; that proof atomically resets prior credentials and stored sessions while preserving the user UUID. Invitation possession or an existing bearer alone cannot authorize recovery. Established verified accounts retain their credentials.
       tags:
         - Identity
       security: []
@@ -4423,7 +4424,13 @@ paths:
         '401':
           $ref: '#/components/responses/Problem'
         '409':
-          description: Existing account credentials require review (invited_account_review_required), or concurrent acceptance failed. No invitation or authentication proof is consumed on account-review failure.
+          description: Concurrent invitation acceptance or membership assignment failed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Credential recovery failed (invitation_recovery_failed). Recovery, invitation consumption and mailbox-proof consumption are rolled back and may be retried.
           content:
             application/problem+json:
               schema:

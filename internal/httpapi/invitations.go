@@ -617,9 +617,6 @@ FROM application_invitations WHERE application_id=$1 AND accepted_at IS NULL AND
 		kernel.WriteProblem(w, r, 403, "invitation_authority_revoked", "The inviter no longer has the required authority.")
 		return
 	}
-	if !s.verifyInvitationRecipient(w, r, tx, invitationID, email, invitationVersion, request) {
-		return
-	}
 	var userID, status string
 	var establishedRecipient bool
 	// Verification after invitation creation must not bless credentials planted
@@ -633,8 +630,12 @@ FROM application_invitations WHERE application_id=$1 AND accepted_at IS NULL AND
  EXISTS(SELECT 1 FROM user_sessions x WHERE x.application_id=u.application_id AND x.user_id=u.id AND x.revoked_at IS NULL AND x.amr && ARRAY['pwd','password','google','apple','facebook','microsoft','linkedin','webauthn','totp']))
  FROM users u JOIN application_invitations i ON i.application_id=u.application_id AND i.id=$3
  WHERE u.application_id=$1 AND u.normalized_email=$2 FOR UPDATE OF u`, applicationID, email, invitationID).Scan(&userID, &status, &establishedRecipient)
-	if err == nil && !establishedRecipient {
-		kernel.WriteProblem(w, r, http.StatusConflict, "invited_account_review_required", "Existing account credentials require administrator review before accepting this invitation.")
+	recoverCredentials := err == nil && !establishedRecipient
+	if err != nil && err != pgx.ErrNoRows || err == nil && status != "active" {
+		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invited_account_unavailable", "The invited account is unavailable.")
+		return
+	}
+	if !s.verifyInvitationRecipient(w, r, tx, invitationID, email, invitationVersion, request, recoverCredentials) {
 		return
 	}
 	if err == pgx.ErrNoRows {
@@ -650,7 +651,15 @@ VALUES($1,$2,$3,$3,now())`, userID, applicationID, email)
 			_, err = s.app.Emit(r.Context(), tx, &parsedApplicationID, "user.created", "user/"+userID, map[string]any{"type": "invitation"}, map[string]any{"user_id": userID, "email_verified": true, "is_org_verified": false})
 		}
 	} else if err == nil && status == "active" {
-		_, err = tx.Exec(r.Context(), `UPDATE users SET email_verified_at=COALESCE(email_verified_at,now()),updated_at=now() WHERE id=$1 AND application_id=$2`, userID, applicationID)
+		if recoverCredentials {
+			err = s.recoverInvitationCredentials(r, tx, userID)
+			if err != nil {
+				kernel.WriteProblem(w, r, http.StatusServiceUnavailable, "invitation_recovery_failed", "Account recovery could not be committed. Retry with the same invitation and mailbox proof.")
+				return
+			}
+		} else {
+			_, err = tx.Exec(r.Context(), `UPDATE users SET email_verified_at=COALESCE(email_verified_at,now()),updated_at=now() WHERE id=$1 AND application_id=$2`, userID, applicationID)
+		}
 	}
 	if err != nil || status != "active" {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invited_account_unavailable", "The invited account is unavailable.")

@@ -152,20 +152,26 @@ query fields identify the authentication proof, not the original invitation
 credential. Preserve the original invitation context privately and remove
 credential parameters from the address bar promptly.
 
-An existing account with a password, linked provider, MFA method, active personal
-key, or non-email session must have been email-verified before this invitation was
-created. Otherwise acceptance returns `invited_account_review_required` without
-consuming the invitation or granting roles. Later email verification alone does
-not bypass this guard. This prevents account pre-hijacking: mailbox proof must not
-leave an attacker's earlier credentials usable. A Platform administrator must
-review and secure the account, revoke the old invitation, and issue a new one
-after establishing the legitimate recipient. Do not merely toggle verification
-or reissue invitations without reviewing credentials. Credential-free silent
-accounts can complete independent mailbox authentication normally.
-An application administrator with `users:email_verification:manage` can change
-verification, but that permission does not include password, MFA or identity
-recovery. Use the existing account/control workflows to secure such credentials;
-then an authorized invitation manager may revoke and reissue the invitation.
+If a credential-bearing account was not email-verified before this invitation was
+created, acceptance requires a fresh invitation-bound mailbox code or link, even
+if the recipient now has a verified session. After that proof P93 atomically
+removes the old password and linked provider identities, disables MFA/passkeys,
+clears recovery codes, revokes stored sessions, OAuth credentials, personal keys
+and support delegations, and invalidates outstanding authentication challenges.
+It retains the user UUID, profile, application data, memberships and grants.
+The recipient receives a new PKCE-bound authorization code and can establish new
+login methods afterwards. This recovery intentionally removes untrusted MFA;
+normal onboarding for established verified accounts still enforces existing MFA.
+
+Invitation possession, a verification flag, or an old bearer session cannot trigger
+this reset. Established accounts verified before invitation creation keep their
+credentials. Credential-free silently provisioned accounts onboard normally.
+P93-local provider unlinking does not revoke the user's account or grant at the
+external identity provider. Offline JWT consumers can still accept old access
+tokens until expiry; live P93 session checks reject the revoked sessions.
+All recovery changes, audit/events and invitation acceptance commit or roll back
+together. A retryable `invitation_recovery_failed` response leaves the invitation
+and mailbox proof usable; do not substitute another recipient's proof.
 
 Use `startApplicationInvitationProvider("google", invitation)` for Google-specific
 invitations and the normal provider-exchange SDK continuation. Google verifies

@@ -116,8 +116,8 @@ func (s *Server) startInvitationEmailAuthentication(w http.ResponseWriter, r *ht
 	kernel.WriteJSON(w, 202, map[string]any{"challenge_id": challenge, "invitation_id": id, "expires_in": 600})
 }
 
-func (s *Server) verifyInvitationRecipient(w http.ResponseWriter, r *http.Request, tx pgx.Tx, id, email string, version int64, in invitationCredential) bool {
-	if r.Header.Get("Authorization") != "" {
+func (s *Server) verifyInvitationRecipient(w http.ResponseWriter, r *http.Request, tx pgx.Tx, id, email string, version int64, in invitationCredential, requireMailbox bool) bool {
+	if !requireMailbox && r.Header.Get("Authorization") != "" {
 		var verified bool
 		a := actor(r)
 		if a.Type == "user" && a.DelegatedBy == "" {
@@ -126,7 +126,6 @@ func (s *Server) verifyInvitationRecipient(w http.ResponseWriter, r *http.Reques
 		if verified {
 			return true
 		}
-		// Failed bearer verification has already written its authentication error.
 		if !verified {
 			kernel.WriteProblem(w, r, 401, "invitation_identity_mismatch", "Sign in as the verified invited email to accept.")
 			return false

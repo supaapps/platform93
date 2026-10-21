@@ -12,14 +12,16 @@ See [the administration and onboarding guide](application-user-administration.md
 
 Compatibility details for this upgrade:
 
-- An existing credential-bearing account not verified before invitation creation
-  returns `invited_account_review_required` (409), including pending invitations.
-  Later verification alone cannot bypass the guard. Secure the account first,
-  then revoke/reissue the invitation. An application administrator may verify an
-  address with `users:email_verification:manage` and manage invitations with
-  `invitations:manage`, but cannot inspect/remove passwords, MFA or linked
-  identities through these new APIs; those require existing account/control
-  recovery workflows. Do not merely mark an unsafe account verified.
+- A credential-bearing account not verified before invitation creation requires
+  fresh invitation-bound mailbox proof, including pending invitations. That proof
+  atomically resets the old password, identities, MFA/passkeys and recovery codes,
+  revokes stored sessions/OAuth credentials/PATs/delegations, invalidates pending
+  authentication challenges and then accepts the invitation. Existing sessions
+  or a later verification flag cannot authorize recovery. The UUID and application
+  data remain unchanged. Established verified accounts keep their credentials.
+  Explain this recovery to recipients in headless onboarding; they can configure
+  new login methods after completion. Offline JWT integrations still observe old
+  access tokens until expiry. No external-provider account deletion is attempted.
 - Invitation list responses now default to 20 records, ordered by ascending UUID,
   with search, bounded limits and `next_cursor`. Follow pagination rather than
   assuming the response includes every invitation.

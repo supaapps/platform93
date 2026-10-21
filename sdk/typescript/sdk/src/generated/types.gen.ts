@@ -8558,9 +8558,13 @@ export type ExchangeApplicationInvitationErrors = {
      */
     401: Problem;
     /**
-     * Existing account credentials require review (invited_account_review_required), or concurrent acceptance failed. No invitation or authentication proof is consumed on account-review failure.
+     * Concurrent invitation acceptance or membership assignment failed.
      */
     409: Problem;
+    /**
+     * Credential recovery failed (invitation_recovery_failed). Recovery, invitation consumption and mailbox-proof consumption are rolled back and may be retried.
+     */
+    503: Problem;
 };
 
 export type ExchangeApplicationInvitationError = ExchangeApplicationInvitationErrors[keyof ExchangeApplicationInvitationErrors];

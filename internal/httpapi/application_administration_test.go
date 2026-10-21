@@ -498,21 +498,31 @@ func TestApplicationInvitationPreRegisteredAccountPostgres(t *testing.T) {
 			input := map[string]any{"invitation_id": invitation.ID, "link_token": uri.Query().Get("link_token"), "code_challenge": challenge, "authentication_challenge_id": proof, "authentication_code": "ABCD2345"}
 			if credential == "none" || credential == "verified" {
 				expectAdministrationStatus(t, f.request(t, "POST", "/auth/invitations/exchange", input, "", "", ""), 200)
+				var untouched bool
+				if err = db.QueryRow(t.Context(), `SELECT NOT EXISTS(SELECT 1 FROM audit_records WHERE application_id=$1 AND target_id=$2 AND action='user.credentials_recovered') AND ($3::boolean OR EXISTS(SELECT 1 FROM users WHERE id=$2 AND password_hash='preexisting-test-hash'))`, f.app, f.target, credential == "none").Scan(&untouched); err != nil || !untouched {
+					t.Fatal("established/credential-free account was reset", err)
+				}
 				return
 			}
-			for attempt := 0; attempt < 2; attempt++ {
-				response := f.request(t, "POST", "/auth/invitations/exchange", input, "", "", "")
-				expectAdministrationStatus(t, response, 409)
-				if !strings.Contains(response.Body.String(), "invited_account_review_required") {
-					t.Fatal(response.Body.String())
-				}
-				var untouched bool
-				if err = db.QueryRow(t.Context(), `SELECT i.accepted_at IS NULL AND c.consumed_at IS NULL FROM application_invitations i JOIN invitation_email_challenges c ON c.invitation_id=i.id WHERE i.id=$1`, invitation.ID).Scan(&untouched); err != nil || !untouched {
-					t.Fatal("failed acceptance consumed credentials", err)
-				}
-				if _, err = db.Exec(t.Context(), `UPDATE users SET email_verified_at=now() WHERE id=$1`, f.target); err != nil {
-					t.Fatal(err)
-				}
+			// A later verification flag cannot preserve the original credentials.
+			if _, err = db.Exec(t.Context(), `UPDATE users SET email_verified_at=now() WHERE id=$1`, f.target); err != nil {
+				t.Fatal(err)
+			}
+			input["authentication_code"] = "WRONG123"
+			expectAdministrationStatus(t, f.request(t, "POST", "/auth/invitations/exchange", input, "", "", ""), 401)
+			input["authentication_code"] = "ABCD2345"
+			expectAdministrationStatus(t, f.request(t, "POST", "/auth/invitations/exchange", input, "", "", ""), 200)
+			var secured bool
+			if err = db.QueryRow(t.Context(), `SELECT password_hash IS NULL AND email_verified_at IS NOT NULL AND
+ NOT EXISTS(SELECT 1 FROM user_identities WHERE user_id=users.id) AND
+ NOT EXISTS(SELECT 1 FROM user_authentication_methods WHERE user_id=users.id AND status<>'disabled') AND
+ NOT EXISTS(SELECT 1 FROM personal_api_keys WHERE user_id=users.id AND revoked_at IS NULL)
+ FROM users WHERE application_id=$1 AND id=$2`, f.app, f.target).Scan(&secured); err != nil || !secured {
+				t.Fatal("mailbox recovery retained original credentials", err)
+			}
+			var audits int
+			if err = db.QueryRow(t.Context(), `SELECT count(*) FROM audit_records WHERE application_id=$1 AND target_id=$2 AND action='user.credentials_recovered'`, f.app, f.target).Scan(&audits); err != nil || audits != 1 {
+				t.Fatal("recovery audit missing", err)
 			}
 		})
 	}

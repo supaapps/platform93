@@ -218,9 +218,17 @@ func (s *Server) completeExternalAuthCallback(w http.ResponseWriter, r *http.Req
 	tx, err := s.app.DB.Begin(r.Context())
 	if err == nil {
 		defer rollback(tx, r.Context())
-		_, err = tx.Exec(r.Context(), `INSERT INTO external_auth_exchanges(id,application_id,user_id,credential_digest,code_challenge,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, exchangeID, chi.URLParam(r, "application_id"), userID, s.app.Vault.Digest(exchangeCode), challenge, s.app.Now().Add(2*time.Minute))
+		var locked string
+		err = tx.QueryRow(r.Context(), `SELECT id FROM users WHERE application_id=$1 AND id=$2 AND status='active' FOR UPDATE`, chi.URLParam(r, "application_id"), userID).Scan(&locked)
 		if err == nil {
-			_, err = tx.Exec(r.Context(), `UPDATE external_auth_challenges SET consumed_at=now(),locked_until=NULL WHERE id=$1`, challengeID)
+			result, updateErr := tx.Exec(r.Context(), `UPDATE external_auth_challenges c SET consumed_at=now(),locked_until=NULL WHERE c.application_id=$1 AND c.id=$2 AND c.consumed_at IS NULL AND c.expires_at>now() AND EXISTS(SELECT 1 FROM user_identities i WHERE i.application_id=c.application_id AND i.user_id=$3 AND i.provider=c.provider)`, chi.URLParam(r, "application_id"), challengeID, userID)
+			err = updateErr
+			if err == nil && result.RowsAffected() != 1 {
+				err = fmt.Errorf("invalid_external_challenge")
+			}
+		}
+		if err == nil {
+			_, err = tx.Exec(r.Context(), `INSERT INTO external_auth_exchanges(id,application_id,user_id,credential_digest,code_challenge,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, exchangeID, chi.URLParam(r, "application_id"), userID, s.app.Vault.Digest(exchangeCode), challenge, s.app.Now().Add(2*time.Minute))
 		}
 		if err == nil {
 			err = tx.Commit(r.Context())

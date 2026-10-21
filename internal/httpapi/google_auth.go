@@ -295,9 +295,15 @@ WHERE application_id=$1 AND provider=$2 AND provider_subject=$3`, chi.URLParam(r
 			return "", fmt.Errorf("authenticated_link_required")
 		}
 		var active bool
-		if tx.QueryRow(r.Context(), `SELECT status='active' FROM users WHERE id=$1 AND application_id=$2`,
+		if tx.QueryRow(r.Context(), `SELECT status='active' FROM users WHERE id=$1 AND application_id=$2 FOR UPDATE`,
 			*requestedBy, chi.URLParam(r, "application_id")).Scan(&active) != nil || !active {
 			return "", fmt.Errorf("account_unavailable")
+		}
+		if challengeID != "" {
+			var valid bool
+			if tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM external_auth_challenges WHERE application_id=$1 AND id=$2 AND requested_by_user_id=$3 AND flow='link' AND consumed_at IS NULL AND expires_at>now())`, chi.URLParam(r, "application_id"), challengeID, *requestedBy).Scan(&valid) != nil || !valid {
+				return "", fmt.Errorf("invalid_external_challenge")
+			}
 		}
 		userID = *requestedBy
 		_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata)
