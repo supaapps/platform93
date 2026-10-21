@@ -15,7 +15,7 @@ COPY web web
 COPY sdk/typescript sdk/typescript
 RUN pnpm build
 
-FROM golang:1.26.9-bookworm AS backend
+FROM golang:1.26.10-bookworm AS backend
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
