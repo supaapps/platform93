@@ -208,11 +208,12 @@ func (s *Server) finishWebAuthnAuthentication(w http.ResponseWriter, r *http.Req
 	defer rollback(tx, r.Context())
 	var ciphertext, origin, userID, challengeID string
 	var primaryAMR []string
-	err = tx.QueryRow(r.Context(), `SELECT c.session_ciphertext,c.origin,c.user_id,c.mfa_challenge_id,m.primary_amr
+	var epoch int64
+	err = tx.QueryRow(r.Context(), `SELECT c.session_ciphertext,c.origin,c.user_id,c.mfa_challenge_id,m.primary_amr,m.authentication_epoch
 FROM webauthn_ceremonies c JOIN mfa_login_challenges m ON m.id=c.mfa_challenge_id
 WHERE c.id=$1 AND c.application_id=$2 AND c.intent='authenticate' AND c.consumed_at IS NULL AND c.expires_at>now()
 AND m.consumed_at IS NULL AND m.expires_at>now() AND m.attempts<8 FOR UPDATE OF c,m`, request.CeremonyID,
-		chi.URLParam(r, "application_id")).Scan(&ciphertext, &origin, &userID, &challengeID, &primaryAMR)
+		chi.URLParam(r, "application_id")).Scan(&ciphertext, &origin, &userID, &challengeID, &primaryAMR, &epoch)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_webauthn_ceremony", "The WebAuthn ceremony is invalid or expired.")
 		return
@@ -258,7 +259,7 @@ WHERE id=$2 AND application_id=$3 AND user_id=$4 AND status='active'`, credentia
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "webauthn_authentication_failed", "The WebAuthn authentication could not be committed.")
 		return
 	}
-	s.issueSession(w, r, userID, append(primaryAMR, "webauthn"))
+	s.issueSession(w, withAuthenticationEpoch(r, epoch), userID, append(primaryAMR, "webauthn"))
 }
 
 func (s *Server) webAuthnForOrigin(r *http.Request, requested string) (*webauthnlib.WebAuthn, string, error) {

@@ -267,7 +267,8 @@ func (s *Server) exchangeExternalAuth(w http.ResponseWriter, r *http.Request, pr
 	defer rollback(tx, r.Context())
 	var userID string
 	var codeChallenge *string
-	err = tx.QueryRow(r.Context(), `SELECT user_id,code_challenge FROM external_auth_exchanges WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`, parts[0], chi.URLParam(r, "application_id"), s.app.Vault.Digest(parts[1])).Scan(&userID, &codeChallenge)
+	var epoch int64
+	err = tx.QueryRow(r.Context(), `SELECT e.user_id,e.code_challenge,u.authentication_epoch FROM external_auth_exchanges e JOIN users u ON u.id=e.user_id AND u.application_id=e.application_id WHERE e.id=$1 AND e.application_id=$2 AND e.credential_digest=$3 AND e.consumed_at IS NULL AND e.expires_at>now() FOR UPDATE OF e`, parts[0], chi.URLParam(r, "application_id"), s.app.Vault.Digest(parts[1])).Scan(&userID, &codeChallenge, &epoch)
 	if err == nil && codeChallenge != nil {
 		if !invitationPKCEVerifierPattern.MatchString(request.CodeVerifier) {
 			err = fmt.Errorf("invalid verifier")
@@ -288,7 +289,7 @@ func (s *Server) exchangeExternalAuth(w http.ResponseWriter, r *http.Request, pr
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_external_exchange", "The external authentication exchange is invalid or expired.")
 		return
 	}
-	s.completePrimaryAuthentication(w, r, userID, []string{provider})
+	s.completePrimaryAuthentication(w, withAuthenticationEpoch(r, epoch), userID, []string{provider})
 }
 
 func createAppleClientSecret(config externalAuthProviderConfig, now time.Time) (string, error) {

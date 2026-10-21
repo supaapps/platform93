@@ -11,10 +11,12 @@ import (
 
 // The caller holds the user row lock and has consumed a fresh, invitation-bound
 // mailbox proof in this transaction. Established verified accounts never use it.
-func (s *Server) recoverInvitationCredentials(r *http.Request, tx pgx.Tx, user string) error {
+func (s *Server) recoverInvitationCredentials(r *http.Request, tx pgx.Tx, user, invitation string) error {
 	app := chi.URLParam(r, "application_id")
 	for _, query := range []string{
-		`UPDATE users SET password_hash=NULL,email_verified_at=now(),version=version+1,updated_at=now() WHERE application_id=$1 AND id=$2`,
+		`UPDATE users SET password_hash=NULL,email_verified_at=now(),authentication_epoch=authentication_epoch+1,version=version+1,updated_at=now() WHERE application_id=$1 AND id=$2`,
+		`DELETE FROM oauth_consents WHERE application_id=$1 AND user_id=$2`,
+		`UPDATE oauth_connections SET revoked_at=COALESCE(revoked_at,now()),version=version+1,updated_at=now() WHERE application_id=$1 AND user_id=$2 AND revoked_at IS NULL`,
 		`UPDATE user_sessions SET revoked_at=COALESCE(revoked_at,now()) WHERE application_id=$1 AND user_id=$2`,
 		`UPDATE oauth_sessions SET active=false,updated_at=now() WHERE application_id=$1 AND request_payload->'session'->>'subject'=$2::text`,
 		`UPDATE personal_api_keys SET revoked_at=COALESCE(revoked_at,now()) WHERE application_id=$1 AND user_id=$2`,
@@ -36,11 +38,11 @@ func (s *Server) recoverInvitationCredentials(r *http.Request, tx pgx.Tx, user s
 		}
 	}
 	if _, err := tx.Exec(r.Context(), `INSERT INTO audit_records(id,application_id,actor_type,actor_id,action,target_type,target_id,reason,request_id,changes)
- VALUES($1,$2,'user',$3,'user.credentials_recovered','user',$3,'Independent mailbox proof during invitation acceptance',$4,'{}')`, kernel.NewID(), app, user, kernel.RequestID(r.Context())); err != nil {
+ VALUES($1,$2,'user',$3,'user.credentials_recovered','user',$3,'Independent mailbox proof during invitation acceptance',$4,jsonb_build_object('invitation_id',$5::text))`, kernel.NewID(), app, user, kernel.RequestID(r.Context()), invitation); err != nil {
 		return err
 	}
 	applicationID := uuid.MustParse(app)
 	_, err := s.app.Emit(r.Context(), tx, &applicationID, "user.updated", "user/"+user,
-		map[string]any{"type": "user", "id": user}, map[string]any{"user_id": user, "changed_fields": []string{"authentication_methods", "sessions", "email_verified"}})
+		map[string]any{"type": "user", "id": user}, map[string]any{"user_id": user, "changed_fields": []string{"password", "identities", "authentication_methods", "sessions", "email_verified", "oauth_consents"}})
 	return err
 }

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/supaapps/platform93/internal/kernel"
 )
@@ -93,6 +94,9 @@ func TestApplicationInvitationCredentialRecoveryPostgres(t *testing.T) {
 			if _, err := f.server.completeExternalIdentity(providerRequest, "google", pendingLink, "link", &f.target, "new-test-subject", f.target+"@example.test", "", ""); err == nil {
 				t.Fatal("pending provider link resurrected credentials after recovery")
 			}
+			if _, err := f.server.completeExternalIdentity(providerRequest, "google", "", "automatic", nil, f.target, f.target+"@example.test", "", ""); err == nil || err.Error() != "account_link_required" {
+				t.Fatal("unbound provider sign-in reclaimed recovered account by email", err)
+			}
 			callback := httptest.NewRecorder()
 			f.server.completeExternalAuthCallback(callback, providerRequest, pendingLink, "https://app.example.test/auth", f.target)
 			location, _ := url.Parse(callback.Header().Get("Location"))
@@ -135,6 +139,77 @@ func TestApplicationInvitationCredentialRecoveryPostgres(t *testing.T) {
 			if err := db.QueryRow(t.Context(), `SELECT first_name='Recipient' AND password_hash IS NULL AND email_verified_at IS NOT NULL FROM users WHERE id=$1`, f.target).Scan(&preserved); err != nil || !preserved {
 				t.Fatal("recovery changed identity/profile", err)
 			}
+		})
+	}
+}
+
+func TestApplicationInvitationRecoveryLoginRacePostgres(t *testing.T) {
+	for _, flow := range []string{"session", "mfa"} {
+		t.Run(flow, func(t *testing.T) {
+			f := newApplicationAdministrationFixture(t, []string{"invitations:manage"})
+			if flow == "mfa" {
+				if _, err := f.server.app.DB.Exec(t.Context(), `INSERT INTO user_authentication_methods(application_id,user_id,method_type,status) VALUES($1,$2,'totp','active')`, f.app, f.target); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tx, err := f.server.app.DB.Begin(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			var pid int
+			if err = tx.QueryRow(t.Context(), `SELECT pg_backend_pid() FROM users WHERE application_id=$1 AND id=$2 FOR UPDATE`, f.app, f.target).Scan(&pid); err != nil {
+				t.Fatal(err)
+			}
+			r := withAuthenticationEpoch(requestWithRoute(t, "POST", "/", nil, map[string]string{"application_id": f.app}, kernel.Actor{}), 0)
+			response := httptest.NewRecorder()
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				if flow == "session" {
+					f.server.issueSession(response, r, f.target, []string{"pwd"})
+				} else {
+					f.server.completePrimaryAuthentication(response, r, f.target, []string{"pwd"})
+				}
+			}()
+			deadline := time.Now().Add(10 * time.Second)
+			blocked := false
+			for time.Now().Before(deadline) {
+				if err = f.server.app.DB.QueryRow(t.Context(), `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))`, pid).Scan(&blocked); err != nil {
+					t.Fatal(err)
+				}
+				if blocked {
+					break
+				}
+				select {
+				case <-done:
+					t.Fatalf("authentication did not serialize with recovery: %d %s", response.Code, response.Body)
+				default:
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if !blocked {
+				t.Fatal("authentication did not reach recovery lock")
+			}
+			if err = f.server.recoverInvitationCredentials(r, tx, f.target, kernel.NewID().String()); err != nil {
+				t.Fatal(err)
+			}
+			if err = tx.Commit(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("authentication failed to finish after recovery")
+			}
+			expectAdministrationStatus(t, response, 401)
+			var count int
+			if err = f.server.app.DB.QueryRow(t.Context(), `SELECT (SELECT count(*) FROM user_sessions WHERE application_id=$1 AND user_id=$2 AND revoked_at IS NULL)+(SELECT count(*) FROM mfa_login_challenges WHERE application_id=$1 AND user_id=$2 AND consumed_at IS NULL)`, f.app, f.target).Scan(&count); err != nil || count != 0 {
+				t.Fatal("stale authentication survived recovery", count, err)
+			}
+			fresh := httptest.NewRecorder()
+			f.server.issueSession(fresh, withAuthenticationEpoch(r, 1), f.target, []string{"email"})
+			expectAdministrationStatus(t, fresh, 200)
 		})
 	}
 }

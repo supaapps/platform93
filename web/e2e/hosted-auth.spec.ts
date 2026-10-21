@@ -18,6 +18,7 @@ test("email invitations request independent identity proof before acceptance", a
   await page.route(`**${endpoint}/actions`,route=>{const body=route.request().postDataJSON();actions.push(body);if(body.action==="invitation")view={...view,stage:"email_code"};return route.fulfill({json:view});});
   await page.goto(`/auth/?interaction=${interaction}`);
   await expect(page.getByRole("button",{name:"Accept invitation",exact:true})).toHaveCount(0);
+  await expect(page.getByText(/accepting by email resets its existing password/)).toBeVisible();
   await page.getByRole("button",{name:"Send verification code",exact:true}).click();
   await page.getByLabel("Code",{exact:true}).fill("ABCD2345");
   await page.getByRole("button",{name:"Verify and continue",exact:true}).click();

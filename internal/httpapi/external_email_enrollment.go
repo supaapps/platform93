@@ -219,7 +219,7 @@ VALUES($1,$2,$3,$4,$5,jsonb_build_object('email',$6::text))`, kernel.NewID(), ap
 		kernel.WriteProblem(w, r, http.StatusConflict, "external_identity_creation_failed", "The external identity could not be created.")
 		return
 	}
-	s.completePrimaryAuthentication(w, r, userID, []string{provider, "email"})
+	s.completePrimaryAuthentication(w, withAuthenticationEpoch(r, 0), userID, []string{provider, "email"})
 }
 
 func hasExactlyOneExternalEmailCredential(code, linkToken string) bool {

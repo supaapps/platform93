@@ -13,20 +13,35 @@ import (
 )
 
 func (s *Server) completePrimaryAuthentication(w http.ResponseWriter, r *http.Request, userID string, amr []string) {
+	epoch, bound := authenticationEpoch(r)
+	if !bound {
+		kernel.WriteProblem(w, r, 500, "authentication_proof_unbound", "Authentication could not be completed safely.")
+		return
+	}
 	var methods []string
 	err := s.app.DB.QueryRow(r.Context(), `SELECT COALESCE(array_agg(DISTINCT method_type) FILTER (WHERE method_type IS NOT NULL),'{}')
 FROM user_authentication_methods WHERE application_id=$1 AND user_id=$2 AND status='active'`,
 		chi.URLParam(r, "application_id"), userID).Scan(&methods)
-	if err != nil || len(methods) == 0 {
+	if err != nil {
+		kernel.WriteProblem(w, r, 503, "mfa_unavailable", "Authentication methods could not be checked.")
+		return
+	}
+	if len(methods) == 0 {
 		s.issueSession(w, r, userID, amr)
 		return
 	}
 	challengeID := kernel.NewID()
-	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO mfa_login_challenges
-(id,application_id,user_id,primary_amr,expires_at) VALUES ($1,$2,$3,$4,$5)`, challengeID,
-		chi.URLParam(r, "application_id"), userID, amr, s.app.Now().Add(5*time.Minute))
+	result, err := s.app.DB.Exec(r.Context(), `WITH account AS (
+ SELECT id FROM users WHERE application_id=$2 AND id=$3 AND status='active' AND authentication_epoch=$6 FOR SHARE
+) INSERT INTO mfa_login_challenges
+(id,application_id,user_id,primary_amr,expires_at,authentication_epoch) SELECT $1,$2,id,$4,$5,$6 FROM account`, challengeID,
+		chi.URLParam(r, "application_id"), userID, amr, s.app.Now().Add(5*time.Minute), epoch)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "mfa_challenge_failed", "The MFA challenge could not be created.")
+		return
+	}
+	if result.RowsAffected() != 1 {
+		kernel.WriteProblem(w, r, 401, "authentication_restarted", "Account credentials changed. Start authentication again.")
 		return
 	}
 	kernel.WriteJSON(w, http.StatusAccepted, map[string]any{"mfa_required": true, "challenge_id": challengeID, "methods": methods, "expires_in": 300})
@@ -53,9 +68,10 @@ func (s *Server) verifyMFA(w http.ResponseWriter, r *http.Request) {
 	var userID string
 	var primaryAMR []string
 	var attempts int
-	err = tx.QueryRow(r.Context(), `SELECT user_id,primary_amr,attempts FROM mfa_login_challenges
+	var epoch int64
+	err = tx.QueryRow(r.Context(), `SELECT user_id,primary_amr,attempts,authentication_epoch FROM mfa_login_challenges
 WHERE id=$1 AND application_id=$2 AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`,
-		request.ChallengeID, chi.URLParam(r, "application_id")).Scan(&userID, &primaryAMR, &attempts)
+		request.ChallengeID, chi.URLParam(r, "application_id")).Scan(&userID, &primaryAMR, &attempts, &epoch)
 	if err != nil || attempts >= 8 {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_mfa_challenge", "The MFA challenge is invalid or expired.")
 		return
@@ -105,7 +121,7 @@ WHERE application_id=$1 AND user_id=$2 AND code_digest=$3 AND used_at IS NULL`, 
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "mfa_completion_failed", "The MFA challenge could not be completed.")
 		return
 	}
-	s.issueSession(w, r, userID, append(primaryAMR, method))
+	s.issueSession(w, withAuthenticationEpoch(r, epoch), userID, append(primaryAMR, method))
 }
 
 func (s *Server) listMFAMethods(w http.ResponseWriter, r *http.Request) {

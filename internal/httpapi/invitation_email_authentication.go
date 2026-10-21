@@ -145,6 +145,8 @@ func (s *Server) verifyInvitationRecipient(w http.ResponseWriter, r *http.Reques
 	valid := err == nil && attempts < 8 && ((in.AuthenticationCode != "" && equalBytes(code, s.app.Vault.Digest(strings.ToUpper(in.AuthenticationCode)))) || (in.AuthenticationLinkToken != "" && equalBytes(link, s.app.Vault.Digest(in.AuthenticationLinkToken))))
 	if !valid {
 		if err == nil {
+			// Before this point acceptance only reads/locks rows. Commit only the
+			// failed-attempt counter; never add credential or grant writes here.
 			_, _ = tx.Exec(r.Context(), `UPDATE invitation_email_challenges SET attempts=attempts+1 WHERE id=$1`, in.AuthenticationChallengeID)
 			_ = tx.Commit(r.Context())
 		}

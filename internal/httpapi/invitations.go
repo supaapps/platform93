@@ -652,7 +652,7 @@ VALUES($1,$2,$3,$3,now())`, userID, applicationID, email)
 		}
 	} else if err == nil && status == "active" {
 		if recoverCredentials {
-			err = s.recoverInvitationCredentials(r, tx, userID)
+			err = s.recoverInvitationCredentials(r, tx, userID, invitationID)
 			if err != nil {
 				kernel.WriteProblem(w, r, http.StatusServiceUnavailable, "invitation_recovery_failed", "Account recovery could not be committed. Retry with the same invitation and mailbox proof.")
 				return
@@ -724,8 +724,9 @@ func (s *Server) redeemInvitationAuthorizationCode(w http.ResponseWriter, r *htt
 	}
 	defer rollback(tx, r.Context())
 	var id, userID, expectedChallenge string
-	err = tx.QueryRow(r.Context(), `SELECT id,user_id,code_challenge FROM invitation_authorization_codes
-WHERE application_id=$1 AND code_digest=$2 AND used_at IS NULL AND expires_at>now() FOR UPDATE`, chi.URLParam(r, "application_id"), s.app.Vault.Digest(request.AuthorizationCode)).Scan(&id, &userID, &expectedChallenge)
+	var epoch int64
+	err = tx.QueryRow(r.Context(), `SELECT c.id,c.user_id,c.code_challenge,u.authentication_epoch FROM invitation_authorization_codes c JOIN users u ON u.id=c.user_id AND u.application_id=c.application_id
+WHERE c.application_id=$1 AND c.code_digest=$2 AND c.used_at IS NULL AND c.expires_at>now() FOR UPDATE OF c`, chi.URLParam(r, "application_id"), s.app.Vault.Digest(request.AuthorizationCode)).Scan(&id, &userID, &expectedChallenge, &epoch)
 	if err != nil || !equalBytes([]byte(challenge), []byte(expectedChallenge)) {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_invitation_authorization_code", "The invitation authorization code is invalid, expired, or already used.")
 		return
@@ -735,7 +736,7 @@ WHERE application_id=$1 AND code_digest=$2 AND used_at IS NULL AND expires_at>no
 		kernel.WriteProblem(w, r, http.StatusConflict, "invitation_authorization_conflict", "The invitation authorization code was already used.")
 		return
 	}
-	s.completePrimaryAuthentication(w, r, userID, []string{"invitation", "pkce"})
+	s.completePrimaryAuthentication(w, withAuthenticationEpoch(r, epoch), userID, []string{"invitation", "pkce"})
 }
 
 func assignInvitationRoles(ctx context.Context, tx pgx.Tx, applicationID, userID string, workspaceID *string, appRoles, workspaceRoles []string) error {

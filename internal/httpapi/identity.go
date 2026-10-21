@@ -241,7 +241,7 @@ func (s *Server) passwordSignUp(w http.ResponseWriter, r *http.Request) {
 		writeCreationProblem(w, r, err, "account_unavailable", "An account cannot be created with these details.", "account_creation_failed", "users_application_id_normalized_email_key")
 		return
 	}
-	s.issueSession(w, r, created.ID, []string{"pwd"})
+	s.issueSession(w, withAuthenticationEpoch(r, 0), created.ID, []string{"pwd"})
 }
 
 func (s *Server) passwordSignIn(w http.ResponseWriter, r *http.Request) {
@@ -260,14 +260,15 @@ func (s *Server) passwordSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var userID, hash, status string
-	err := s.app.DB.QueryRow(r.Context(), `SELECT id,password_hash,status FROM users
-WHERE application_id=$1 AND normalized_email=$2`, chi.URLParam(r, "application_id"), kernel.NormalizeEmail(request.Email)).Scan(&userID, &hash, &status)
+	var epoch int64
+	err := s.app.DB.QueryRow(r.Context(), `SELECT id,password_hash,status,authentication_epoch FROM users
+WHERE application_id=$1 AND normalized_email=$2`, chi.URLParam(r, "application_id"), kernel.NormalizeEmail(request.Email)).Scan(&userID, &hash, &status, &epoch)
 	if err != nil || status != "active" || !identity.VerifyPassword(hash, request.Password) {
 		time.Sleep(150 * time.Millisecond)
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_credentials", "Email or password is incorrect.")
 		return
 	}
-	s.completePrimaryAuthentication(w, r, userID, []string{"pwd"})
+	s.completePrimaryAuthentication(w, withAuthenticationEpoch(r, epoch), userID, []string{"pwd"})
 }
 
 func (s *Server) createUser(r *http.Request, request createUserRequest, administrative bool) (userResponse, error) {
@@ -476,7 +477,8 @@ WHERE id=$1 AND application_id=$2 AND consumed_at IS NULL AND expires_at>now() F
 		return
 	}
 	var userID string
-	err = tx.QueryRow(r.Context(), "SELECT id FROM users WHERE application_id=$1 AND normalized_email=$2", chi.URLParam(r, "application_id"), normalized).Scan(&userID)
+	var epoch int64
+	err = tx.QueryRow(r.Context(), "SELECT id,authentication_epoch FROM users WHERE application_id=$1 AND normalized_email=$2", chi.URLParam(r, "application_id"), normalized).Scan(&userID, &epoch)
 	if err != nil && (intent == "sign_up" || intent == "automatic") && s.registrationEnabled(r) {
 		userID = kernel.NewID().String()
 		_, err = tx.Exec(r.Context(), `INSERT INTO users (id,application_id,email,normalized_email,email_verified_at,locale)
@@ -494,7 +496,7 @@ VALUES ($1,$2,$3,$3,now(),$4)`, userID, chi.URLParam(r, "application_id"), norma
 		kernel.WriteProblem(w, r, 500, "challenge_completion_failed", "The challenge could not be completed.")
 		return
 	}
-	s.completePrimaryAuthentication(w, r, userID, []string{"email"})
+	s.completePrimaryAuthentication(w, withAuthenticationEpoch(r, epoch), userID, []string{"email"})
 }
 
 func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, userID string, amr []string) {
@@ -505,8 +507,17 @@ func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, userID str
 	}
 	var email, locale, status string
 	var verified, orgVerified bool
-	err = s.app.DB.QueryRow(r.Context(), `SELECT email,locale,email_verified_at IS NOT NULL,is_org_verified,status
-FROM users WHERE id=$1 AND application_id=$2`, userID, applicationID).Scan(&email, &locale, &verified, &orgVerified, &status)
+	var currentEpoch int64
+	err = s.app.DB.QueryRow(r.Context(), `SELECT email,locale,email_verified_at IS NOT NULL,is_org_verified,status,authentication_epoch
+FROM users WHERE id=$1 AND application_id=$2`, userID, applicationID).Scan(&email, &locale, &verified, &orgVerified, &status, &currentEpoch)
+	expectedEpoch, bound := authenticationEpoch(r)
+	if !bound {
+		expectedEpoch = currentEpoch
+	}
+	if bound && expectedEpoch != currentEpoch {
+		kernel.WriteProblem(w, r, 401, "authentication_restarted", "Account credentials changed. Start authentication again.")
+		return
+	}
 	if err != nil || status != "active" {
 		kernel.WriteProblem(w, r, 401, "account_unavailable", "The account is unavailable.")
 		return
@@ -520,12 +531,18 @@ FROM users WHERE id=$1 AND application_id=$2`, userID, applicationID).Scan(&emai
 	sessionID := kernel.NewID()
 	expires := s.app.Now().Add(30 * 24 * time.Hour)
 	mfaAuthenticated := containsString(amr, "totp") || containsString(amr, "webauthn") || containsString(amr, "recovery_code")
-	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO user_sessions
+	result, err := s.app.DB.Exec(r.Context(), `WITH account AS (
+SELECT id FROM users WHERE application_id=$2 AND id=$3 AND status='active' AND authentication_epoch=$9 FOR SHARE
+) INSERT INTO user_sessions
 (id,application_id,user_id,refresh_digest,user_agent,authenticated_at,mfa_authenticated_at,amr,expires_at)
-VALUES ($1,$2,$3,$4,$5,now(),CASE WHEN $6 THEN now() END,$7,$8)`,
-		sessionID, applicationID, userID, s.app.Vault.Digest(refresh), truncate(r.UserAgent(), 512), mfaAuthenticated, amr, expires)
+SELECT $1,$2,id,$4,$5,now(),CASE WHEN $6 THEN now() END,$7,$8 FROM account`,
+		sessionID, applicationID, userID, s.app.Vault.Digest(refresh), truncate(r.UserAgent(), 512), mfaAuthenticated, amr, expires, expectedEpoch)
 	if err != nil {
 		kernel.WriteProblem(w, r, 500, "session_creation_failed", "The session could not be created.")
+		return
+	}
+	if result.RowsAffected() != 1 {
+		kernel.WriteProblem(w, r, 401, "authentication_restarted", "Account credentials changed. Start authentication again.")
 		return
 	}
 	kid, privateKey, err := s.app.ActiveSigningKey(r.Context())

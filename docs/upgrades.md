@@ -22,6 +22,11 @@ Compatibility details for this upgrade:
   Explain this recovery to recipients in headless onboarding; they can configure
   new login methods after completion. Offline JWT integrations still observe old
   access tokens until expiry. No external-provider account deletion is attempted.
+  Recovery also revokes OAuth consents and connected-app grants. In-flight login
+  attempts are bound to the account's authentication epoch and cannot mint a new
+  session or MFA challenge across a committed recovery. Old MFA methods are
+  intentionally removed; applications requiring MFA must guide the recipient to
+  enroll a new factor after recovery before exposing MFA-protected features.
 - Invitation list responses now default to 20 records, ordered by ascending UUID,
   with search, bounded limits and `next_cursor`. Follow pagination rather than
   assuming the response includes every invitation.

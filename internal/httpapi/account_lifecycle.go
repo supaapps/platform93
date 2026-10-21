@@ -157,8 +157,9 @@ func (s *Server) passwordResetVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rollback(tx, r.Context())
 	var userID string
+	var epoch int64
 	err = tx.QueryRow(r.Context(), `UPDATE users SET password_hash=$1,version=version+1,updated_at=now()
-WHERE application_id=$2 AND normalized_email=$3 AND status='active' RETURNING id`, hash, chi.URLParam(r, "application_id"), normalized).Scan(&userID)
+WHERE application_id=$2 AND normalized_email=$3 AND status='active' RETURNING id,authentication_epoch`, hash, chi.URLParam(r, "application_id"), normalized).Scan(&userID, &epoch)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_challenge", "The reset challenge is invalid or expired.")
 		return
@@ -170,7 +171,7 @@ WHERE application_id=$2 AND normalized_email=$3 AND status='active' RETURNING id
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "password_reset_failed", "The password reset could not be committed.")
 		return
 	}
-	s.completePrimaryAuthentication(w, r, userID, []string{"password_reset"})
+	s.completePrimaryAuthentication(w, withAuthenticationEpoch(r, epoch), userID, []string{"password_reset"})
 }
 
 func (s *Server) passwordChange(w http.ResponseWriter, r *http.Request) {

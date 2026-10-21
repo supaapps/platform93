@@ -4,6 +4,8 @@ ALTER TABLE application_invitations ADD COLUMN version bigint NOT NULL DEFAULT 1
 ALTER TABLE application_invitations ADD CONSTRAINT application_invitations_application_id_id_key UNIQUE(application_id,id);
 ALTER TABLE application_invitations ALTER COLUMN last_sent_at DROP NOT NULL;
 ALTER TABLE external_auth_challenges ADD COLUMN invitation_version bigint;
+ALTER TABLE users ADD COLUMN authentication_epoch bigint NOT NULL DEFAULT 0;
+ALTER TABLE mfa_login_challenges ADD COLUMN authentication_epoch bigint NOT NULL DEFAULT 0;
 -- Old invitation-only exchanges cannot be redeemed after the new proof boundary.
 UPDATE invitation_authorization_codes SET expires_at=LEAST(expires_at,now()) WHERE used_at IS NULL;
 
@@ -23,6 +25,8 @@ CREATE TABLE invitation_email_challenges (
 CREATE INDEX invitation_email_challenges_invitation_idx ON invitation_email_challenges(invitation_id);
 
 -- +goose Down
+ALTER TABLE mfa_login_challenges DROP COLUMN authentication_epoch;
+ALTER TABLE users DROP COLUMN authentication_epoch;
 DROP TABLE invitation_email_challenges;
 ALTER TABLE application_invitations DROP CONSTRAINT application_invitations_application_id_id_key;
 ALTER TABLE external_auth_challenges DROP COLUMN invitation_version;
