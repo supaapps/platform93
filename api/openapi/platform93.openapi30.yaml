@@ -4744,6 +4744,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PersonalAPIKeyCreated'
+        '401':
+          $ref: '#/components/responses/SessionAuthenticationFailure'
+        '403':
+          $ref: '#/components/responses/DirectAuthenticationRequired'
   /v1/applications/{application_id}/catalog/products:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -5908,6 +5912,10 @@ paths:
       responses:
         '204':
           description: Password changed and other sessions revoked
+        '401':
+          $ref: '#/components/responses/SessionAuthenticationFailure'
+        '403':
+          $ref: '#/components/responses/DirectAuthenticationRequired'
   /v1/applications/{application_id}/me/export:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -6086,6 +6094,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExternalAuthStart'
+        '401':
+          $ref: '#/components/responses/SessionAuthenticationFailure'
+        '403':
+          $ref: '#/components/responses/DirectAuthenticationRequired'
   /v1/applications/{application_id}/me/auth/providers/apple/link:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -6106,6 +6118,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExternalAuthStart'
+        '401':
+          $ref: '#/components/responses/SessionAuthenticationFailure'
+        '403':
+          $ref: '#/components/responses/DirectAuthenticationRequired'
   /v1/applications/{application_id}/me/auth/providers/{provider}/link:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -6134,6 +6150,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExternalAuthStart'
+        '401':
+          $ref: '#/components/responses/SessionAuthenticationFailure'
+        '403':
+          $ref: '#/components/responses/DirectAuthenticationRequired'
   /v1/applications/{application_id}/me/auth/identities:
     parameters:
       - $ref: '#/components/parameters/ApplicationID'
@@ -10202,7 +10222,23 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
     Problem:
-      description: RFC 9457 problem
+      description: >-
+        RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in
+        instead of reusing old credentials.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    SessionAuthenticationFailure:
+      description: Invalid credentials/session, or authentication_restarted when a concurrent credential recovery invalidated this request. Start a fresh sign-in.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    DirectAuthenticationRequired:
+      description: >-
+        Credential policy denied, including direct_authentication_required for PAT, machine or delegated actors, recent_authentication_required, or disabled
+        personal API keys. Use a direct permitted application-user session.
       content:
         application/problem+json:
           schema:
