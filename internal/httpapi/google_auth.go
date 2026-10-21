@@ -158,13 +158,16 @@ EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND
 		requestedByUserID = &requestedBy
 	}
 	if err == nil {
-		_, err = s.app.DB.Exec(r.Context(), `INSERT INTO external_auth_challenges
+		err = s.storeExternalAuthChallenge(r, requestedBy, `INSERT INTO external_auth_challenges
 (id,application_id,auth_provider_config_id,provider,flow,requested_by_user_id,app_redirect_uri,state_digest,nonce_digest,verifier_ciphertext,code_challenge,expires_at)
 VALUES ($1,$2,$3,'google',$4,$5,$6,$7,$8,$9,$10,$11)`, challengeID, chi.URLParam(r, "application_id"), provider.ID, request.Flow,
 			requestedByUserID, request.RedirectURI, s.app.Vault.Digest(state), s.app.Vault.Digest(nonce), verifierCiphertext,
 			nullableAuthValue(request.CodeChallenge), s.app.Now().Add(10*time.Minute))
 	}
 	if err != nil {
+		if credentialSessionProblem(w, r, err) {
+			return
+		}
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "google_auth_start_failed", "The Google authentication flow could not be started.")
 		return
 	}

@@ -160,6 +160,9 @@ clears recovery codes, revokes stored sessions, OAuth credentials, personal keys
 and support delegations, revokes OAuth consents/connected apps, and invalidates
 outstanding authentication challenges. Authentication-epoch checks reject logins
 already in flight when recovery commits, including delayed session/MFA issuance.
+Password changes, API-key creation and provider-link starts also lock and recheck
+the live, non-delegated application session before storing credentials, preventing
+an old authenticated request from installing credentials after recovery.
 It retains the user UUID, profile, application data, memberships and grants.
 The recipient receives a new PKCE-bound authorization code and can establish new
 login methods afterwards. This recovery intentionally removes untrusted MFA;

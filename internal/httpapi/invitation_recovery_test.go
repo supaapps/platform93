@@ -144,9 +144,19 @@ func TestApplicationInvitationCredentialRecoveryPostgres(t *testing.T) {
 }
 
 func TestApplicationInvitationRecoveryLoginRacePostgres(t *testing.T) {
-	for _, flow := range []string{"session", "mfa"} {
+	for _, flow := range []string{"session", "mfa", "credential"} {
 		t.Run(flow, func(t *testing.T) {
 			f := newApplicationAdministrationFixture(t, []string{"invitations:manage"})
+			current := kernel.Actor{}
+			if flow == "credential" {
+				issued := httptest.NewRecorder()
+				f.server.issueSession(issued, requestWithRoute(t, "POST", "/", nil, map[string]string{"application_id": f.app}, kernel.Actor{}), f.target, []string{"pwd"})
+				expectAdministrationStatus(t, issued, 200)
+				current = kernel.Actor{Type: "user", ID: f.target, ApplicationID: f.app}
+				if err := f.server.app.DB.QueryRow(t.Context(), `SELECT id FROM user_sessions WHERE application_id=$1 AND user_id=$2 AND revoked_at IS NULL`, f.app, f.target).Scan(&current.SessionID); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if flow == "mfa" {
 				if _, err := f.server.app.DB.Exec(t.Context(), `INSERT INTO user_authentication_methods(application_id,user_id,method_type,status) VALUES($1,$2,'totp','active')`, f.app, f.target); err != nil {
 					t.Fatal(err)
@@ -161,12 +171,17 @@ func TestApplicationInvitationRecoveryLoginRacePostgres(t *testing.T) {
 			if err = tx.QueryRow(t.Context(), `SELECT pg_backend_pid() FROM users WHERE application_id=$1 AND id=$2 FOR UPDATE`, f.app, f.target).Scan(&pid); err != nil {
 				t.Fatal(err)
 			}
-			r := withAuthenticationEpoch(requestWithRoute(t, "POST", "/", nil, map[string]string{"application_id": f.app}, kernel.Actor{}), 0)
+			r := withAuthenticationEpoch(requestWithRoute(t, "POST", "/", nil, map[string]string{"application_id": f.app}, current), 0)
 			response := httptest.NewRecorder()
 			done := make(chan struct{})
 			go func() {
 				defer close(done)
-				if flow == "session" {
+				if flow == "credential" {
+					err := f.server.storeExternalAuthChallenge(r, f.target, `INSERT INTO external_auth_challenges(application_id,requested_by_user_id,provider,flow,app_redirect_uri,state_digest,nonce_digest,verifier_ciphertext,expires_at) VALUES($1,$2,'google','link','https://app.example.test',convert_to($2::uuid::text,'UTF8'),convert_to($2::uuid::text,'UTF8'),'test',now()+interval '5 minutes')`, f.app, f.target)
+					if !credentialSessionProblem(response, r, err) {
+						response.WriteHeader(500)
+					}
+				} else if flow == "session" {
 					f.server.issueSession(response, r, f.target, []string{"pwd"})
 				} else {
 					f.server.completePrimaryAuthentication(response, r, f.target, []string{"pwd"})
@@ -204,7 +219,7 @@ func TestApplicationInvitationRecoveryLoginRacePostgres(t *testing.T) {
 			}
 			expectAdministrationStatus(t, response, 401)
 			var count int
-			if err = f.server.app.DB.QueryRow(t.Context(), `SELECT (SELECT count(*) FROM user_sessions WHERE application_id=$1 AND user_id=$2 AND revoked_at IS NULL)+(SELECT count(*) FROM mfa_login_challenges WHERE application_id=$1 AND user_id=$2 AND consumed_at IS NULL)`, f.app, f.target).Scan(&count); err != nil || count != 0 {
+			if err = f.server.app.DB.QueryRow(t.Context(), `SELECT (SELECT count(*) FROM user_sessions WHERE application_id=$1 AND user_id=$2 AND revoked_at IS NULL)+(SELECT count(*) FROM mfa_login_challenges WHERE application_id=$1 AND user_id=$2 AND consumed_at IS NULL)+(SELECT count(*) FROM external_auth_challenges WHERE application_id=$1 AND requested_by_user_id=$2 AND consumed_at IS NULL)`, f.app, f.target).Scan(&count); err != nil || count != 0 {
 				t.Fatal("stale authentication survived recovery", count, err)
 			}
 			fresh := httptest.NewRecorder()

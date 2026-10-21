@@ -822,9 +822,22 @@ func (s *Server) createAPIKey(w http.ResponseWriter, r *http.Request) {
 	id := kernel.NewID()
 	prefix := truncate(token, 16)
 	expires := s.app.Now().Add(time.Duration(request.ExpiresInDays) * 24 * time.Hour)
-	_, err = s.app.DB.Exec(r.Context(), `INSERT INTO personal_api_keys
-(id,application_id,user_id,label,token_prefix,token_digest,scopes,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, id, chi.URLParam(r, "application_id"), actor(r).ID, request.Label, prefix, s.app.Vault.Digest(token), request.Scopes, expires)
+	tx, err := s.app.DB.Begin(r.Context())
 	if err != nil {
+		kernel.WriteProblem(w, r, 503, "api_key_creation_failed", "The API key could not be created.")
+		return
+	}
+	defer rollback(tx, r.Context())
+	if err = s.lockCredentialMutation(r, tx, actor(r).ID); credentialSessionProblem(w, r, err) {
+		return
+	}
+	if err != nil {
+		kernel.WriteProblem(w, r, 503, "api_key_creation_failed", "The API key could not be created.")
+		return
+	}
+	_, err = tx.Exec(r.Context(), `INSERT INTO personal_api_keys
+(id,application_id,user_id,label,token_prefix,token_digest,scopes,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, id, chi.URLParam(r, "application_id"), actor(r).ID, request.Label, prefix, s.app.Vault.Digest(token), request.Scopes, expires)
+	if err != nil || tx.Commit(r.Context()) != nil {
 		kernel.WriteProblem(w, r, 500, "api_key_creation_failed", "The API key could not be created.")
 		return
 	}

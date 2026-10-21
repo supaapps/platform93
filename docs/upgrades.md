@@ -27,6 +27,10 @@ Compatibility details for this upgrade:
   session or MFA challenge across a committed recovery. Old MFA methods are
   intentionally removed; applications requiring MFA must guide the recipient to
   enroll a new factor after recovery before exposing MFA-protected features.
+  Credential-creation requests require a live non-delegated application session;
+  personal keys cannot create replacement keys or provider links. A concurrent
+  credential reset returns `401 authentication_restarted`; start authentication
+  again rather than retrying the old proof or session.
 - Invitation list responses now default to 20 records, ordered by ascending UUID,
   with search, bounded limits and `next_cursor`. Follow pagination rather than
   assuming the response includes every invitation.
