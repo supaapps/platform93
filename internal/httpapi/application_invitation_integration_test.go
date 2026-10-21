@@ -65,6 +65,10 @@ VALUES($1,$2,'reader','Reader','application',ARRAY['records:read'])`, roleID, ap
 		t.Fatal(err)
 	}
 	current := kernel.Actor{Type: "control_user", ID: controlUserID.String()}
+	if _, err = db.Exec(context.Background(), `INSERT INTO organization_memberships(organization_id,control_user_id,role) VALUES($1,$2,'admin')`, organizationID, controlUserID); err != nil {
+		t.Fatal(err)
+	}
+	configureInvitationSMTP(t, server, applicationID.String())
 	email := "rotated-" + suffix + "@example.test"
 	createRequest := requestWithRoute(t, http.MethodPost, "/", map[string]any{
 		"email": email, "application_role_keys": []string{"reader"},
@@ -112,7 +116,7 @@ FROM application_invitations WHERE id=$1`, created.ID).Scan(&oldLinkDigest, &old
 		t.Fatal(err)
 	}
 	resendResponse := httptest.NewRecorder()
-	server.resendInvitation(resendResponse, cooldownRequest)
+	server.resendInvitation(resendResponse, requestWithRoute(t, http.MethodPost, "/", nil, map[string]string{"application_id": applicationID.String(), "invitation_id": created.ID}, current))
 	if resendResponse.Code != http.StatusAccepted {
 		t.Fatalf("eligible invitation resend failed: %d %s", resendResponse.Code, resendResponse.Body.String())
 	}
@@ -137,6 +141,10 @@ VALUES($1,$2,$3,$4,$5,ARRAY['reader'],'{}',now()+interval '1 hour','control_user
 	verifier := "abcdefghijklmnopqrstuvwxyzABCDEFGH012345678"
 	digest := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(digest[:])
+	proof := kernel.NewID().String()
+	if _, err = db.Exec(context.Background(), `INSERT INTO invitation_email_challenges(id,application_id,invitation_id,invitation_version,code_challenge,code_digest,link_digest,expires_at) VALUES($1,$2,$3,1,$4,$5,$6,now()+interval '5 minutes')`, proof, applicationID, acceptanceID, challenge, vault.Digest("BCDE2345"), vault.Digest("mailbox-only")); err != nil {
+		t.Fatal(err)
+	}
 	responses := make([]*httptest.ResponseRecorder, 2)
 	var wait sync.WaitGroup
 	for index := range responses {
@@ -145,7 +153,9 @@ VALUES($1,$2,$3,$4,$5,ARRAY['reader'],'{}',now()+interval '1 hour','control_user
 			defer wait.Done()
 			request := requestWithRoute(t, http.MethodPost, "/", map[string]any{
 				"invitation_id": acceptanceID.String(), "link_token": linkToken, "code_challenge": challenge,
+				"authentication_challenge_id": proof, "authentication_code": "BCDE2345",
 			}, map[string]string{"application_id": applicationID.String()}, kernel.Actor{})
+			request.RemoteAddr = invitationFixtureAddress(applicationID.String())
 			responses[index] = httptest.NewRecorder()
 			server.exchangeInvitation(responses[index], request)
 		}(index)

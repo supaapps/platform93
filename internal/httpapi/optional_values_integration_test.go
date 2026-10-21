@@ -252,7 +252,7 @@ func TestCreationErrorClassificationPostgres(t *testing.T) {
 		{"/roles", "roles", "role_conflict", map[string]any{"key": "conflict-role", "name": "Role", "scope": "application", "permissions": []string{"billing:read"}}},
 		{"/users", "users", "user_creation_failed", map[string]any{"email": "created@example.test"}},
 		{"/notification-templates", "notification_templates", "", map[string]any{"key": "conflict_template", "category": "transactional", "subject_template": "Hello", "text_template": "Hello"}},
-		{"/invitations", "application_invitations", "invitation_conflict", map[string]any{"email": "invited@example.test"}},
+		{"/invitations", "application_invitations", "invitation_conflict", map[string]any{"email": "invited@example.test", "send_email": false}},
 	} {
 		t.Run(resource.table, func(t *testing.T) {
 			f := newWorkspaceHTTPFixture(t)

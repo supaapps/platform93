@@ -21,11 +21,19 @@ func requireApplicationPermission(w http.ResponseWriter, r *http.Request, suffix
 }
 
 func (s *Server) serviceListUsers(w http.ResponseWriter, r *http.Request) {
+	if actor(r).Type == "user" {
+		s.applicationAdminRead("users:read", s.adminListUsers)(w, r)
+		return
+	}
 	if requireApplicationPermission(w, r, "users/read") {
 		s.adminListUsers(w, r)
 	}
 }
 func (s *Server) serviceGetUser(w http.ResponseWriter, r *http.Request) {
+	if actor(r).Type == "user" {
+		s.applicationAdminRead("users:read", s.adminGetUser)(w, r)
+		return
+	}
 	if requireApplicationPermission(w, r, "users/read") {
 		s.adminGetUser(w, r)
 	}

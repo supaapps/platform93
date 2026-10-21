@@ -21,6 +21,8 @@ type Client struct {
 	ClientSecret  string
 	Scopes        []string
 	HTTPClient    *http.Client
+	// AccessToken forwards an application-user session without machine credentials.
+	AccessToken func(context.Context) (string, error)
 
 	mu        sync.Mutex
 	token     string
@@ -28,8 +30,9 @@ type Client struct {
 }
 
 type Page[T any] struct {
-	Items      []T     `json:"items"`
-	NextCursor *string `json:"next_cursor"`
+	Items       []T     `json:"items"`
+	NextCursor  *string `json:"next_cursor"`
+	UserVersion *int64  `json:"user_version,omitempty"`
 }
 
 type Notification struct {
@@ -157,6 +160,9 @@ type PublishedEvent struct {
 }
 
 type Invitation struct {
+	ApplicationID       string     `json:"application_id"`
+	OnboardingMethod    string     `json:"onboarding_method"`
+	Version             int64      `json:"version"`
 	HostedClientID      *string    `json:"hosted_client_id"`
 	HostedRedirectURI   *string    `json:"hosted_redirect_uri"`
 	ID                  string     `json:"id"`
@@ -166,13 +172,16 @@ type Invitation struct {
 	WorkspaceRoleKeys   []string   `json:"workspace_role_keys"`
 	Status              string     `json:"status"`
 	ExpiresAt           time.Time  `json:"expires_at"`
-	LastSentAt          time.Time  `json:"last_sent_at"`
+	LastSentAt          *time.Time `json:"last_sent_at"`
 	ResendAvailableAt   time.Time  `json:"resend_available_at"`
 	AcceptedAt          *time.Time `json:"accepted_at"`
 	RevokedAt           *time.Time `json:"revoked_at"`
 }
 
 type CreateInvitation struct {
+	OnboardingMethod    string   `json:"onboarding_method,omitempty"`
+	SendEmail           *bool    `json:"send_email,omitempty"`
+	Reason              string   `json:"reason,omitempty"`
 	Email               string   `json:"email"`
 	WorkspaceID         string   `json:"workspace_id,omitempty"`
 	ApplicationRoleKeys []string `json:"application_role_keys,omitempty"`
@@ -196,15 +205,13 @@ func (c *Client) SendNotification(ctx context.Context, input Notification, idemp
 	return output, err
 }
 
-func (c *Client) CreateInvitation(ctx context.Context, input CreateInvitation) (Invitation, error) {
-	var output Invitation
-	err := c.request(ctx, http.MethodPost, "/invitations", input, "", &output)
-	return output, err
+func (c *Client) CreateInvitation(ctx context.Context, input CreateInvitation, idempotencyKey string) (InvitationDelivery, error) {
+	return c.Administration().CreateInvitation(ctx, input, idempotencyKey)
 }
 
-func (c *Client) ListInvitations(ctx context.Context) (Page[Invitation], error) {
+func (c *Client) ListInvitations(ctx context.Context, options ...AdministrationSearch) (Page[Invitation], error) {
 	var output Page[Invitation]
-	err := c.request(ctx, http.MethodGet, "/invitations", nil, "", &output)
+	err := c.request(ctx, http.MethodGet, administrationSearch("/invitations", options), nil, "", &output)
 	return output, err
 }
 
@@ -214,14 +221,12 @@ func (c *Client) GetInvitation(ctx context.Context, id string) (Invitation, erro
 	return output, err
 }
 
-func (c *Client) ResendInvitation(ctx context.Context, id string) (Invitation, error) {
-	var output Invitation
-	err := c.request(ctx, http.MethodPost, "/invitations/"+url.PathEscape(id)+"/resend", nil, "", &output)
-	return output, err
+func (c *Client) ResendInvitation(ctx context.Context, id, reason, etag, idempotencyKey string) (InvitationDelivery, error) {
+	return c.Administration().RotateInvitation(ctx, id, RotateInvitation{SendEmail: true, Reason: reason}, etag, idempotencyKey)
 }
 
-func (c *Client) RevokeInvitation(ctx context.Context, id string) error {
-	return c.request(ctx, http.MethodDelete, "/invitations/"+url.PathEscape(id), nil, "", nil)
+func (c *Client) RevokeInvitation(ctx context.Context, id, reason, etag string) error {
+	return c.Administration().RevokeInvitation(ctx, id, reason, etag)
 }
 
 func (c *Client) ListUsers(ctx context.Context) (Page[User], error) {
@@ -273,6 +278,9 @@ func (c *Client) PublishEvent(ctx context.Context, input CustomEvent, idempotenc
 }
 
 func (c *Client) accessToken(ctx context.Context) (string, error) {
+	if c.AccessToken != nil {
+		return c.AccessToken(ctx)
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.token != "" && time.Now().Before(c.expiresAt.Add(-30*time.Second)) {
@@ -315,7 +323,7 @@ func (c *Client) accessToken(ctx context.Context) (string, error) {
 	return c.token, nil
 }
 
-func (c *Client) request(ctx context.Context, method, path string, input any, idempotencyKey string, output any) error {
+func (c *Client) request(ctx context.Context, method, path string, input any, idempotencyKey string, output any, headers ...http.Header) error {
 	var body io.Reader
 	if input != nil {
 		encoded, err := json.Marshal(input)
@@ -334,6 +342,13 @@ func (c *Client) request(ctx context.Context, method, path string, input any, id
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+token)
+	for _, values := range headers {
+		for name, value := range values {
+			for _, v := range value {
+				request.Header.Add(name, v)
+			}
+		}
+	}
 	if input != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

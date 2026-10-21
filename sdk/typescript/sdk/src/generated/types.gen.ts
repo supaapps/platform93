@@ -4,6 +4,132 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type ApplicationManagedSession = {
+    id: Uuid;
+    user_agent: string | null;
+    authenticated_at: string;
+    mfa_authenticated_at: string | null;
+    amr: Array<string>;
+    delegation_id: string | null;
+    expires_at: string;
+    last_used_at: string | null;
+    revoked_at: string | null;
+    created_at: string;
+};
+
+export type ApplicationManagedSessionPage = {
+    items: Array<ApplicationManagedSession>;
+    next_cursor: string | null;
+};
+
+export type ApplicationUserRoleAssignmentRecord = {
+    id: Uuid;
+    user_id?: string | null;
+    client_id?: string | null;
+    role_id: Uuid;
+    workspace_id?: string | null;
+    role_key?: string;
+    role_scope?: 'application' | 'workspace';
+    created_at?: string;
+};
+
+export type ApplicationUserRoleAssignmentPage = {
+    items: Array<ApplicationUserRoleAssignmentRecord>;
+    next_cursor: string | null;
+    user_version: number;
+};
+
+export type InvitationAuthenticationChallenge = {
+    challenge_id: Uuid;
+    invitation_id: Uuid;
+    expires_in: number;
+};
+
+export type ApplicationManagedUserCreate = {
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+    locale?: string;
+    email_verified?: boolean;
+    is_org_verified?: boolean;
+    custom_attributes?: {
+        [key: string]: unknown;
+    };
+    reason: string;
+};
+
+export type ApplicationManagedUserUpdate = {
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+    locale?: string;
+    reason: string;
+};
+
+export type ApplicationManagedAttributesUpdate = {
+    custom_attributes: {
+        [key: string]: unknown;
+    };
+    reason: string;
+};
+
+export type ApplicationAdministrationReason = {
+    reason: string;
+};
+
+export type ApplicationUserRoleAssignment = {
+    user_id: Uuid;
+    role_id: Uuid;
+    workspace_id?: Uuid;
+    reason: string;
+};
+
+export type RotateApplicationInvitation = {
+    send_email?: boolean;
+    reason?: string;
+};
+
+export type InvitationEmailAuthenticationStart = {
+    invitation_id?: Uuid;
+    email?: string;
+};
+
+export type InvitationDeliveryResult = {
+    hosted_client_id?: string | null;
+    hosted_redirect_uri?: string | null;
+    id: Uuid;
+    application_id?: Uuid;
+    workspace_id?: string | null;
+    email?: string;
+    application_role_keys?: Array<RoleKey>;
+    workspace_role_keys?: Array<RoleKey>;
+    onboarding_method?: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+    status?: 'pending' | 'accepted' | 'revoked' | 'expired';
+    link?: string;
+    expires_at?: string;
+    accepted_user_id?: string | null;
+    created_at?: string;
+    /**
+     * One-time credential URL. Never logged or returned by list/detail.
+     */
+    invitation_url: string;
+    email_queued: boolean;
+    version: number;
+    last_sent_at?: string | null;
+    resend_available_at?: string;
+};
+
+export type InvitationRotationResult = {
+    id: Uuid;
+    invitation_url: string;
+    version: number;
+    email_queued: boolean;
+    last_sent_at?: string | null;
+    resend_available_at?: string;
+    expires_at: string;
+};
+
 export type HostedCopy = {
     heading?: string;
     help?: string;
@@ -594,6 +720,13 @@ export type ApplicationInvitation = {
     expires_at: string;
     accepted_user_id?: string | null;
     created_at?: string;
+    version?: number;
+    last_sent_at?: string | null;
+    resend_available_at?: string;
+    accepted_at?: string | null;
+    revoked_at?: string | null;
+    expiration_recorded_at?: string | null;
+    updated_at?: string;
 };
 
 export type RevokedSessionCount = {
@@ -2212,6 +2345,8 @@ export type TokenResponse = {
 };
 
 export type User = {
+    created_at?: string;
+    updated_at?: string;
     id: Uuid;
     application_id: Uuid;
     email: string;
@@ -2225,7 +2360,7 @@ export type User = {
     custom_attributes?: {
         [key: string]: unknown;
     };
-    version?: number;
+    version: number;
 };
 
 export type UpdateUserProfile = {
@@ -2270,11 +2405,14 @@ export type CreateInvitation = {
     workspace_role_keys?: Array<string>;
     onboarding_method?: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
     expires_in?: number;
+    send_email?: boolean;
+    reason?: string;
 };
 
 export type ExchangeInvitation = unknown & {
     invitation_id?: Uuid;
     email?: string;
+    authentication_challenge_id?: Uuid;
 };
 
 export type RedeemInvitation = {
@@ -2306,6 +2444,7 @@ export type UpdateRole = {
 };
 
 export type Role = {
+    created_at?: string;
     key: RoleKey;
     name: string;
     scope: 'application' | 'workspace';
@@ -2601,6 +2740,41 @@ export type CreateCheckout = {
     external_reference?: string;
 };
 
+export type InvitationEmailAuthenticationStartWritable = {
+    invitation_id?: Uuid;
+    email?: string;
+    code?: string;
+    link_token?: string;
+    code_challenge: string;
+};
+
+export type InvitationDeliveryResultWritable = {
+    hosted_client_id?: string | null;
+    hosted_redirect_uri?: string | null;
+    id: Uuid;
+    application_id?: Uuid;
+    workspace_id?: string | null;
+    email?: string;
+    application_role_keys?: Array<RoleKey>;
+    workspace_role_keys?: Array<RoleKey>;
+    onboarding_method?: 'email' | 'google' | 'apple' | 'microsoft' | 'facebook' | 'linkedin';
+    status?: 'pending' | 'accepted' | 'revoked' | 'expired';
+    code?: string;
+    link_token?: string;
+    link?: string;
+    expires_at?: string;
+    accepted_user_id?: string | null;
+    created_at?: string;
+    /**
+     * One-time credential URL. Never logged or returned by list/detail.
+     */
+    invitation_url: string;
+    email_queued: boolean;
+    version: number;
+    last_sent_at?: string | null;
+    resend_available_at?: string;
+};
+
 export type HostedAuthActionWritable = {
     action: 'password' | 'signup' | 'email_start' | 'email_verify' | 'mfa' | 'webauthn_options' | 'webauthn_verify' | 'reset_start' | 'reset_verify' | 'provider' | 'external_email_start' | 'external_email_verify' | 'invitation' | 'verify_email_start' | 'verify_email' | 'approve' | 'deny' | 'switch_account' | 'logout' | 'restart';
     email?: string;
@@ -2739,6 +2913,13 @@ export type ApplicationInvitationWritable = {
     expires_at: string;
     accepted_user_id?: string | null;
     created_at?: string;
+    version?: number;
+    last_sent_at?: string | null;
+    resend_available_at?: string;
+    accepted_at?: string | null;
+    revoked_at?: string | null;
+    expiration_recorded_at?: string | null;
+    updated_at?: string;
 };
 
 export type InvitationExchangeResultWritable = {
@@ -2997,6 +3178,9 @@ export type ExchangeInvitationWritable = unknown & {
     code?: string;
     link_token?: string;
     code_challenge: string;
+    authentication_challenge_id?: Uuid;
+    authentication_code?: string;
+    authentication_link_token?: string;
 };
 
 export type ControlUserPasswordLoginWritable = {
@@ -3435,7 +3619,7 @@ export type ReadinessData = {
 
 export type ReadinessErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     503: Problem;
 };
@@ -3492,7 +3676,7 @@ export type BootstrapData = {
 
 export type BootstrapErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -3517,11 +3701,11 @@ export type CompleteSetupData = {
 
 export type CompleteSetupErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
 };
@@ -3594,7 +3778,7 @@ export type LoginControlUserWithPasswordData = {
 
 export type LoginControlUserWithPasswordErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -3619,7 +3803,7 @@ export type ChangeControlUserPasswordData = {
 
 export type ChangeControlUserPasswordErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -3812,7 +3996,7 @@ export type UnlinkControlExternalIdentityData = {
 
 export type UnlinkControlExternalIdentityErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -3837,7 +4021,7 @@ export type AcceptControlUserInvitationData = {
 
 export type AcceptControlUserInvitationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -3914,7 +4098,7 @@ export type DisableInstallationNotificationProviderData = {
 
 export type DisableInstallationNotificationProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -3941,7 +4125,7 @@ export type GetInstallationNotificationProviderData = {
 
 export type GetInstallationNotificationProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -3968,7 +4152,7 @@ export type UpdateInstallationNotificationProviderData = {
 
 export type UpdateInstallationNotificationProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -3995,7 +4179,7 @@ export type VerifyInstallationNotificationProviderData = {
 
 export type VerifyInstallationNotificationProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     502: Problem;
 };
@@ -4025,7 +4209,7 @@ export type TestInstallationNotificationProviderData = {
 
 export type TestInstallationNotificationProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -4086,7 +4270,7 @@ export type UpdateInstallationAuthProviderData = {
 
 export type UpdateInstallationAuthProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -4369,7 +4553,7 @@ export type UpdateControlAuthPolicyData = {
 
 export type UpdateControlAuthPolicyErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -4474,7 +4658,7 @@ export type CreateManagementClientData = {
 
 export type CreateManagementClientErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -4543,7 +4727,7 @@ export type UpdateOrganizationPolicyData = {
 
 export type UpdateOrganizationPolicyErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     412: Problem;
 };
@@ -4586,7 +4770,7 @@ export type CreateOrganizationData = {
 
 export type CreateOrganizationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -4671,7 +4855,7 @@ export type UpdateApplicationData = {
 
 export type UpdateApplicationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     412: Problem;
 };
@@ -4753,7 +4937,7 @@ export type UpdateOrganizationData = {
 
 export type UpdateOrganizationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     412: Problem;
 };
@@ -5002,7 +5186,7 @@ export type UpdateOrganizationAuthProviderData = {
 
 export type UpdateOrganizationAuthProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -5332,7 +5516,7 @@ export type ListApplicationReferenceLabelsData = {
 
 export type ListApplicationReferenceLabelsErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
 };
@@ -5377,7 +5561,7 @@ export type UpdatePublicApplicationConfigData = {
 
 export type UpdatePublicApplicationConfigErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     412: Problem;
 };
@@ -5404,7 +5588,7 @@ export type UpdateInternalApplicationConfigData = {
 
 export type UpdateInternalApplicationConfigErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     412: Problem;
 };
@@ -5621,7 +5805,7 @@ export type ListOAuthResourcesData = {
 
 export type ListOAuthResourcesErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -5651,7 +5835,7 @@ export type CreateOAuthResourceData = {
 
 export type CreateOAuthResourceErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
@@ -5659,7 +5843,7 @@ export type CreateOAuthResourceErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -5691,11 +5875,11 @@ export type GetOAuthResourceData = {
 
 export type GetOAuthResourceErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -5729,27 +5913,27 @@ export type UpdateOAuthResourceData = {
 
 export type UpdateOAuthResourceErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     412: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     428: Problem;
 };
@@ -5783,11 +5967,11 @@ export type ListOAuthResourceConnectionsData = {
 
 export type ListOAuthResourceConnectionsErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -5822,19 +6006,19 @@ export type RevokeOAuthResourceConnectionData = {
 
 export type RevokeOAuthResourceConnectionErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     412: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     428: Problem;
 };
@@ -5863,11 +6047,11 @@ export type GetOAuthResourceConnectionData = {
 
 export type GetOAuthResourceConnectionErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -5900,11 +6084,11 @@ export type ListMyOAuthConnectionsData = {
 
 export type ListMyOAuthConnectionsErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -5938,23 +6122,23 @@ export type RevokeMyOAuthConnectionData = {
 
 export type RevokeMyOAuthConnectionErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     412: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     428: Problem;
 };
@@ -5982,15 +6166,15 @@ export type GetMyOAuthConnectionData = {
 
 export type GetMyOAuthConnectionErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -6017,15 +6201,15 @@ export type ServiceCheckResourceAccessData = {
 
 export type ServiceCheckResourceAccessErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
 };
@@ -6084,7 +6268,7 @@ export type CreateClientErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -6223,7 +6407,7 @@ export type CreateRoleErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -6255,7 +6439,7 @@ export type DeleteRoleData = {
 
 export type DeleteRoleErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -6283,7 +6467,7 @@ export type GetRoleData = {
 
 export type GetRoleErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -6317,11 +6501,11 @@ export type UpdateRoleData = {
 
 export type UpdateRoleErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
 };
@@ -6395,7 +6579,7 @@ export type DeleteWorkspaceData = {
 
 export type DeleteWorkspaceErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -6630,7 +6814,7 @@ export type CreateControlPermissionGrantData = {
 
 export type CreateControlPermissionGrantErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
 };
@@ -6689,7 +6873,7 @@ export type RevokeControlPermissionGrantData = {
 
 export type RevokeControlPermissionGrantErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -6812,7 +6996,7 @@ export type SendMachineNotificationData = {
 
 export type SendMachineNotificationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -6847,7 +7031,7 @@ export type ListPermissionGrantsData = {
 
 export type ListPermissionGrantsErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -6885,11 +7069,11 @@ export type CreatePermissionGrantData = {
 
 export type CreatePermissionGrantErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
 };
@@ -6923,7 +7107,7 @@ export type GetEffectiveAccessData = {
 
 export type GetEffectiveAccessErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -6957,7 +7141,7 @@ export type RevokePermissionGrantData = {
 
 export type RevokePermissionGrantErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -6997,7 +7181,17 @@ export type ListApplicationInvitationsData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/applications/{application_id}/invitations';
 };
 
@@ -7021,26 +7215,18 @@ export type CreateApplicationInvitationMachineData = {
 
 export type CreateApplicationInvitationMachineErrors = {
     /**
-     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
-    409: Problem;
-    /**
-     * RFC 9457 problem
-     */
-    422: Problem;
-    /**
-     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
-     */
-    500: Problem;
+    403: Problem;
 };
 
 export type CreateApplicationInvitationMachineError = CreateApplicationInvitationMachineErrors[keyof CreateApplicationInvitationMachineErrors];
 
 export type CreateApplicationInvitationMachineResponses = {
     /**
-     * Invitation created and email queued
+     * Successful application operation
      */
-    201: ApplicationInvitation;
+    201: InvitationDeliveryResult;
 };
 
 export type CreateApplicationInvitationMachineResponse = CreateApplicationInvitationMachineResponses[keyof CreateApplicationInvitationMachineResponses];
@@ -7084,7 +7270,7 @@ export type GetApplicationInvitationResponses = {
 export type GetApplicationInvitationResponse = GetApplicationInvitationResponses[keyof GetApplicationInvitationResponses];
 
 export type ResendApplicationInvitationData = {
-    body?: never;
+    body?: RotateApplicationInvitation;
     path: {
         application_id: Uuid;
         invitation_id: Uuid;
@@ -7095,18 +7281,18 @@ export type ResendApplicationInvitationData = {
 
 export type ResendApplicationInvitationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
-    429: Problem;
+    403: Problem;
 };
 
 export type ResendApplicationInvitationError = ResendApplicationInvitationErrors[keyof ResendApplicationInvitationErrors];
 
 export type ResendApplicationInvitationResponses = {
     /**
-     * Invitation credentials rotated and email queued
+     * Successful application operation
      */
-    202: InvitationResent;
+    202: InvitationRotationResult;
 };
 
 export type ResendApplicationInvitationResponse = ResendApplicationInvitationResponses[keyof ResendApplicationInvitationResponses];
@@ -7116,13 +7302,23 @@ export type ServiceListApplicationUsersData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/applications/{application_id}/users';
 };
 
 export type ServiceListApplicationUsersErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -7138,6 +7334,36 @@ export type ServiceListApplicationUsersResponses = {
 
 export type ServiceListApplicationUsersResponse = ServiceListApplicationUsersResponses[keyof ServiceListApplicationUsersResponses];
 
+export type CreateApplicationManagedUserData = {
+    body: ApplicationManagedUserCreate;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users';
+};
+
+export type CreateApplicationManagedUserErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type CreateApplicationManagedUserError = CreateApplicationManagedUserErrors[keyof CreateApplicationManagedUserErrors];
+
+export type CreateApplicationManagedUserResponses = {
+    /**
+     * Successful application operation
+     */
+    201: User;
+};
+
+export type CreateApplicationManagedUserResponse = CreateApplicationManagedUserResponses[keyof CreateApplicationManagedUserResponses];
+
 export type ServiceGetApplicationUserData = {
     body?: never;
     path: {
@@ -7150,7 +7376,7 @@ export type ServiceGetApplicationUserData = {
 
 export type ServiceGetApplicationUserErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -7166,6 +7392,37 @@ export type ServiceGetApplicationUserResponses = {
 
 export type ServiceGetApplicationUserResponse = ServiceGetApplicationUserResponses[keyof ServiceGetApplicationUserResponses];
 
+export type UpdateApplicationManagedUserData = {
+    body: ApplicationManagedUserUpdate;
+    headers: {
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}';
+};
+
+export type UpdateApplicationManagedUserErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type UpdateApplicationManagedUserError = UpdateApplicationManagedUserErrors[keyof UpdateApplicationManagedUserErrors];
+
+export type UpdateApplicationManagedUserResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type UpdateApplicationManagedUserResponse = UpdateApplicationManagedUserResponses[keyof UpdateApplicationManagedUserResponses];
+
 export type ServiceListApplicationWorkspacesData = {
     body?: never;
     path: {
@@ -7177,7 +7434,7 @@ export type ServiceListApplicationWorkspacesData = {
 
 export type ServiceListApplicationWorkspacesErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -7205,7 +7462,7 @@ export type ServiceGetApplicationWorkspaceData = {
 
 export type ServiceGetApplicationWorkspaceErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -7233,7 +7490,7 @@ export type ServiceListApplicationWorkspaceAccessData = {
 
 export type ServiceListApplicationWorkspaceAccessErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -7262,7 +7519,7 @@ export type ServiceGetSubjectEntitlementsData = {
 
 export type ServiceGetSubjectEntitlementsErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -7291,7 +7548,7 @@ export type ServiceGetSubjectBillingData = {
 
 export type ServiceGetSubjectBillingErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -7331,7 +7588,17 @@ export type ListApplicationInvitationsControlData = {
     path: {
         application_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/control/applications/{application_id}/invitations';
 };
 
@@ -7355,26 +7622,18 @@ export type CreateApplicationInvitationControlData = {
 
 export type CreateApplicationInvitationControlErrors = {
     /**
-     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
-    409: Problem;
-    /**
-     * RFC 9457 problem
-     */
-    422: Problem;
-    /**
-     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
-     */
-    500: Problem;
+    403: Problem;
 };
 
 export type CreateApplicationInvitationControlError = CreateApplicationInvitationControlErrors[keyof CreateApplicationInvitationControlErrors];
 
 export type CreateApplicationInvitationControlResponses = {
     /**
-     * Application or workspace invitation created and email queued
+     * Successful application operation
      */
-    201: ApplicationInvitation;
+    201: InvitationDeliveryResult;
 };
 
 export type CreateApplicationInvitationControlResponse = CreateApplicationInvitationControlResponses[keyof CreateApplicationInvitationControlResponses];
@@ -7418,7 +7677,7 @@ export type GetApplicationInvitationControlResponses = {
 export type GetApplicationInvitationControlResponse = GetApplicationInvitationControlResponses[keyof GetApplicationInvitationControlResponses];
 
 export type ResendApplicationInvitationControlData = {
-    body?: never;
+    body?: RotateApplicationInvitation;
     path: {
         application_id: Uuid;
         invitation_id: Uuid;
@@ -7429,18 +7688,18 @@ export type ResendApplicationInvitationControlData = {
 
 export type ResendApplicationInvitationControlErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
-    429: Problem;
+    403: Problem;
 };
 
 export type ResendApplicationInvitationControlError = ResendApplicationInvitationControlErrors[keyof ResendApplicationInvitationControlErrors];
 
 export type ResendApplicationInvitationControlResponses = {
     /**
-     * Invitation credentials rotated and localized email queued
+     * Successful application operation
      */
-    202: InvitationResent;
+    202: InvitationRotationResult;
 };
 
 export type ResendApplicationInvitationControlResponse = ResendApplicationInvitationControlResponses[keyof ResendApplicationInvitationControlResponses];
@@ -7488,7 +7747,7 @@ export type CreateUserErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -7826,7 +8085,7 @@ export type CreateFeatureErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -7857,7 +8116,7 @@ export type PasswordSignUpData = {
 
 export type PasswordSignUpErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
@@ -7865,7 +8124,7 @@ export type PasswordSignUpErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -7896,7 +8155,7 @@ export type PasswordSignInData = {
 
 export type PasswordSignInErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -8223,7 +8482,7 @@ export type VerifyMfaData = {
 
 export type VerifyMfaErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -8268,7 +8527,7 @@ export type FinishWebAuthnAuthenticationData = {
 
 export type FinishWebAuthnAuthenticationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -8295,9 +8554,17 @@ export type ExchangeApplicationInvitationData = {
 
 export type ExchangeApplicationInvitationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
+    /**
+     * Concurrent invitation acceptance or membership assignment failed.
+     */
+    409: Problem;
+    /**
+     * Credential recovery failed (invitation_recovery_failed). Recovery, invitation consumption and mailbox-proof consumption are rolled back and may be retried.
+     */
+    503: Problem;
 };
 
 export type ExchangeApplicationInvitationError = ExchangeApplicationInvitationErrors[keyof ExchangeApplicationInvitationErrors];
@@ -8323,7 +8590,7 @@ export type StartApplicationInvitationProviderData = {
 
 export type StartApplicationInvitationProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -8350,7 +8617,7 @@ export type RedeemApplicationInvitationData = {
 
 export type RedeemApplicationInvitationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -8458,7 +8725,7 @@ export type ListPersonalApiKeysData = {
 
 export type ListPersonalApiKeysErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -8482,6 +8749,19 @@ export type CreatePersonalApiKeyData = {
     query?: never;
     url: '/v1/applications/{application_id}/me/api-keys';
 };
+
+export type CreatePersonalApiKeyErrors = {
+    /**
+     * Invalid credentials/session, or authentication_restarted when a concurrent credential recovery invalidated this request. Start a fresh sign-in.
+     */
+    401: Problem;
+    /**
+     * Credential policy denied, including direct_authentication_required for PAT, machine or delegated actors, recent_authentication_required, or disabled personal API keys. Use a direct permitted application-user session.
+     */
+    403: Problem;
+};
+
+export type CreatePersonalApiKeyError = CreatePersonalApiKeyErrors[keyof CreatePersonalApiKeyErrors];
 
 export type CreatePersonalApiKeyResponses = {
     /**
@@ -8553,7 +8833,7 @@ export type CreateProductErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -8608,7 +8888,7 @@ export type CreatePriceErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -8659,7 +8939,7 @@ export type UpdateProductData = {
 
 export type UpdateProductErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     500: Problem;
 };
@@ -9032,7 +9312,7 @@ export type DisableBillingProviderData = {
 
 export type DisableBillingProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -9119,7 +9399,7 @@ export type CreateCheckoutSessionData = {
 
 export type CreateCheckoutSessionErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -9740,6 +10020,19 @@ export type PasswordChangeData = {
     url: '/v1/applications/{application_id}/me/password/change';
 };
 
+export type PasswordChangeErrors = {
+    /**
+     * Invalid credentials/session, or authentication_restarted when a concurrent credential recovery invalidated this request. Start a fresh sign-in.
+     */
+    401: Problem;
+    /**
+     * Credential policy denied, including direct_authentication_required for PAT, machine or delegated actors, recent_authentication_required, or disabled personal API keys. Use a direct permitted application-user session.
+     */
+    403: Problem;
+};
+
+export type PasswordChangeError = PasswordChangeErrors[keyof PasswordChangeErrors];
+
 export type PasswordChangeResponses = {
     /**
      * Password changed and other sessions revoked
@@ -9931,6 +10224,19 @@ export type StartGoogleLinkData = {
     url: '/v1/applications/{application_id}/me/auth/providers/google/link';
 };
 
+export type StartGoogleLinkErrors = {
+    /**
+     * Invalid credentials/session, or authentication_restarted when a concurrent credential recovery invalidated this request. Start a fresh sign-in.
+     */
+    401: Problem;
+    /**
+     * Credential policy denied, including direct_authentication_required for PAT, machine or delegated actors, recent_authentication_required, or disabled personal API keys. Use a direct permitted application-user session.
+     */
+    403: Problem;
+};
+
+export type StartGoogleLinkError = StartGoogleLinkErrors[keyof StartGoogleLinkErrors];
+
 export type StartGoogleLinkResponses = {
     /**
      * Authenticated Google account-link authorization URL
@@ -9948,6 +10254,19 @@ export type StartAppleLinkData = {
     query?: never;
     url: '/v1/applications/{application_id}/me/auth/providers/apple/link';
 };
+
+export type StartAppleLinkErrors = {
+    /**
+     * Invalid credentials/session, or authentication_restarted when a concurrent credential recovery invalidated this request. Start a fresh sign-in.
+     */
+    401: Problem;
+    /**
+     * Credential policy denied, including direct_authentication_required for PAT, machine or delegated actors, recent_authentication_required, or disabled personal API keys. Use a direct permitted application-user session.
+     */
+    403: Problem;
+};
+
+export type StartAppleLinkError = StartAppleLinkErrors[keyof StartAppleLinkErrors];
 
 export type StartAppleLinkResponses = {
     /**
@@ -9967,6 +10286,19 @@ export type StartSocialLinkData = {
     query?: never;
     url: '/v1/applications/{application_id}/me/auth/providers/{provider}/link';
 };
+
+export type StartSocialLinkErrors = {
+    /**
+     * Invalid credentials/session, or authentication_restarted when a concurrent credential recovery invalidated this request. Start a fresh sign-in.
+     */
+    401: Problem;
+    /**
+     * Credential policy denied, including direct_authentication_required for PAT, machine or delegated actors, recent_authentication_required, or disabled personal API keys. Use a direct permitted application-user session.
+     */
+    403: Problem;
+};
+
+export type StartSocialLinkError = StartSocialLinkErrors[keyof StartSocialLinkErrors];
 
 export type StartSocialLinkResponses = {
     /**
@@ -10404,7 +10736,17 @@ export type ListMyWorkspaceInvitationsData = {
         application_id: Uuid;
         workspace_id: Uuid;
     };
-    query?: never;
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
     url: '/v1/applications/{application_id}/workspaces/{workspace_id}/invitations';
 };
 
@@ -10429,26 +10771,18 @@ export type CreateMyWorkspaceInvitationData = {
 
 export type CreateMyWorkspaceInvitationErrors = {
     /**
-     * A resource key, account identity, pending invitation, or template version conflicts with existing state; organization limits may also prevent creation. Unexpected storage failures use 500 instead.
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
-    409: Problem;
-    /**
-     * RFC 9457 problem
-     */
-    422: Problem;
-    /**
-     * An unexpected database, event, or transaction failure prevented creation. Details are redacted; correlate the request ID with server diagnostics.
-     */
-    500: Problem;
+    403: Problem;
 };
 
 export type CreateMyWorkspaceInvitationError = CreateMyWorkspaceInvitationErrors[keyof CreateMyWorkspaceInvitationErrors];
 
 export type CreateMyWorkspaceInvitationResponses = {
     /**
-     * Workspace invitation created and email queued
+     * Successful application operation
      */
-    201: ApplicationInvitation;
+    201: InvitationDeliveryResult;
 };
 
 export type CreateMyWorkspaceInvitationResponse = CreateMyWorkspaceInvitationResponses[keyof CreateMyWorkspaceInvitationResponses];
@@ -10474,7 +10808,7 @@ export type RevokeMyWorkspaceInvitationResponses = {
 export type RevokeMyWorkspaceInvitationResponse = RevokeMyWorkspaceInvitationResponses[keyof RevokeMyWorkspaceInvitationResponses];
 
 export type ResendMyWorkspaceInvitationData = {
-    body?: never;
+    body?: RotateApplicationInvitation;
     path: {
         application_id: Uuid;
         workspace_id: Uuid;
@@ -10486,18 +10820,18 @@ export type ResendMyWorkspaceInvitationData = {
 
 export type ResendMyWorkspaceInvitationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
-    429: Problem;
+    403: Problem;
 };
 
 export type ResendMyWorkspaceInvitationError = ResendMyWorkspaceInvitationErrors[keyof ResendMyWorkspaceInvitationErrors];
 
 export type ResendMyWorkspaceInvitationResponses = {
     /**
-     * Workspace invitation credentials rotated and email queued
+     * Successful application operation
      */
-    202: InvitationResent;
+    202: InvitationRotationResult;
 };
 
 export type ResendMyWorkspaceInvitationResponse = ResendMyWorkspaceInvitationResponses[keyof ResendMyWorkspaceInvitationResponses];
@@ -10537,7 +10871,7 @@ export type ListWorkspacePermissionGrantsData = {
 
 export type ListWorkspacePermissionGrantsErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -10572,7 +10906,7 @@ export type CreateWorkspacePermissionGrantData = {
 
 export type CreateWorkspacePermissionGrantErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
 };
@@ -10607,7 +10941,7 @@ export type RevokeWorkspacePermissionGrantData = {
 
 export type RevokeWorkspacePermissionGrantErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -10866,11 +11200,11 @@ export type PublishCustomEventData = {
 
 export type PublishCustomEventErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     403: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
 };
@@ -10952,7 +11286,7 @@ export type CreateEventTypeData = {
 
 export type CreateEventTypeErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -11018,7 +11352,7 @@ export type UpdateEventTypeData = {
 
 export type UpdateEventTypeErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -11175,7 +11509,7 @@ export type GetWebhookData = {
 
 export type GetWebhookErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -11203,7 +11537,7 @@ export type UpdateWebhookData = {
 
 export type UpdateWebhookErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -11234,7 +11568,7 @@ export type TestWebhookData = {
 
 export type TestWebhookErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -11299,7 +11633,7 @@ export type GetWebhookDeliveryData = {
 
 export type GetWebhookDeliveryErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     404: Problem;
 };
@@ -11439,7 +11773,7 @@ export type VerifyNotificationProviderData = {
 
 export type VerifyNotificationProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     502: Problem;
 };
@@ -11561,7 +11895,7 @@ export type CreateInstallationNotificationTemplateErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -11630,7 +11964,7 @@ export type UpdateInstallationNotificationTemplateErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -11737,7 +12071,7 @@ export type CreateNotificationTemplateErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -11810,7 +12144,7 @@ export type UpdateNotificationTemplateErrors = {
      */
     409: Problem;
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     422: Problem;
     /**
@@ -12046,7 +12380,7 @@ export type DisableInstallationStorageProviderData = {
 
 export type DisableInstallationStorageProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -12109,7 +12443,7 @@ export type VerifyInstallationStorageProviderData = {
 
 export type VerifyInstallationStorageProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     502: Problem;
 };
@@ -12196,7 +12530,7 @@ export type DisableOrganizationStorageProviderData = {
 
 export type DisableOrganizationStorageProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -12341,7 +12675,7 @@ export type DisableApplicationStorageProviderData = {
 
 export type DisableApplicationStorageProviderErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -13240,7 +13574,7 @@ export type OidcUserinfoData = {
 
 export type OidcUserinfoErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     401: Problem;
 };
@@ -13270,7 +13604,7 @@ export type StripeWebhookData = {
 
 export type StripeWebhookErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     400: Problem;
 };
@@ -13471,7 +13805,7 @@ export type ManagementCreateApplicationData = {
 
 export type ManagementCreateApplicationErrors = {
     /**
-     * RFC 9457 problem
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     409: Problem;
 };
@@ -13549,3 +13883,541 @@ export type ManagementRestoreApplicationResponses = {
 };
 
 export type ManagementRestoreApplicationResponse = ManagementRestoreApplicationResponses[keyof ManagementRestoreApplicationResponses];
+
+export type UpdateApplicationManagedUserAttributesData = {
+    body: ApplicationManagedAttributesUpdate;
+    headers: {
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}/attributes';
+};
+
+export type UpdateApplicationManagedUserAttributesErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type UpdateApplicationManagedUserAttributesError = UpdateApplicationManagedUserAttributesErrors[keyof UpdateApplicationManagedUserAttributesErrors];
+
+export type UpdateApplicationManagedUserAttributesResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type UpdateApplicationManagedUserAttributesResponse = UpdateApplicationManagedUserAttributesResponses[keyof UpdateApplicationManagedUserAttributesResponses];
+
+export type SuspendApplicationManagedUserData = {
+    body: ApplicationAdministrationReason;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}/suspend';
+};
+
+export type SuspendApplicationManagedUserErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type SuspendApplicationManagedUserError = SuspendApplicationManagedUserErrors[keyof SuspendApplicationManagedUserErrors];
+
+export type SuspendApplicationManagedUserResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type SuspendApplicationManagedUserResponse = SuspendApplicationManagedUserResponses[keyof SuspendApplicationManagedUserResponses];
+
+export type RestoreApplicationManagedUserData = {
+    body: ApplicationAdministrationReason;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}/restore';
+};
+
+export type RestoreApplicationManagedUserErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type RestoreApplicationManagedUserError = RestoreApplicationManagedUserErrors[keyof RestoreApplicationManagedUserErrors];
+
+export type RestoreApplicationManagedUserResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type RestoreApplicationManagedUserResponse = RestoreApplicationManagedUserResponses[keyof RestoreApplicationManagedUserResponses];
+
+export type VerifyApplicationManagedUserEmailData = {
+    body: ApplicationAdministrationReason;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}/verify-email';
+};
+
+export type VerifyApplicationManagedUserEmailErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type VerifyApplicationManagedUserEmailError = VerifyApplicationManagedUserEmailErrors[keyof VerifyApplicationManagedUserEmailErrors];
+
+export type VerifyApplicationManagedUserEmailResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type VerifyApplicationManagedUserEmailResponse = VerifyApplicationManagedUserEmailResponses[keyof VerifyApplicationManagedUserEmailResponses];
+
+export type UnverifyApplicationManagedUserEmailData = {
+    body: ApplicationAdministrationReason;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}/unverify-email';
+};
+
+export type UnverifyApplicationManagedUserEmailErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type UnverifyApplicationManagedUserEmailError = UnverifyApplicationManagedUserEmailErrors[keyof UnverifyApplicationManagedUserEmailErrors];
+
+export type UnverifyApplicationManagedUserEmailResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type UnverifyApplicationManagedUserEmailResponse = UnverifyApplicationManagedUserEmailResponses[keyof UnverifyApplicationManagedUserEmailResponses];
+
+export type VerifyApplicationManagedUserOrganizationData = {
+    body: ApplicationAdministrationReason;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}/verify-organization';
+};
+
+export type VerifyApplicationManagedUserOrganizationErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type VerifyApplicationManagedUserOrganizationError = VerifyApplicationManagedUserOrganizationErrors[keyof VerifyApplicationManagedUserOrganizationErrors];
+
+export type VerifyApplicationManagedUserOrganizationResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type VerifyApplicationManagedUserOrganizationResponse = VerifyApplicationManagedUserOrganizationResponses[keyof VerifyApplicationManagedUserOrganizationResponses];
+
+export type UnverifyApplicationManagedUserOrganizationData = {
+    body: ApplicationAdministrationReason;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}/unverify-organization';
+};
+
+export type UnverifyApplicationManagedUserOrganizationErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type UnverifyApplicationManagedUserOrganizationError = UnverifyApplicationManagedUserOrganizationErrors[keyof UnverifyApplicationManagedUserOrganizationErrors];
+
+export type UnverifyApplicationManagedUserOrganizationResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type UnverifyApplicationManagedUserOrganizationResponse = UnverifyApplicationManagedUserOrganizationResponses[keyof UnverifyApplicationManagedUserOrganizationResponses];
+
+export type RevokeApplicationManagedUserSessionsData = {
+    body: ApplicationAdministrationReason;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/users/{user_id}/sessions/revoke';
+};
+
+export type RevokeApplicationManagedUserSessionsErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type RevokeApplicationManagedUserSessionsError = RevokeApplicationManagedUserSessionsErrors[keyof RevokeApplicationManagedUserSessionsErrors];
+
+export type RevokeApplicationManagedUserSessionsResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type RevokeApplicationManagedUserSessionsResponse = RevokeApplicationManagedUserSessionsResponses[keyof RevokeApplicationManagedUserSessionsResponses];
+
+export type ListApplicationManagedUserSessionsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+        user_id: Uuid;
+    };
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
+    url: '/v1/applications/{application_id}/users/{user_id}/sessions';
+};
+
+export type ListApplicationManagedUserSessionsErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type ListApplicationManagedUserSessionsError = ListApplicationManagedUserSessionsErrors[keyof ListApplicationManagedUserSessionsErrors];
+
+export type ListApplicationManagedUserSessionsResponses = {
+    /**
+     * Successful application operation
+     */
+    200: ApplicationManagedSessionPage;
+};
+
+export type ListApplicationManagedUserSessionsResponse = ListApplicationManagedUserSessionsResponses[keyof ListApplicationManagedUserSessionsResponses];
+
+export type ListApplicationAssignableRolesData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query?: {
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
+    url: '/v1/applications/{application_id}/roles';
+};
+
+export type ListApplicationAssignableRolesErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type ListApplicationAssignableRolesError = ListApplicationAssignableRolesErrors[keyof ListApplicationAssignableRolesErrors];
+
+export type ListApplicationAssignableRolesResponses = {
+    /**
+     * Successful application operation
+     */
+    200: RolePage;
+};
+
+export type ListApplicationAssignableRolesResponse = ListApplicationAssignableRolesResponses[keyof ListApplicationAssignableRolesResponses];
+
+export type ListApplicationUserRoleAssignmentsData = {
+    body?: never;
+    path: {
+        application_id: Uuid;
+    };
+    query: {
+        user_id: Uuid;
+        /**
+         * Case-insensitive literal name/key search or exact resource UUID, within the authorized application. Supplying search parameters enables ID-ordered pagination.
+         */
+        query?: string;
+        limit?: number;
+        /**
+         * Continue the same search using the returned next_cursor.
+         */
+        cursor?: string;
+    };
+    url: '/v1/applications/{application_id}/role-assignments';
+};
+
+export type ListApplicationUserRoleAssignmentsErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type ListApplicationUserRoleAssignmentsError = ListApplicationUserRoleAssignmentsErrors[keyof ListApplicationUserRoleAssignmentsErrors];
+
+export type ListApplicationUserRoleAssignmentsResponses = {
+    /**
+     * Successful application operation
+     */
+    200: ApplicationUserRoleAssignmentPage;
+};
+
+export type ListApplicationUserRoleAssignmentsResponse = ListApplicationUserRoleAssignmentsResponses[keyof ListApplicationUserRoleAssignmentsResponses];
+
+export type AssignApplicationUserRoleData = {
+    body: ApplicationUserRoleAssignment;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/role-assignments';
+};
+
+export type AssignApplicationUserRoleErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type AssignApplicationUserRoleError = AssignApplicationUserRoleErrors[keyof AssignApplicationUserRoleErrors];
+
+export type AssignApplicationUserRoleResponses = {
+    /**
+     * Successful application operation
+     */
+    201: RoleAssignmentRecord;
+};
+
+export type AssignApplicationUserRoleResponse = AssignApplicationUserRoleResponses[keyof AssignApplicationUserRoleResponses];
+
+export type RemoveApplicationUserRoleData = {
+    body: ApplicationAdministrationReason;
+    headers: {
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        assignment_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/role-assignments/{assignment_id}';
+};
+
+export type RemoveApplicationUserRoleErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type RemoveApplicationUserRoleError = RemoveApplicationUserRoleErrors[keyof RemoveApplicationUserRoleErrors];
+
+export type RemoveApplicationUserRoleResponses = {
+    /**
+     * Operation completed
+     */
+    204: void;
+};
+
+export type RemoveApplicationUserRoleResponse = RemoveApplicationUserRoleResponses[keyof RemoveApplicationUserRoleResponses];
+
+export type RotateApplicationInvitationData = {
+    body: RotateApplicationInvitation;
+    headers: {
+        'Idempotency-Key': string;
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/invitations/{invitation_id}/rotate';
+};
+
+export type RotateApplicationInvitationErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type RotateApplicationInvitationError = RotateApplicationInvitationErrors[keyof RotateApplicationInvitationErrors];
+
+export type RotateApplicationInvitationResponses = {
+    /**
+     * Successful application operation
+     */
+    202: InvitationRotationResult;
+};
+
+export type RotateApplicationInvitationResponse = RotateApplicationInvitationResponses[keyof RotateApplicationInvitationResponses];
+
+export type StartInvitationEmailAuthenticationData = {
+    body: InvitationEmailAuthenticationStartWritable;
+    path: {
+        application_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/auth/invitations/email/start';
+};
+
+export type StartInvitationEmailAuthenticationErrors = {
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    403: Problem;
+};
+
+export type StartInvitationEmailAuthenticationError = StartInvitationEmailAuthenticationErrors[keyof StartInvitationEmailAuthenticationErrors];
+
+export type StartInvitationEmailAuthenticationResponses = {
+    /**
+     * Successful application operation
+     */
+    202: InvitationAuthenticationChallenge;
+};
+
+export type StartInvitationEmailAuthenticationResponse = StartInvitationEmailAuthenticationResponses[keyof StartInvitationEmailAuthenticationResponses];
+
+export type RotateControlApplicationInvitationData = {
+    body: RotateApplicationInvitation;
+    headers: {
+        'Idempotency-Key': string;
+    };
+    path: {
+        application_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/control/applications/{application_id}/invitations/{invitation_id}/rotate';
+};
+
+export type RotateControlApplicationInvitationResponses = {
+    /**
+     * New one-time invitation credential
+     */
+    202: InvitationRotationResult;
+};
+
+export type RotateControlApplicationInvitationResponse = RotateControlApplicationInvitationResponses[keyof RotateControlApplicationInvitationResponses];
+
+export type RotateWorkspaceApplicationInvitationData = {
+    body: RotateApplicationInvitation;
+    headers: {
+        'Idempotency-Key': string;
+        /**
+         * Current resource ETag.
+         */
+        'If-Match': string;
+    };
+    path: {
+        application_id: Uuid;
+        workspace_id: Uuid;
+        invitation_id: Uuid;
+    };
+    query?: never;
+    url: '/v1/applications/{application_id}/workspaces/{workspace_id}/invitations/{invitation_id}/rotate';
+};
+
+export type RotateWorkspaceApplicationInvitationResponses = {
+    /**
+     * New one-time invitation credential
+     */
+    202: InvitationRotationResult;
+};
+
+export type RotateWorkspaceApplicationInvitationResponse = RotateWorkspaceApplicationInvitationResponses[keyof RotateWorkspaceApplicationInvitationResponses];

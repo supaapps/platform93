@@ -157,8 +157,9 @@ func (s *Server) passwordResetVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rollback(tx, r.Context())
 	var userID string
+	var epoch int64
 	err = tx.QueryRow(r.Context(), `UPDATE users SET password_hash=$1,version=version+1,updated_at=now()
-WHERE application_id=$2 AND normalized_email=$3 AND status='active' RETURNING id`, hash, chi.URLParam(r, "application_id"), normalized).Scan(&userID)
+WHERE application_id=$2 AND normalized_email=$3 AND status='active' RETURNING id,authentication_epoch`, hash, chi.URLParam(r, "application_id"), normalized).Scan(&userID, &epoch)
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_challenge", "The reset challenge is invalid or expired.")
 		return
@@ -170,7 +171,7 @@ WHERE application_id=$2 AND normalized_email=$3 AND status='active' RETURNING id
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "password_reset_failed", "The password reset could not be committed.")
 		return
 	}
-	s.completePrimaryAuthentication(w, r, userID, []string{"password_reset"})
+	s.completePrimaryAuthentication(w, withAuthenticationEpoch(r, epoch), userID, []string{"password_reset"})
 }
 
 func (s *Server) passwordChange(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +200,18 @@ func (s *Server) passwordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollback(tx, r.Context())
-	_, err = tx.Exec(r.Context(), `UPDATE users SET password_hash=$1,version=version+1,updated_at=now() WHERE id=$2`, newHash, actor(r).ID)
+	if err = s.lockCredentialMutation(r, tx, actor(r).ID); credentialSessionProblem(w, r, err) {
+		return
+	}
+	if err != nil {
+		kernel.WriteProblem(w, r, 503, "password_change_failed", "The password could not be changed.")
+		return
+	}
+	result, err := tx.Exec(r.Context(), `UPDATE users SET password_hash=$1,version=version+1,updated_at=now() WHERE id=$2 AND application_id=$3 AND password_hash=$4`, newHash, actor(r).ID, chi.URLParam(r, "application_id"), currentHash)
+	if err == nil && result.RowsAffected() != 1 {
+		kernel.WriteProblem(w, r, 401, "authentication_restarted", "Account credentials changed. Sign in again.")
+		return
+	}
 	if err == nil {
 		_, err = tx.Exec(r.Context(), `UPDATE user_sessions SET revoked_at=now() WHERE user_id=$1 AND id<>$2 AND revoked_at IS NULL`, actor(r).ID, actor(r).SessionID)
 	}

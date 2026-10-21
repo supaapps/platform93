@@ -67,8 +67,8 @@ VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (application_id,actor_key,idempotency_
 			var existingHash, responseBody []byte
 			var responseStatus *int
 			var responseHeaders []byte
-			err = s.app.DB.QueryRow(r.Context(), `SELECT request_hash,response_status,response_headers,response_body
-FROM idempotency_records WHERE application_id IS NOT DISTINCT FROM $1::uuid AND actor_key=$2 AND idempotency_key=$3`, applicationID, actorKey, key).Scan(&existingHash, &responseStatus, &responseHeaders, &responseBody)
+			err = s.app.DB.QueryRow(r.Context(), `SELECT id,request_hash,response_status,response_headers,response_body
+FROM idempotency_records WHERE application_id IS NOT DISTINCT FROM $1::uuid AND actor_key=$2 AND idempotency_key=$3`, applicationID, actorKey, key).Scan(&recordID, &existingHash, &responseStatus, &responseHeaders, &responseBody)
 			if err != nil {
 				kernel.WriteProblem(w, r, http.StatusConflict, "idempotency_in_progress", "A request with this idempotency key is in progress.")
 				return
@@ -83,6 +83,13 @@ FROM idempotency_records WHERE application_id IS NOT DISTINCT FROM $1::uuid AND 
 			}
 			var headers map[string][]string
 			_ = json.Unmarshal(responseHeaders, &headers)
+			if bytes.HasPrefix(responseBody, []byte("p93_encrypted:")) {
+				responseBody, err = s.app.Vault.Decrypt(string(responseBody[len("p93_encrypted:"):]), "idempotency:"+recordID.String())
+				if err != nil {
+					kernel.WriteProblem(w, r, 503, "idempotency_unavailable", "The response could not be recovered.")
+					return
+				}
+			}
 			for name, values := range headers {
 				for _, value := range values {
 					w.Header().Add(name, value)
@@ -98,9 +105,16 @@ FROM idempotency_records WHERE application_id IS NOT DISTINCT FROM $1::uuid AND 
 		if buffer.status >= 500 {
 			_, _ = s.app.DB.Exec(r.Context(), "DELETE FROM idempotency_records WHERE id=$1", recordID)
 		} else {
-			headers, _ := json.Marshal(map[string][]string{"Content-Type": buffer.header.Values("Content-Type")})
+			headers, _ := json.Marshal(map[string][]string{"Content-Type": buffer.header.Values("Content-Type"), "Cache-Control": buffer.header.Values("Cache-Control"), "ETag": buffer.header.Values("ETag")})
+			stored := buffer.body.Bytes()
+			cipher, e := s.app.Vault.Encrypt(stored, "idempotency:"+recordID.String())
+			if e != nil {
+				kernel.WriteProblem(w, r, 503, "idempotency_unavailable", "The response could not be stored safely.")
+				return
+			}
+			stored = []byte("p93_encrypted:" + cipher)
 			_, _ = s.app.DB.Exec(r.Context(), `UPDATE idempotency_records SET response_status=$1,response_headers=$2,
-response_body=$3,locked_until=NULL WHERE id=$4`, buffer.status, headers, buffer.body.Bytes(), recordID)
+response_body=$3,locked_until=NULL WHERE id=$4`, buffer.status, headers, stored, recordID)
 		}
 		for name, values := range buffer.header {
 			for _, value := range values {

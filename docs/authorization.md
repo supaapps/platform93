@@ -1,5 +1,8 @@
 # Application authorization
 
+For app-owned user-management UIs and email/Google onboarding without control-plane
+access, see [Application user administration](application-user-administration.md).
+
 Platform93 authorizes application requests from the JWT `scope` claim. The
 structured `roles` claim is for user interfaces and diagnostics; applications
 must not authorize from role names alone.

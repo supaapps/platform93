@@ -50,7 +50,7 @@ func (s *Server) startApplicationInvitationProvider(w http.ResponseWriter, r *ht
 	if !s.allowAuthAttempt(w, r, "invitation_provider_start", applicationID+"|"+provider+"|"+rateSubject, 10, 15*time.Minute) {
 		return
 	}
-	query := `SELECT id FROM application_invitations WHERE application_id=$1 AND onboarding_method=$2
+	query := `SELECT id,version FROM application_invitations WHERE application_id=$1 AND onboarding_method=$2
 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`
 	args := []any{applicationID, provider}
 	if linkPath {
@@ -61,7 +61,8 @@ AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`
 		args = append(args, request.Email, s.app.Vault.Digest(request.Code))
 	}
 	var invitationID string
-	if err := s.app.DB.QueryRow(r.Context(), query, args...).Scan(&invitationID); err != nil {
+	var invitationVersion int64
+	if err := s.app.DB.QueryRow(r.Context(), query, args...).Scan(&invitationID, &invitationVersion); err != nil {
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_provider_invitation", "The invitation is invalid, expired, or already used.")
 		return
 	}
@@ -87,9 +88,9 @@ AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()`
 	ciphertext, err := s.app.Vault.Encrypt([]byte(verifierValue), "external-auth:"+challengeID.String())
 	if err == nil {
 		_, err = s.app.DB.Exec(r.Context(), `INSERT INTO external_auth_challenges
-(id,application_id,auth_provider_config_id,invitation_id,provider,flow,app_redirect_uri,state_digest,nonce_digest,verifier_ciphertext,code_challenge,expires_at)
-VALUES($1,$2,$3,$4,$5,'invitation',$6,$7,$8,$9,$10,$11)`, challengeID, applicationID, config.ID, invitationID, provider,
-			flows.InvitationRedirectURI, s.app.Vault.Digest(state), s.app.Vault.Digest(nonce), ciphertext, request.CodeChallenge, s.app.Now().Add(10*time.Minute))
+(id,application_id,auth_provider_config_id,invitation_id,provider,flow,app_redirect_uri,state_digest,nonce_digest,verifier_ciphertext,code_challenge,expires_at,invitation_version)
+VALUES($1,$2,$3,$4,$5,'invitation',$6,$7,$8,$9,$10,$11,$12)`, challengeID, applicationID, config.ID, invitationID, provider,
+			flows.InvitationRedirectURI, s.app.Vault.Digest(state), s.app.Vault.Digest(nonce), ciphertext, request.CodeChallenge, s.app.Now().Add(10*time.Minute), invitationVersion)
 	}
 	if err != nil {
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "invitation_provider_start_failed", "The provider invitation flow could not be started.")
@@ -131,18 +132,35 @@ func (s *Server) completeApplicationInvitationExternalIdentity(r *http.Request, 
 	err = tx.QueryRow(r.Context(), `SELECT normalized_email,workspace_id,application_roles,workspace_roles FROM application_invitations
 WHERE id=$1 AND application_id=$2 AND onboarding_method=$3 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now() FOR UPDATE`,
 		invitationID, applicationID, config.Provider).Scan(&email, &workspaceID, &appRoles, &workspaceRoles)
-	if err != nil || external.TrustedEmail && kernel.NormalizeEmail(external.Email) != email {
+	if err != nil || external.TrustedEmail && kernel.NormalizeEmail(external.Email) != email || config.Provider == "google" && !external.TrustedEmail {
 		return "", fmt.Errorf("invitation_identity_mismatch")
 	}
+	if err = s.revalidateInvitationAuthority(r, tx, invitationID); err != nil {
+		return "", err
+	}
+	if challenge, ok := r.Context().Value(invitationProviderChallengeKey{}).(string); ok {
+		var live bool
+		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM external_auth_challenges e JOIN application_invitations i ON i.id=e.invitation_id AND i.application_id=e.application_id WHERE e.id=$1 AND e.application_id=$2 AND e.invitation_id=$3 AND e.invitation_version=i.version AND e.consumed_at IS NULL AND e.expires_at>now())`, challenge, applicationID, invitationID).Scan(&live)
+		if err != nil || !live {
+			return "", fmt.Errorf("invitation_challenge_invalidated")
+		}
+	}
 	var identityUserID, userID, status string
+	var emailVerified bool
 	identityErr := tx.QueryRow(r.Context(), `SELECT user_id FROM user_identities WHERE application_id=$1 AND provider=$2 AND provider_subject=$3 FOR UPDATE`,
 		applicationID, config.Provider, external.Subject).Scan(&identityUserID)
-	userErr := tx.QueryRow(r.Context(), `SELECT id,status FROM users WHERE application_id=$1 AND normalized_email=$2 FOR UPDATE`, applicationID, email).Scan(&userID, &status)
+	userErr := tx.QueryRow(r.Context(), `SELECT id,status,email_verified_at IS NOT NULL FROM users WHERE application_id=$1 AND normalized_email=$2 FOR UPDATE`, applicationID, email).Scan(&userID, &status, &emailVerified)
 	if identityErr != nil && identityErr != pgx.ErrNoRows || userErr != nil && userErr != pgx.ErrNoRows {
 		return "", fmt.Errorf("invitation_identity_lookup_failed")
 	}
 	if identityErr == nil && userErr == nil && identityUserID != userID || identityErr == nil && userErr == pgx.ErrNoRows {
 		return "", fmt.Errorf("invitation_identity_conflict")
+	}
+	if !external.TrustedEmail && (identityErr != nil || userErr != nil || identityUserID != userID || !emailVerified) {
+		return "", fmt.Errorf("invitation_email_verification_required")
+	}
+	if userErr == nil && identityErr == pgx.ErrNoRows {
+		return "", fmt.Errorf("identity_link_required")
 	}
 	if userErr == pgx.ErrNoRows {
 		if err = enforceUserLimit(r.Context(), tx, applicationID); err != nil {
@@ -151,8 +169,15 @@ WHERE id=$1 AND application_id=$2 AND onboarding_method=$3 AND accepted_at IS NU
 		userID, status = kernel.NewID().String(), "active"
 		_, err = tx.Exec(r.Context(), `INSERT INTO users(id,application_id,email,normalized_email,first_name,last_name,email_verified_at)
 VALUES($1,$2,$3,$3,$4,$5,now())`, userID, applicationID, email, external.FirstName, external.LastName)
+		if err == nil {
+			parsed := uuid.MustParse(applicationID)
+			_, err = s.app.Emit(r.Context(), tx, &parsed, "user.created", "user/"+userID, map[string]any{"type": "user", "id": userID}, map[string]any{"user_id": userID, "email_verified": true, "is_org_verified": false})
+		}
 	} else if userErr != nil || status != "active" {
 		return "", fmt.Errorf("invited_account_unavailable")
+	}
+	if err == nil && userErr == nil && external.TrustedEmail && !emailVerified {
+		_, err = tx.Exec(r.Context(), `UPDATE users SET email_verified_at=now(),version=version+1,updated_at=now() WHERE application_id=$1 AND id=$2`, applicationID, userID)
 	}
 	metadata, _ := json.Marshal(map[string]any{"email": external.Email, "first_name": external.FirstName, "last_name": external.LastName})
 	if err == nil && identityErr == pgx.ErrNoRows {
@@ -176,7 +201,7 @@ VALUES($1,$2,$3,$4,$5,$6)`, kernel.NewID(), applicationID, userID, config.Provid
 		err = assignInvitationRoles(r.Context(), tx, applicationID, userID, roleWorkspaceID, appRoles, workspaceRoles)
 	}
 	if err == nil {
-		result, updateErr := tx.Exec(r.Context(), `UPDATE application_invitations SET accepted_at=now(),updated_at=now() WHERE id=$1 AND accepted_at IS NULL`, invitationID)
+		result, updateErr := tx.Exec(r.Context(), `UPDATE application_invitations SET accepted_at=now(),version=version+1,updated_at=now() WHERE id=$1 AND accepted_at IS NULL`, invitationID)
 		err = updateErr
 		if err == nil && result.RowsAffected() != 1 {
 			err = pgx.ErrNoRows

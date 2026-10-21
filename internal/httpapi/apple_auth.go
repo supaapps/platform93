@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -84,12 +85,15 @@ EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND
 		requestedByUserID = &requestedBy
 	}
 	if err == nil {
-		_, err = s.app.DB.Exec(r.Context(), `INSERT INTO external_auth_challenges
+		err = s.storeExternalAuthChallenge(r, requestedBy, `INSERT INTO external_auth_challenges
 (id,application_id,auth_provider_config_id,provider,flow,requested_by_user_id,app_redirect_uri,state_digest,nonce_digest,verifier_ciphertext,code_challenge,expires_at)
 VALUES($1,$2,$3,'apple',$4,$5,$6,$7,$8,$9,$10,$11)`, challengeID, applicationID, provider.ID, request.Flow, requestedByUserID, request.RedirectURI,
 			s.app.Vault.Digest(state), s.app.Vault.Digest(nonce), placeholder, nullableAuthValue(request.CodeChallenge), s.app.Now().Add(10*time.Minute))
 	}
 	if err != nil {
+		if credentialSessionProblem(w, r, err) {
+			return
+		}
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "apple_auth_start_failed", "The Apple authentication flow could not be started.")
 		return
 	}
@@ -180,6 +184,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 	}
 	if flow == "invitation" && invitationID != nil {
 		external := externalProviderIdentity{Subject: claims.Subject, Email: claims.Email, FirstName: firstName, LastName: lastName, TrustedEmail: true}
+		r = r.WithContext(context.WithValue(r.Context(), invitationProviderChallengeKey{}, challengeID))
 		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, provider, external, retainToken)
 		if completeErr != nil {
 			s.releaseExternalAuthChallenge(r, challengeID)
@@ -216,9 +221,17 @@ func (s *Server) completeExternalAuthCallback(w http.ResponseWriter, r *http.Req
 	tx, err := s.app.DB.Begin(r.Context())
 	if err == nil {
 		defer rollback(tx, r.Context())
-		_, err = tx.Exec(r.Context(), `INSERT INTO external_auth_exchanges(id,application_id,user_id,credential_digest,code_challenge,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, exchangeID, chi.URLParam(r, "application_id"), userID, s.app.Vault.Digest(exchangeCode), challenge, s.app.Now().Add(2*time.Minute))
+		var locked string
+		err = tx.QueryRow(r.Context(), `SELECT id FROM users WHERE application_id=$1 AND id=$2 AND status='active' FOR UPDATE`, chi.URLParam(r, "application_id"), userID).Scan(&locked)
 		if err == nil {
-			_, err = tx.Exec(r.Context(), `UPDATE external_auth_challenges SET consumed_at=now(),locked_until=NULL WHERE id=$1`, challengeID)
+			result, updateErr := tx.Exec(r.Context(), `UPDATE external_auth_challenges c SET consumed_at=now(),locked_until=NULL WHERE c.application_id=$1 AND c.id=$2 AND c.consumed_at IS NULL AND c.expires_at>now() AND EXISTS(SELECT 1 FROM user_identities i WHERE i.application_id=c.application_id AND i.user_id=$3 AND i.provider=c.provider)`, chi.URLParam(r, "application_id"), challengeID, userID)
+			err = updateErr
+			if err == nil && result.RowsAffected() != 1 {
+				err = fmt.Errorf("invalid_external_challenge")
+			}
+		}
+		if err == nil {
+			_, err = tx.Exec(r.Context(), `INSERT INTO external_auth_exchanges(id,application_id,user_id,credential_digest,code_challenge,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, exchangeID, chi.URLParam(r, "application_id"), userID, s.app.Vault.Digest(exchangeCode), challenge, s.app.Now().Add(2*time.Minute))
 		}
 		if err == nil {
 			err = tx.Commit(r.Context())
@@ -257,7 +270,8 @@ func (s *Server) exchangeExternalAuth(w http.ResponseWriter, r *http.Request, pr
 	defer rollback(tx, r.Context())
 	var userID string
 	var codeChallenge *string
-	err = tx.QueryRow(r.Context(), `SELECT user_id,code_challenge FROM external_auth_exchanges WHERE id=$1 AND application_id=$2 AND credential_digest=$3 AND consumed_at IS NULL AND expires_at>now() FOR UPDATE`, parts[0], chi.URLParam(r, "application_id"), s.app.Vault.Digest(parts[1])).Scan(&userID, &codeChallenge)
+	var epoch int64
+	err = tx.QueryRow(r.Context(), `SELECT e.user_id,e.code_challenge,u.authentication_epoch FROM external_auth_exchanges e JOIN users u ON u.id=e.user_id AND u.application_id=e.application_id WHERE e.id=$1 AND e.application_id=$2 AND e.credential_digest=$3 AND e.consumed_at IS NULL AND e.expires_at>now() FOR UPDATE OF e`, parts[0], chi.URLParam(r, "application_id"), s.app.Vault.Digest(parts[1])).Scan(&userID, &codeChallenge, &epoch)
 	if err == nil && codeChallenge != nil {
 		if !invitationPKCEVerifierPattern.MatchString(request.CodeVerifier) {
 			err = fmt.Errorf("invalid verifier")
@@ -278,7 +292,7 @@ func (s *Server) exchangeExternalAuth(w http.ResponseWriter, r *http.Request, pr
 		kernel.WriteProblem(w, r, http.StatusUnauthorized, "invalid_external_exchange", "The external authentication exchange is invalid or expired.")
 		return
 	}
-	s.completePrimaryAuthentication(w, r, userID, []string{provider})
+	s.completePrimaryAuthentication(w, withAuthenticationEpoch(r, epoch), userID, []string{provider})
 }
 
 func createAppleClientSecret(config externalAuthProviderConfig, now time.Time) (string, error) {

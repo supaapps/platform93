@@ -9,7 +9,7 @@ use RuntimeException;
 /**
  * @phpstan-type NotificationInput array{template_key:string,user_id?:string,recipient?:string,locale?:string,variables?:array<string,mixed>,attachments?:list<array{filename:string,content_type:string,content_base64:string}>}
  * @phpstan-type QueuedNotification array{id:string,status:'queued'|'suppressed',requested_locale:string,resolved_locale:string,fallback_used:bool}
- * @phpstan-type InvitationInput array{email:string,workspace_id?:string,application_role_keys?:list<string>,workspace_role_keys?:list<string>,expires_in?:int,hosted_client_id?:string,hosted_redirect_uri?:string}
+ * @phpstan-type InvitationInput array{email:string,workspace_id?:string,application_role_keys?:list<string>,workspace_role_keys?:list<string>,expires_in?:int,hosted_client_id?:string,hosted_redirect_uri?:string,onboarding_method?:string,send_email?:bool,reason?:string}
  * @phpstan-type Invitation array{id:string,email:string,workspace_id:?string,application_role_keys:list<string>,workspace_role_keys:list<string>,status:string,expires_at:string,hosted_client_id?:?string,hosted_redirect_uri?:?string}
  * @phpstan-type InvitationResent array{id:string,last_sent_at:string,resend_available_at:string,expires_at:string}
  * @phpstan-type User array{id:string,application_id:string,email:string,first_name:string,last_name:string,username:?string,locale:string,email_verified:bool,is_org_verified:bool,status:string,custom_attributes:array<string,mixed>,version:int}
@@ -27,6 +27,7 @@ use RuntimeException;
  */
 final class MachineClient
 {
+    public function administration(): ApplicationAdministrationClient { return new ApplicationAdministrationClient($this->baseUrl, $this->applicationId, fn(): string => $this->token(), $this->transport); }
     private ?string $accessToken = null;
     private int $expiresAt = 0;
     private readonly ?\Closure $transport;
@@ -66,9 +67,9 @@ final class MachineClient
     }
 
     /** @param InvitationInput $invitation @return Invitation */
-    public function createInvitation(array $invitation): array
+    public function createInvitation(array $invitation, string $idempotencyKey): array
     {
-        return $this->request('POST', '/invitations', $invitation);
+        return $this->administration()->createInvitation($invitation, $idempotencyKey);
     }
 
     /** @return array{items:list<Invitation>,next_cursor:?string} */
@@ -84,14 +85,14 @@ final class MachineClient
     }
 
     /** @return InvitationResent */
-    public function resendInvitation(string $id): array
+    public function resendInvitation(string $id, string $reason, string $etag, string $idempotencyKey): array
     {
-        return $this->request('POST', '/invitations/' . rawurlencode($id) . '/resend');
+        return $this->administration()->rotateInvitation($id, true, $reason, $etag, $idempotencyKey);
     }
 
-    public function revokeInvitation(string $id): void
+    public function revokeInvitation(string $id, string $reason, string $etag): void
     {
-        $this->request('DELETE', '/invitations/' . rawurlencode($id));
+        $this->administration()->revokeInvitation($id, $reason, $etag);
     }
 
     /** @return array{items:list<User>,next_cursor:?string} */

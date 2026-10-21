@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -157,13 +158,16 @@ EXISTS(SELECT 1 FROM clients WHERE application_id=$1 AND disabled_at IS NULL AND
 		requestedByUserID = &requestedBy
 	}
 	if err == nil {
-		_, err = s.app.DB.Exec(r.Context(), `INSERT INTO external_auth_challenges
+		err = s.storeExternalAuthChallenge(r, requestedBy, `INSERT INTO external_auth_challenges
 (id,application_id,auth_provider_config_id,provider,flow,requested_by_user_id,app_redirect_uri,state_digest,nonce_digest,verifier_ciphertext,code_challenge,expires_at)
 VALUES ($1,$2,$3,'google',$4,$5,$6,$7,$8,$9,$10,$11)`, challengeID, chi.URLParam(r, "application_id"), provider.ID, request.Flow,
 			requestedByUserID, request.RedirectURI, s.app.Vault.Digest(state), s.app.Vault.Digest(nonce), verifierCiphertext,
 			nullableAuthValue(request.CodeChallenge), s.app.Now().Add(10*time.Minute))
 	}
 	if err != nil {
+		if credentialSessionProblem(w, r, err) {
+			return
+		}
 		kernel.WriteProblem(w, r, http.StatusInternalServerError, "google_auth_start_failed", "The Google authentication flow could not be started.")
 		return
 	}
@@ -238,6 +242,7 @@ AND (locked_until IS NULL OR locked_until<now()) RETURNING id,auth_provider_conf
 	if flow == "invitation" && invitationID != nil {
 		external := externalProviderIdentity{Subject: claims.Subject, Email: claims.Email, FirstName: claims.FirstName, LastName: claims.LastName, TrustedEmail: true}
 		config, configErr := s.loadEffectiveAuthProvider(r.Context(), chi.URLParam(r, "application_id"), "google")
+		r = r.WithContext(context.WithValue(r.Context(), invitationProviderChallengeKey{}, challengeID))
 		userID, completeErr := s.completeApplicationInvitationExternalIdentity(r, *invitationID, config, external)
 		if configErr != nil || completeErr != nil {
 			s.releaseExternalAuthChallenge(r, challengeID)
@@ -293,9 +298,15 @@ WHERE application_id=$1 AND provider=$2 AND provider_subject=$3`, chi.URLParam(r
 			return "", fmt.Errorf("authenticated_link_required")
 		}
 		var active bool
-		if tx.QueryRow(r.Context(), `SELECT status='active' FROM users WHERE id=$1 AND application_id=$2`,
+		if tx.QueryRow(r.Context(), `SELECT status='active' FROM users WHERE id=$1 AND application_id=$2 FOR UPDATE`,
 			*requestedBy, chi.URLParam(r, "application_id")).Scan(&active) != nil || !active {
 			return "", fmt.Errorf("account_unavailable")
+		}
+		if challengeID != "" {
+			var valid bool
+			if tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM external_auth_challenges WHERE application_id=$1 AND id=$2 AND requested_by_user_id=$3 AND flow='link' AND consumed_at IS NULL AND expires_at>now())`, chi.URLParam(r, "application_id"), challengeID, *requestedBy).Scan(&valid) != nil || !valid {
+				return "", fmt.Errorf("invalid_external_challenge")
+			}
 		}
 		userID = *requestedBy
 		_, err = tx.Exec(r.Context(), `INSERT INTO user_identities(id,application_id,user_id,provider,provider_subject,metadata)
