@@ -31,6 +31,8 @@ Compatibility details for this upgrade:
   personal keys cannot create replacement keys or provider links. A concurrent
   credential reset returns `401 authentication_restarted`; start authentication
   again rather than retrying the old proof or session.
+  PAT/delegated/machine credentials receive `403 direct_authentication_required`
+  for credential creation rather than a misleading expired-session response.
 - Invitation list responses now default to 20 records, ordered by ascending UUID,
   with search, bounded limits and `next_cursor`. Follow pagination rather than
   assuming the response includes every invitation.

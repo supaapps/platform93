@@ -228,3 +228,18 @@ func TestApplicationInvitationRecoveryLoginRacePostgres(t *testing.T) {
 		})
 	}
 }
+
+func TestCredentialMutationRequiresDirectSession(t *testing.T) {
+	for _, current := range []kernel.Actor{{Type: "user_api_key", ID: "subject", SessionID: "key"}, {Type: "user", ID: "subject", SessionID: "session", DelegatedBy: "control"}, {Type: "client", ID: "subject"}} {
+		r := requestWithRoute(t, "POST", "/", nil, map[string]string{"application_id": "app"}, current)
+		w := httptest.NewRecorder()
+		s := &Server{}
+		if !credentialSessionProblem(w, r, s.lockCredentialMutation(r, nil, "subject")) {
+			t.Fatal("non-session credential accepted")
+		}
+		expectAdministrationStatus(t, w, 403)
+		if !strings.Contains(w.Body.String(), "direct_authentication_required") {
+			t.Fatal(w.Body.String())
+		}
+	}
+}
