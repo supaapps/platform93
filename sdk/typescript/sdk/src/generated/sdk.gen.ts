@@ -3218,6 +3218,9 @@ export const finishWebAuthnAuthentication = <ThrowOnError extends boolean = fals
     }
 });
 
+/**
+ * Accept an invitation after independent recipient authentication. Credential-bearing accounts not verified before invitation creation require fresh invitation-bound mailbox proof; that proof atomically resets prior credentials and stored sessions while preserving the user UUID. Invitation possession or an existing bearer alone cannot authorize recovery. Established verified accounts retain their credentials.
+ */
 export const exchangeApplicationInvitation = <ThrowOnError extends boolean = false>(options: Options<ExchangeApplicationInvitationData, ThrowOnError>): RequestResult<ExchangeApplicationInvitationResponses, ExchangeApplicationInvitationErrors, ThrowOnError> => (options.client ?? client).post<ExchangeApplicationInvitationResponses, ExchangeApplicationInvitationErrors, ThrowOnError>({
     url: '/v1/applications/{application_id}/auth/invitations/exchange',
     ...options,
