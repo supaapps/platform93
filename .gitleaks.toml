@@ -17,3 +17,12 @@ regexes = [
   '''^JWS3xN3Lfxncr2ESJFg9i2j\+9pMg78K/ASkNCExjYHzub4XGVU1OwxgCIvDMN08ClTmuPseJGWwyyoJr$''',
   '''^xWKJpfw2VpQnfnk4/OyvOc1Qh7Ry4ibKK7zPyeSe4MMhzx9roaoShMWls0KL7//4/q8AAAD//w==$''',
 ]
+
+# MD5 of the public foundation template's subject + text + HTML; this guards
+# against overwriting customized password-reset templates, not a credential.
+[[allowlists]]
+description = "Verified public password-reset template content checksum"
+condition = "AND"
+paths = ['''^migrations/00010_auth_email_delivery\.sql$''']
+regexTarget = "secret"
+regexes = ['''^630f1f81e1063da7926fc8bb5b03621e$''']

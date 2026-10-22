@@ -1,5 +1,17 @@
 # Upgrades
 
+## Passwordless email delivery
+
+Migration 00010 publishes delivery-aware versions of the unchanged English
+authentication defaults, preserving their archived versions and all customizations.
+For customized/localized templates, wrap optional code and link sections in
+`{{#if code}}...{{/if}}` and `{{#if magic_link}}...{{/if}}`, respectively.
+Code-only delivery no longer depends on a configured sign-in redirect. Link or
+combined delivery without an explicit registered or configured redirect now returns
+422 `sign_in_redirect_required` instead of silently sending an empty link. Configure
+the application's sign-in flow or pass an allowed `redirect_uri` before requesting
+`link` or `both`. See [notification templates](notifications.md).
+
 ## Application administration and invitations
 
 The release adding application-user administration requires a forward migration

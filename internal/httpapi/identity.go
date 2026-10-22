@@ -370,10 +370,14 @@ func (s *Server) emailStart(w http.ResponseWriter, r *http.Request) {
 	if !s.allowAuthAttempt(w, r, "email_start", normalizedEmail, 5, 10*time.Minute) {
 		return
 	}
-	if request.RedirectURI == "" {
+	if request.RedirectURI == "" && request.Delivery != "code" {
 		if flows, flowErr := s.loadApplicationFlowConfig(r.Context(), chi.URLParam(r, "application_id")); flowErr == nil {
 			request.RedirectURI = flows.SignInRedirectURI
 		}
+	}
+	if request.Delivery != "code" && request.RedirectURI == "" {
+		kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "sign_in_redirect_required", "Link delivery requires a registered redirect_uri or a configured application sign-in redirect.")
+		return
 	}
 	if request.RedirectURI != "" {
 		var redirectAllowed bool
@@ -404,6 +408,10 @@ WHERE application_id=$1 AND disabled_at IS NULL AND NOT resource_only AND $2=ANY
 	}
 	if request.Delivery != "code" && request.RedirectURI != "" {
 		magicLink = appendCredentialQuery(request.RedirectURI, map[string]string{"challenge_id": id.String(), "link_token": link, "platform93_flow": "email"})
+		if magicLink == "" {
+			kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_sign_in_redirect", "The sign-in redirect cannot receive a magic link.")
+			return
+		}
 	}
 	applicationIDString := applicationID.String()
 	templateID, templateLocale, payload, renderErr := s.renderSystemNotification(r.Context(), &applicationIDString, applicationSignInTemplate, request.Email, map[string]any{
