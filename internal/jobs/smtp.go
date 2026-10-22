@@ -365,7 +365,12 @@ func formatMailbox(name, email string) string {
 	if name == "" {
 		return email
 	}
-	return (&mail.Address{Name: name, Address: email}).String()
+	mailbox := (&mail.Address{Name: name, Address: email}).String()
+	if strings.HasPrefix(mailbox, "=?utf-8?") {
+		// Fold only generated RFC 2047 encoded-word boundaries, never raw names.
+		mailbox = strings.ReplaceAll(mailbox, "?= =?", "?=\r\n =?")
+	}
+	return mailbox
 }
 
 func (r *Runner) failNotification(ctx context.Context, tx pgx.Tx, id, attemptID, message string) error {

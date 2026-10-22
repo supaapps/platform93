@@ -8,6 +8,10 @@ under **Providers → Email**; clear it to restore the provider default. Existin
 installations keep their current senders without a database migration. The shared
 sender address and SMTP credentials are unchanged, as are other applications and
 control-plane emails. See [provider inheritance](provider-inheritance.md).
+All email display names now use standard mailbox quoting and RFC 2047 encoding,
+with folding between encoded words for long Unicode names. Names with quotes or
+non-ASCII characters retain their decoded text; clients should not depend on the
+previous raw `From` header representation.
 
 ## Credential-bounded permission decisions
 

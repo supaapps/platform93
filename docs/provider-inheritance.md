@@ -62,6 +62,9 @@ installation/organization control emails are unaffected. Changing providers keep
 the app's override until it is cleared; disabling a provider does not bypass normal
 provider resolution or delivery restrictions.
 
+Display names are presentation only, not a new verified sender domain. The
+provider's authorized address and existing SPF/DKIM configuration remain in use.
+
 ## Stripe
 
 Register each Stripe connection webhook URL shown by the administrator UI:

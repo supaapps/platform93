@@ -19,8 +19,21 @@ type capturedEmail struct {
 }
 
 func TestSenderNameMailboxFormatting(t *testing.T) {
-	for _, name := range []string{"App Support", "Bücher & Co", `Team "Support"`, `Support \ Team`} {
-		address, err := mail.ParseAddress(formatMailbox(name, "noreply@example.test"))
+	for _, name := range []string{"App Support", "Bücher & Co", `Team "Support"`, `Support \ Team`, strings.Repeat("é", 200), strings.Repeat("😀", 200)} {
+		body, err := buildMIMEMessage("noreply@example.test", name, "recipient@example.test", "Test", "Body", "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(strings.SplitN(string(body), "\r\n\r\n", 2)[0], "\r\n") {
+			if len(line) > 998 {
+				t.Fatalf("header line exceeds SMTP limit: %d octets", len(line))
+			}
+		}
+		message, err := mail.ReadMessage(strings.NewReader(string(body)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		address, err := mail.ParseAddress(message.Header.Get("From"))
 		if err != nil || address.Name != name || address.Address != "noreply@example.test" {
 			t.Fatalf("display name did not round-trip: %+v %v", address, err)
 		}
@@ -150,7 +163,7 @@ VALUES($1,$2,$3,$4,'recipient@example.test',$5,now())`, id, app, organization, r
 			if _, err := db.Exec(ctx, `UPDATE notification_providers SET disabled_at=CASE WHEN id=$1 THEN NULL ELSE now() END`, providers[scope]); err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{"App Support", "Bücher & Co", `Team "Support"`, "", "   "} {
+			for _, name := range []string{"App Support", "Bücher & Co", `Team "Support"`, strings.Repeat("é", 200), strings.Repeat("😀", 200), "", "   "} {
 				value, _ := json.Marshal(map[string]any{"email_sender_name": name})
 				if _, err := db.Exec(ctx, `UPDATE applications SET internal_config=internal_config||$1::jsonb WHERE id=$2`, value, f.applicationID); err != nil {
 					t.Fatal(err)
