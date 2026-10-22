@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -13,6 +14,7 @@ import (
 )
 
 type applicationInternalConfig struct {
+	EmailSenderName              string   `json:"email_sender_name,omitempty"`
 	RegistrationMode             string   `json:"registration_mode"`
 	PasswordEnabled              bool     `json:"password_enabled"`
 	PasswordlessEnabled          bool     `json:"passwordless_enabled"`
@@ -79,6 +81,7 @@ func (s *Server) updateInternalApplicationConfig(w http.ResponseWriter, r *http.
 		return
 	}
 	allowed := map[string]bool{
+		"email_sender_name": true,
 		"registration_mode": true, "password_enabled": true, "passwordless_enabled": true,
 		"personal_api_keys_enabled": true, "delegation_enabled": true, "user_invitations_enabled": true,
 		"custom_token_claim_keys": true, "resource_authorization_enabled": true,
@@ -108,6 +111,12 @@ func (s *Server) updateInternalApplicationConfig(w http.ResponseWriter, r *http.
 	previousPersonalAPIKeysEnabled := current.PersonalAPIKeysEnabled
 	for key, value := range raw {
 		switch key {
+		case "email_sender_name":
+			if string(value) == "null" || json.Unmarshal(value, &current.EmailSenderName) != nil || !kernel.ValidEmailSenderName(current.EmailSenderName) {
+				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_email_sender_name", "Email sender name must be a string of at most 200 characters without control characters. Use an empty string to inherit the provider name.")
+				return
+			}
+			current.EmailSenderName = strings.TrimSpace(current.EmailSenderName)
 		case "registration_mode":
 			if json.Unmarshal(value, &current.RegistrationMode) != nil || current.RegistrationMode != "public" && current.RegistrationMode != "invite_only" {
 				kernel.WriteProblem(w, r, http.StatusUnprocessableEntity, "invalid_registration_mode", "Registration mode must be public or invite_only.")

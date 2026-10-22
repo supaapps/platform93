@@ -1,5 +1,14 @@
 # Upgrades
 
+## Application email sender names
+
+Optional `email_sender_name` in internal application configuration overrides the
+display name for that application's emails, including inherited SMTP. Configure it
+under **Providers → Email**; clear it to restore the provider default. Existing
+installations keep their current senders without a database migration. The shared
+sender address and SMTP credentials are unchanged, as are other applications and
+control-plane emails. See [provider inheritance](provider-inheritance.md).
+
 ## Credential-bounded permission decisions
 
 The permission-check endpoint now requires both the authenticated credential's

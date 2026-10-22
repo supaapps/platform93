@@ -16091,6 +16091,15 @@ components:
       type: object
       additionalProperties: false
       properties:
+        email_sender_name:
+          type: string
+          maxLength: 200
+          pattern: '^[^\u0000-\u001F\u007F-\u009F]*$'
+          description: >-
+            Application-only email display-name override, including inherited SMTP.
+            Whitespace is trimmed; an empty string restores the selected provider's
+            sender name. Does not change the sender address, credentials, provider
+            inheritance, or control-plane emails. Control characters are rejected.
         registration_mode:
           type: string
           enum:

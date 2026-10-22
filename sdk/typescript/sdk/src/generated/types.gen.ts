@@ -2283,6 +2283,10 @@ export type ApplicationAuthConfig = {
 };
 
 export type ApplicationInternalConfig = {
+    /**
+     * Application-only email display-name override, including inherited SMTP. Whitespace is trimmed; an empty string restores the selected provider's sender name. Does not change the sender address, credentials, provider inheritance, or control-plane emails. Control characters are rejected.
+     */
+    email_sender_name?: string;
     registration_mode?: 'public' | 'invite_only';
     password_enabled?: boolean;
     passwordless_enabled?: boolean;

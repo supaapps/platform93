@@ -10,6 +10,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"net/textproto"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/supaapps/platform93/internal/kernel"
 )
 
 type smtpConfig struct {
@@ -77,6 +79,18 @@ ORDER BY CASE WHEN application_id=$1 THEN 0 WHEN organization_id IS NOT NULL THE
 	_, _ = tx.Exec(ctx, `UPDATE notification_attempts SET notification_provider_id=$1 WHERE id=$2`, providerID, attemptID)
 	_ = tx.QueryRow(ctx, `SELECT email,name FROM sender_identities
 WHERE notification_provider_id=$1 AND disabled_at IS NULL ORDER BY is_default DESC,created_at LIMIT 1`, providerID).Scan(&senderEmail, &senderName)
+	if applicationID != nil {
+		var override string
+		if err = tx.QueryRow(ctx, `SELECT COALESCE(internal_config->>'email_sender_name','') FROM applications WHERE id=$1`, *applicationID).Scan(&override); err != nil {
+			return true, err
+		}
+		if !kernel.ValidEmailSenderName(override) {
+			return true, r.failNotification(ctx, tx, id, attemptID, "application email sender name is invalid")
+		}
+		if override = strings.TrimSpace(override); override != "" {
+			senderName = override
+		}
+	}
 	configJSON, err := r.app.Vault.Decrypt(configCipher, "notification-provider:"+providerID)
 	if err != nil {
 		return true, r.failNotification(ctx, tx, id, attemptID, "SMTP provider credentials are unavailable")
@@ -347,11 +361,11 @@ func writeAlternativeParts(writer *multipart.Writer, textBody, htmlBody string) 
 }
 
 func formatMailbox(name, email string) string {
-	name = strings.NewReplacer("\r", "", "\n", "", "\"", "'").Replace(name)
+	name = strings.NewReplacer("\r", "", "\n", "").Replace(name)
 	if name == "" {
 		return email
 	}
-	return fmt.Sprintf("\"%s\" <%s>", name, email)
+	return (&mail.Address{Name: name, Address: email}).String()
 }
 
 func (r *Runner) failNotification(ctx context.Context, tx pgx.Tx, id, attemptID, message string) error {
