@@ -15,6 +15,7 @@ import { ManualGrantForm } from "./manual-grant-form";
 import { HostedBrandingEditor } from "./hosted-branding-editor";
 import { OAuthResources, type ResourceRequest } from "./oauth-resources";
 import { ListHints, ResourceLabels, ResourceSummary } from "./resource-summary";
+import { renderTemplatePreview } from "./template-preview.mjs";
 
 const loadRowLabels = (path: string) => api.request<Page<Record<string, unknown>>>("GET", path);
 
@@ -1910,13 +1911,6 @@ function templateSampleValue(variable: Pick<CustomTemplateVariable, "type" | "sa
   if (variable.type === "integer") return Number.parseInt(variable.sample || "0", 10);
   if (variable.type === "number") return Number(variable.sample || "0");
   return variable.sample;
-}
-
-function renderTemplatePreview(template: string, values: Record<string, unknown>, escapeHTML = false) {
-  return template.replace(/{{\s*([A-Za-z][A-Za-z0-9_.-]{0,100})\s*}}/g, (_token, key: string) => {
-    const raw = values[key] === undefined ? `{{${key}}}` : String(values[key]);
-    return escapeHTML ? raw.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;") : raw;
-  });
 }
 
 function emailPreviewDocument(body: string) {

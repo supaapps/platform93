@@ -99,6 +99,16 @@ System templates also declare flow-specific codes such as `code`, `magic_link`,
 are populated only by Platform93; an application cannot supply or spoof them in
 a built-in security flow.
 
+Optional sections use `{{#if code}}...{{/if}}` or
+`{{#if magic_link}}...{{/if}}` in plain text and HTML. A section is included only
+when its declared variable is nonempty (or a boolean is true). Blocks may nest up
+to 16 levels; expressions, loops, and executable template code are not supported.
+Conditional evaluation happens before escaped variable replacement.
+Use these blocks in customized security templates to avoid empty code boxes or
+buttons when a delivery method is not requested. Migration 00010 publishes corrected
+versions of unchanged English installation defaults; customized/localized templates
+are preserved and must adopt the blocks explicitly.
+
 ## Application Redirects
 
 Each application can configure `auth_config.flows` with a public OAuth client ID,
@@ -108,6 +118,11 @@ sign-in redirects and non-HTTPS redirect origins, except HTTP localhost during
 development.
 
 Email magic links return to the configured sign-in URI with a one-time challenge.
+`delivery: "code"` needs no redirect and emails only a code. `"link"` emails only
+a link; `"both"` (also the runtime default when omitted) emails both. Link and
+combined delivery require an explicit registered `redirect_uri` or a configured
+sign-in redirect; missing destinations return 422 `sign_in_redirect_required`
+without creating a challenge or notification. Unregistered redirects remain rejected.
 After consuming the challenge, `@supaapps/platform93-auth` can call
 `createAuthorizationRequest()` to generate a verifier, S256 code challenge, and
 authorization URL. The invitation URI receives an application ID, invitation ID,

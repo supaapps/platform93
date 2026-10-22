@@ -2324,6 +2324,9 @@ export type PasswordSignUp = {
     locale?: Locale;
 };
 
+/**
+ * Start passwordless email authentication. Code delivery does not require a redirect. Link and both delivery require a registered redirect_uri or the application's configured sign-in redirect; missing destinations return 422 sign_in_redirect_required without queueing mail.
+ */
 export type EmailStart = {
     email: string;
     intent: 'sign_in' | 'sign_up' | 'automatic';

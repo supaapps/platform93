@@ -425,7 +425,12 @@ func validateTemplatePlaceholders(template string, schema map[string]any) error 
 			return &templateVariableError{name: match[1], reason: "is missing or undeclared"}
 		}
 	}
-	return nil
+	variables := make(map[string]any, len(effectiveProperties))
+	for name := range effectiveProperties {
+		variables[name] = true
+	}
+	_, err := renderNotificationConditionals(template, variables)
+	return err
 }
 
 func validateTemplateVariables(schema, variables map[string]any) error {
@@ -481,8 +486,12 @@ func validTemplateVariableType(expected string, value any) bool {
 }
 
 func renderNotificationTemplate(template string, variables map[string]any, escapeHTML bool) (string, error) {
+	conditional, err := renderNotificationConditionals(template, variables)
+	if err != nil {
+		return "", err
+	}
 	var renderErr error
-	result := notificationVariablePattern.ReplaceAllStringFunc(template, func(token string) string {
+	result := notificationVariablePattern.ReplaceAllStringFunc(conditional, func(token string) string {
 		match := notificationVariablePattern.FindStringSubmatch(token)
 		value, exists := variables[match[1]]
 		if !exists {
