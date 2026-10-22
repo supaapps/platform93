@@ -13,10 +13,12 @@ WITH originals AS (
 ), archived AS (
   UPDATE notification_templates t SET status='archived',updated_at=now()
   FROM originals o WHERE t.id=o.id RETURNING o.*
+), versions AS (
+  SELECT a.*,gen_random_uuid() AS new_id FROM archived a
 )
 INSERT INTO notification_templates
 (id,application_id,key,locale,category,version,subject_template,text_template,html_template,variable_schema,status,system_managed)
-SELECT gen_random_uuid(),NULL,a.key,a.locale,a.category,
+SELECT a.new_id,NULL,a.key,a.locale,a.category,
   (SELECT max(version)+1 FROM notification_templates WHERE application_id IS NULL AND key=a.key AND locale=a.locale),
   CASE WHEN a.key='platform93.control_user_sign_in' THEN 'Your Platform93 sign-in' ELSE a.subject_template END,
   regexp_replace(
@@ -32,9 +34,9 @@ SELECT gen_random_uuid(),NULL,a.key,a.locale,a.category,
     'Use this code or secure link to confirm the new email address for','Use the confirmation method below for'),
     'The code and link expire in','These credentials expire in'),
     'This confirmation expires in','These confirmation details expire in'),
-  a.variable_schema || jsonb_build_object('x-platform93-delivery-source-id',a.id::text),
+  a.variable_schema || jsonb_build_object('x-platform93-delivery-source-id',a.id::text,'x-platform93-delivery-version-id',a.new_id::text),
   'published',true
-FROM archived a;
+FROM versions a;
 
 -- +goose Down
 -- Restore only defaults still published by this migration; never replace a
@@ -43,6 +45,7 @@ WITH archived AS (
   UPDATE notification_templates SET status='archived',updated_at=now()
   WHERE application_id IS NULL AND system_managed AND status='published'
     AND variable_schema ? 'x-platform93-delivery-source-id'
+    AND variable_schema->>'x-platform93-delivery-version-id'=id::text
   RETURNING variable_schema->>'x-platform93-delivery-source-id' AS source_id
 )
 UPDATE notification_templates t SET status='published',updated_at=now()

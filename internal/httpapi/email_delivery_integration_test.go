@@ -236,4 +236,18 @@ SELECT $1,$2,key,locale,category,1,'Customized application login',text_template,
 			t.Fatalf("down did not restore original: %s %v", status, err)
 		}
 	}
+	if _, err := f.app.DB.Exec(ctx, up); err != nil {
+		t.Fatal(err)
+	}
+	customID := kernel.NewID().String()
+	f.exec(`WITH old AS (UPDATE notification_templates SET status='archived' WHERE application_id IS NULL AND key=$1 AND status='published' RETURNING *)
+INSERT INTO notification_templates(id,application_id,key,locale,category,version,subject_template,text_template,html_template,variable_schema,status,system_managed)
+SELECT $2,NULL,key,locale,category,version+1,'Later customization',text_template,html_template,variable_schema,'published',true FROM old`, applicationSignInTemplate, customID)
+	if _, err := f.app.DB.Exec(ctx, down); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := f.app.DB.QueryRow(ctx, `SELECT status FROM notification_templates WHERE id=$1`, customID).Scan(&status); err != nil || status != "published" {
+		t.Fatalf("down changed later customization with copied schema: %s %v", status, err)
+	}
 }
