@@ -2,6 +2,7 @@ package authorization
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/google/uuid"
@@ -139,6 +140,27 @@ func Match(granted, wanted string) bool {
 	}
 	base := strings.TrimSuffix(granted, "/*")
 	return wanted == base || strings.HasPrefix(wanted, base+"/")
+}
+
+// Intersect returns only scopes covered by both sets, retaining the narrower
+// path for overlapping trailing wildcards. An empty set never grants access.
+func Intersect(left, right []string) []string {
+	set := make(map[string]struct{})
+	for _, a := range left {
+		for _, b := range right {
+			if Match(a, b) {
+				set[b] = struct{}{}
+			} else if Match(b, a) {
+				set[a] = struct{}{}
+			}
+		}
+	}
+	result := make([]string, 0, len(set))
+	for scope := range set {
+		result = append(result, scope)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func validAbsolutePath(value string) bool {

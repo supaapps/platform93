@@ -7,6 +7,26 @@ Platform93 authorizes application requests from the JWT `scope` claim. The
 structured `roles` claim is for user interfaces and diagnostics; applications
 must not authorize from role names alone.
 
+## Checking the calling credential
+
+`POST /v1/applications/{application_id}/me/permissions/check` evaluates the
+intersection of the authenticated credential's scopes and the user's current
+effective permissions. Both must cover each requested permission. A restricted
+personal key or delegated session cannot borrow broader user roles or workspace
+ownership. A JWT with an empty permission scope grants no permission, even if the
+user has since received a role; refresh to pick up new grants. Revoked live grants
+are denied even while the old token still contains them.
+
+`matched_scopes` describes this intersection, retaining narrower paths where
+wildcards overlap; denied results contain an empty array. Paths are matched only
+at complete segment boundaries. Application-specific business-record rules still
+belong to the consuming application; this endpoint does not prove record ownership.
+
+Personal keys with an explicitly empty stored reduction list retain their existing
+meaning of inheriting current live user scopes. This is distinct from an empty JWT
+scope, which never means unrestricted access. Nonempty key reductions always cap
+the key, including when live user access comes from a workspace-owner wildcard.
+
 ## New users and zero-permission tokens
 
 Authentication does not automatically grant application permissions. Public

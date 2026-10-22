@@ -431,12 +431,18 @@ func (s *Server) checkPermissions(w http.ResponseWriter, r *http.Request) {
 	}
 	results := make([]map[string]any, 0, len(request.Permissions))
 	for index, wanted := range canonical {
-		matched := []string{}
+		liveMatches, credentialMatches := []string{}, []string{}
 		for _, granted := range access.Scopes {
 			if permissionMatches(granted, wanted) {
-				matched = append(matched, granted)
+				liveMatches = append(liveMatches, granted)
 			}
 		}
+		for _, granted := range actor(r).Permissions {
+			if permissionMatches(granted, wanted) {
+				credentialMatches = append(credentialMatches, granted)
+			}
+		}
+		matched := platformauthz.Intersect(liveMatches, credentialMatches)
 		results = append(results, map[string]any{"permission": request.Permissions[index], "canonical_scope": wanted, "allowed": len(matched) > 0, "matched_scopes": matched})
 	}
 	kernel.WriteJSON(w, http.StatusOK, map[string]any{"workspace_id": request.WorkspaceID, "results": results})

@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	platformauthz "github.com/supaapps/platform93/internal/authorization"
 	"github.com/supaapps/platform93/internal/buildinfo"
 	"github.com/supaapps/platform93/internal/identity"
 	"github.com/supaapps/platform93/internal/kernel"
@@ -765,12 +766,11 @@ func (s *Server) requireUser(next http.Handler) http.Handler {
 		if strings.HasPrefix(credential, "p93_pat_") {
 			var actor kernel.Actor
 			var scopes []string
-			err = s.app.DB.QueryRow(r.Context(), `SELECT k.user_id,k.id FROM personal_api_keys k
+			err = s.app.DB.QueryRow(r.Context(), `SELECT k.user_id,k.id,k.scopes FROM personal_api_keys k
 JOIN users u ON u.id=k.user_id JOIN applications a ON a.id=k.application_id WHERE k.application_id=$1 AND k.token_digest=$2
 			AND k.revoked_at IS NULL AND k.expires_at>now() AND u.status='active'
-			AND COALESCE((a.internal_config->>'personal_api_keys_enabled')::boolean,false)`, applicationID, s.app.Vault.Digest(credential)).Scan(&actor.ID, &actor.SessionID)
+			AND a.deleted_at IS NULL AND COALESCE((a.internal_config->>'personal_api_keys_enabled')::boolean,false)`, applicationID, s.app.Vault.Digest(credential)).Scan(&actor.ID, &actor.SessionID, &scopes)
 			if err == nil {
-				_ = s.app.DB.QueryRow(r.Context(), "SELECT scopes FROM personal_api_keys WHERE id=$1", actor.SessionID).Scan(&scopes)
 				_, _ = s.app.DB.Exec(r.Context(), "UPDATE personal_api_keys SET last_used_at=now() WHERE id=$1", actor.SessionID)
 				actor.Type, actor.ApplicationID = "user_api_key", applicationID.String()
 				actor.Permissions = reducePermissions(s.permissions(r, applicationID, actor.ID), scopes)
@@ -875,16 +875,7 @@ WHERE c.application_id=$1 AND c.client_id=$2 AND c.disabled_at IS NULL AND a.del
 }
 
 func allowedDelegatedPermissions(live, delegated []string) []string {
-	result := make([]string, 0, len(delegated))
-	for _, wanted := range delegated {
-		for _, granted := range live {
-			if permissionMatches(granted, wanted) {
-				result = append(result, wanted)
-				break
-			}
-		}
-	}
-	return result
+	return platformauthz.Intersect(live, delegated)
 }
 
 func containsAllowedScope(live []string, requested string) bool {
@@ -900,16 +891,7 @@ func reducePermissions(permissions, scopes []string) []string {
 	if len(scopes) == 0 {
 		return permissions
 	}
-	result := make([]string, 0, len(permissions))
-	for _, permission := range permissions {
-		for _, scope := range scopes {
-			if permissionMatches(scope, permission) {
-				result = append(result, permission)
-				break
-			}
-		}
-	}
-	return result
+	return platformauthz.Intersect(permissions, scopes)
 }
 
 func (s *Server) adminHandler() http.Handler {
