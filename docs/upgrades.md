@@ -9,11 +9,18 @@ permissions will receive denied decisions instead. `matched_scopes` reflects the
 narrower intersection, not unrestricted user grants. No route, response-field or
 database migration is required for this correction.
 
+The response shape is unchanged; `matched_scopes` is sorted and deduplicated and
+may contain narrower scopes than before. Consumers must not rely on its previous
+ordering or unrestricted values.
+
 Nonempty personal-key reductions correctly retain narrow permissions covered by
 a broader live wildcard. Empty stored PAT reductions continue to inherit live
 user access; empty JWT scopes remain deny-all for permission checks. PAT scope
 restrictions are read atomically with authentication and retired applications
 cannot authenticate keys. Consumer business-record authorization remains separate.
+The wildcard-reduction correction also applies to other permission-protected
+routes using the authenticated key's or delegation's effective permissions, not
+only the permission-check endpoint; it never grants beyond either scope ceiling.
 
 ## Passwordless email delivery
 
