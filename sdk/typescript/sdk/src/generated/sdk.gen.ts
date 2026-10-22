@@ -4778,6 +4778,9 @@ export const listMyPendingInvitations = <ThrowOnError extends boolean = false>(o
     ...options
 });
 
+/**
+ * Evaluate each permission against both the authenticated credential's scopes and the user's current live authority. Restricted keys, delegated sessions and stale or empty-scope JWTs cannot borrow broader user grants. matched_scopes contains only the narrower intersection; denied decisions have no matched scopes. This is not a business-record ownership check.
+ */
 export const checkMyPermissions = <ThrowOnError extends boolean = false>(options: Options<CheckMyPermissionsData, ThrowOnError>): RequestResult<CheckMyPermissionsResponses, unknown, ThrowOnError> => (options.client ?? client).post<CheckMyPermissionsResponses, unknown, ThrowOnError>({
     security: [{
             key: 'bearerAuth',

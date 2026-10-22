@@ -1,5 +1,20 @@
 # Upgrades
 
+## Credential-bounded permission decisions
+
+The permission-check endpoint now requires both the authenticated credential's
+scope ceiling and current live user authority. Integrations that relied on a
+restricted key/delegation or stale/empty-scope JWT receiving the user's full
+permissions will receive denied decisions instead. `matched_scopes` reflects the
+narrower intersection, not unrestricted user grants. No route, response-field or
+database migration is required for this correction.
+
+Nonempty personal-key reductions correctly retain narrow permissions covered by
+a broader live wildcard. Empty stored PAT reductions continue to inherit live
+user access; empty JWT scopes remain deny-all for permission checks. PAT scope
+restrictions are read atomically with authentication and retired applications
+cannot authenticate keys. Consumer business-record authorization remains separate.
+
 ## Passwordless email delivery
 
 Migration 00010 publishes delivery-aware versions of the unchanged English

@@ -6620,6 +6620,7 @@ paths:
       - $ref: '#/components/parameters/ApplicationID'
     post:
       operationId: checkMyPermissions
+      description: Evaluate each permission against both the authenticated credential's scopes and the user's current live authority. Restricted keys, delegated sessions and stale or empty-scope JWTs cannot borrow broader user grants. matched_scopes contains only the narrower intersection; denied decisions have no matched scopes. This is not a business-record ownership check.
       tags:
         - Control
       requestBody:
