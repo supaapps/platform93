@@ -35,6 +35,36 @@ The control plane always resolves an installation SMTP provider. Organization no
 
 Saving SMTP credentials does not prove connectivity. Use **Verify** at the scope that owns the provider. Sender identities and delivery attempts remain associated with the selected provider and application notification.
 
+### Application email sender name
+
+An application may keep inherited SMTP credentials and its authorized sender
+address while using its own display name, such as `Example Support
+<noreply@example.com>`. In the application context, open **Providers → Email →
+Application email sender**, enter **App sender name**, and save. Clearing the field
+restores the selected provider's name. This also works with app-owned SMTP.
+
+The control API uses `PATCH /v1/control/applications/{application_id}/internal-config`
+with `If-Match` for the application's current version and a partial body:
+
+```json
+{"email_sender_name":"Example Support"}
+```
+
+Names are trimmed and limited to 200 Unicode characters; control characters,
+non-string values and `null` are rejected. Use `""` to reset. Omitted settings are
+preserved. This is internal configuration, not public application config.
+
+The worker applies the current override to all application emails, including
+authentication and invitations, when it attempts delivery. It changes only the
+`From` display name, never the SMTP envelope address, provider configuration or
+credentials. Queued retries use the current name. Sibling applications and
+installation/organization control emails are unaffected. Changing providers keeps
+the app's override until it is cleared; disabling a provider does not bypass normal
+provider resolution or delivery restrictions.
+
+Display names are presentation only, not a new verified sender domain. The
+provider's authorized address and existing SPF/DKIM configuration remain in use.
+
 ## Stripe
 
 Register each Stripe connection webhook URL shown by the administrator UI:

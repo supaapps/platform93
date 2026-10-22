@@ -1,5 +1,18 @@
 # Upgrades
 
+## Application email sender names
+
+Optional `email_sender_name` in internal application configuration overrides the
+display name for that application's emails, including inherited SMTP. Configure it
+under **Providers → Email**; clear it to restore the provider default. Existing
+installations keep their current senders without a database migration. The shared
+sender address and SMTP credentials are unchanged, as are other applications and
+control-plane emails. See [provider inheritance](provider-inheritance.md).
+All email display names now use standard mailbox quoting and RFC 2047 encoding,
+with folding between encoded words for long Unicode names. Names with quotes or
+non-ASCII characters retain their decoded text; clients should not depend on the
+previous raw `From` header representation.
+
 ## Credential-bounded permission decisions
 
 The permission-check endpoint now requires both the authenticated credential's
