@@ -75,6 +75,40 @@ https://platform.example/provider-webhooks/stripe/{connection_public_id}
 
 A shared Stripe account can serve many applications, but Platform93 billing customers, Checkout sessions, subscriptions, invoices, payments, refunds, disputes, and entitlements remain application-owned. Platform93 writes application and subject metadata to Stripe objects and also resolves later metadata-light events through stored provider object identifiers.
 
+Verified webhook deliveries return a JSON acknowledgement:
+
+```json
+{"received":true,"status":"ignored","reason":"unrelated_event"}
+```
+
+`processed` means billing changes and the receipt committed together; `duplicate`
+means the receipt is already complete. `ignored` means no application billing
+changes were made. Its reason is `unsupported_event` or `unrelated_event`.
+Unsupported types are acknowledged after signature/envelope validation without
+application routing. Supported types with no P93 markers or connection-scoped
+record association are unrelated; a connection's owning application is never used
+as a default owner. Shared accounts may safely contain unrelated subscriptions.
+
+Ignored decisions are logged with connection/event identifiers, event type,
+reason and request ID, not raw payloads, metadata, customer details or secrets.
+They are not stored in application billing-event history. Repeated ignored
+deliveries remain harmless. Select only required event types in Stripe to reduce
+noise: checkout completion/async success/expiry, subscription creation/update/
+deletion, supported invoice and payment-intent lifecycle events, refunds and
+disputes. Unsupported account events such as payouts do not require app metadata.
+
+Invalid signatures and malformed envelopes are rejected. Invalid/conflicting P93
+references and forbidden application/connection combinations return 422. P93-marked
+events lacking their association return retryable 503; database, storage and
+processing failures return 5xx, never `ignored`. Keep these failures visible rather
+than inventing application metadata to make an unrelated event pass.
+
+Failed/pending receipts retry under a database row lock. Normalization, grants,
+events/outbox and completion status share one transaction, so failure rolls back
+side effects. Completed duplicates and administrative replays are no-ops; replay
+of a failed receipt uses the same atomic processing path. Application/operator
+authorization for administrative replay is unchanged.
+
 Checkout and portal requests may omit `provider_id`; Platform93 then resolves the newest active application, organization, or installation connection in that order. Supplying `provider_id` explicitly pins an allowed connection. Existing subscriptions remain attached to their original connection so lifecycle operations continue using the correct credentials.
 
 ## Object Storage

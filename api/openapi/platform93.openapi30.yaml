@@ -8982,12 +8982,20 @@ paths:
             schema: {}
       responses:
         '200':
-          description: Event stored and processed
+          description: Verified event processed, already completed, or safely ignored without billing changes.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WebhookAcknowledgement'
+                $ref: '#/components/schemas/StripeWebhookAcknowledgement'
         '400':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        '500':
+          $ref: '#/components/responses/Problem'
+        '503':
           $ref: '#/components/responses/Problem'
   /v1/management/organizations:
     get:
@@ -14172,6 +14180,47 @@ components:
         received:
           type: boolean
       additionalProperties: false
+    StripeWebhookAcknowledgement:
+      oneOf:
+        - $ref: '#/components/schemas/StripeWebhookAccepted'
+        - $ref: '#/components/schemas/StripeWebhookIgnored'
+    StripeWebhookAccepted:
+      type: object
+      required:
+        - received
+        - status
+      additionalProperties: false
+      properties:
+        received:
+          type: boolean
+          enum:
+            - true
+        status:
+          type: string
+          enum:
+            - processed
+            - duplicate
+    StripeWebhookIgnored:
+      type: object
+      required:
+        - received
+        - status
+        - reason
+      additionalProperties: false
+      properties:
+        received:
+          type: boolean
+          enum:
+            - true
+        status:
+          type: string
+          enum:
+            - ignored
+        reason:
+          type: string
+          enum:
+            - unsupported_event
+            - unrelated_event
     OrganizationMember:
       type: object
       required:
