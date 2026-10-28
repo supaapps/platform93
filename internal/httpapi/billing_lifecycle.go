@@ -570,31 +570,16 @@ FROM provider_events WHERE application_id=$1 ORDER BY received_at DESC,id DESC L
 }
 
 func (s *Server) replayProviderEvent(w http.ResponseWriter, r *http.Request) {
-	var connectionID, eventType, ciphertext string
-	err := s.app.DB.QueryRow(r.Context(), `SELECT provider_connection_id,event_type,raw_body_ciphertext FROM provider_events
-WHERE id=$1 AND application_id=$2`, chi.URLParam(r, "event_id"), chi.URLParam(r, "application_id")).Scan(&connectionID, &eventType, &ciphertext)
+	var connectionID, eventID, eventType string
+	err := s.app.DB.QueryRow(r.Context(), `SELECT provider_connection_id,provider_event_id,event_type FROM provider_events WHERE id=$1 AND application_id=$2`, chi.URLParam(r, "event_id"), chi.URLParam(r, "application_id")).Scan(&connectionID, &eventID, &eventType)
 	if err != nil {
 		kernel.WriteProblem(w, r, 404, "provider_event_not_found", "The provider event was not found.")
 		return
 	}
-	var providerEventID string
-	_ = s.app.DB.QueryRow(r.Context(), `SELECT provider_event_id FROM provider_events WHERE id=$1`, chi.URLParam(r, "event_id")).Scan(&providerEventID)
-	body, err := s.app.Vault.Decrypt(ciphertext, "provider-event:"+connectionID+":"+providerEventID)
-	var event struct {
-		Data struct {
-			Object map[string]any `json:"object"`
-		} `json:"data"`
-	}
-	if err != nil || json.Unmarshal(body, &event) != nil {
-		kernel.WriteProblem(w, r, 500, "provider_event_unavailable", "The provider event could not be read.")
-		return
-	}
-	if err = s.processStripeEvent(r, chi.URLParam(r, "event_id"), chi.URLParam(r, "application_id"), connectionID, eventType, event.Data.Object); err != nil {
-		_, _ = s.app.DB.Exec(r.Context(), `UPDATE provider_events SET status='failed',attempts=attempts+1,last_error=$1 WHERE id=$2`, truncate(err.Error(), 1000), chi.URLParam(r, "event_id"))
+	if _, err = s.processStripeReceipt(r.Context(), connectionID, eventID, chi.URLParam(r, "application_id"), eventType); err != nil {
 		kernel.WriteProblem(w, r, 500, "provider_event_replay_failed", "The provider event replay failed.")
 		return
 	}
-	_, _ = s.app.DB.Exec(r.Context(), `UPDATE provider_events SET status='processed',attempts=attempts+1,last_error=NULL,processed_at=now() WHERE id=$1`, chi.URLParam(r, "event_id"))
 	w.WriteHeader(http.StatusNoContent)
 }
 

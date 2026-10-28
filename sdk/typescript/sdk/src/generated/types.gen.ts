@@ -1340,6 +1340,19 @@ export type WebhookAcknowledgement = {
     received: boolean;
 };
 
+export type StripeWebhookAcknowledgement = StripeWebhookAccepted | StripeWebhookIgnored;
+
+export type StripeWebhookAccepted = {
+    received: true;
+    status: 'processed' | 'duplicate';
+};
+
+export type StripeWebhookIgnored = {
+    received: true;
+    status: 'ignored';
+    reason: 'unsupported_event' | 'unrelated_event';
+};
+
 export type OrganizationMember = {
     control_user_id: Uuid;
     email: string;
@@ -13614,15 +13627,31 @@ export type StripeWebhookErrors = {
      * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
      */
     400: Problem;
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    404: Problem;
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    422: Problem;
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    500: Problem;
+    /**
+     * RFC 9457 problem. Authentication endpoints may return code authentication_restarted when recovery invalidates an in-flight proof; start a fresh sign-in instead of reusing old credentials.
+     */
+    503: Problem;
 };
 
 export type StripeWebhookError = StripeWebhookErrors[keyof StripeWebhookErrors];
 
 export type StripeWebhookResponses = {
     /**
-     * Event stored and processed
+     * Verified event processed, already completed, or safely ignored without billing changes.
      */
-    200: WebhookAcknowledgement;
+    200: StripeWebhookAcknowledgement;
 };
 
 export type StripeWebhookResponse = StripeWebhookResponses[keyof StripeWebhookResponses];

@@ -1,5 +1,19 @@
 # Upgrades
 
+## Stripe webhook acknowledgements and retries
+
+Signed unsupported or clearly unrelated events now return HTTP 200 with a typed
+`ignored` acknowledgement instead of an application-attribution 422. Processed and
+completed duplicate deliveries return `processed` and `duplicate` acknowledgements.
+No migration or new dashboard is required; ignored events have safe log diagnostics
+and do not appear as processed application billing receipts.
+
+Signature, application isolation and retryable failures remain enforced. Failed
+receipts can now retry instead of being prematurely acknowledged as duplicates;
+receipt completion, billing state, grants and events commit atomically. Replaying
+an already completed receipt is a no-op. Existing reconciliation APIs remain
+available for state reconciliation. See [Stripe provider setup](provider-inheritance.md#stripe).
+
 ## Application email sender names
 
 Optional `email_sender_name` in internal application configuration overrides the

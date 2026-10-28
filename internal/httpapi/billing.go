@@ -306,96 +306,6 @@ WHERE pr.id=$1 AND pr.application_id=$3 AND pr.mode IN ('recurring','one_time') 
 	kernel.WriteJSON(w, 201, map[string]any{"id": sessionID, "status": "open", "checkout_uri": stripeSession.URL, "provider_session_id": stripeSession.ID, "external_reference": request.ExternalReference})
 }
 
-func (s *Server) stripeWebhook(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2<<20))
-	if err != nil {
-		kernel.WriteProblem(w, r, 400, "invalid_webhook_body", "The webhook body is invalid.")
-		return
-	}
-	publicID := chi.URLParam(r, "connection_public_id")
-	var connectionID, webhookCipher, apiVersion string
-	err = s.app.DB.QueryRow(r.Context(), `SELECT pc.id,pc.webhook_secret_ciphertext,pc.api_version
-FROM provider_connections pc LEFT JOIN applications a ON a.id=pc.application_id
-WHERE pc.public_id=$1 AND pc.provider='stripe' AND pc.status='active'
-AND (pc.application_id IS NULL OR a.deleted_at IS NULL)`, publicID).Scan(&connectionID, &webhookCipher, &apiVersion)
-	if err != nil || webhookCipher == "" {
-		kernel.WriteProblem(w, r, 404, "provider_connection_not_found", "The provider connection was not found.")
-		return
-	}
-	secret, err := s.app.Vault.Decrypt(webhookCipher, "billing-provider:"+connectionID+":webhook")
-	if err != nil || !verifyStripeSignature(r.Header.Get("Stripe-Signature"), body, string(secret), s.app.Now()) {
-		kernel.WriteProblem(w, r, 400, "invalid_webhook_signature", "The Stripe webhook signature is invalid.")
-		return
-	}
-	var event struct {
-		ID         string `json:"id"`
-		Type       string `json:"type"`
-		APIVersion string `json:"api_version"`
-		Data       struct {
-			Object map[string]any `json:"object"`
-		} `json:"data"`
-	}
-	if json.Unmarshal(body, &event) != nil || event.ID == "" {
-		kernel.WriteProblem(w, r, 400, "invalid_webhook_event", "The Stripe event is invalid.")
-		return
-	}
-	applicationID := stripeEventApplicationID(event.Data.Object)
-	if applicationID == "" {
-		applicationID, _ = s.stripeEventApplicationFromRecords(r.Context(), connectionID, event.Type, event.Data.Object)
-	}
-	var applicationAllowed bool
-	_ = s.app.DB.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM applications a JOIN provider_connections pc ON pc.id=$2
-WHERE a.id=$1 AND a.deleted_at IS NULL AND (pc.application_id=a.id OR (pc.application_id IS NULL AND pc.organization_id=a.organization_id AND pc.inheritable) OR
-(pc.application_id IS NULL AND pc.organization_id IS NULL AND pc.inheritable)))`, applicationID, connectionID).Scan(&applicationAllowed)
-	if !applicationAllowed {
-		kernel.WriteProblem(w, r, 422, "provider_event_application_unavailable", "The Stripe event does not identify an application allowed to use this connection.")
-		return
-	}
-	ciphertext, err := s.app.Vault.Encrypt(body, "provider-event:"+connectionID+":"+event.ID)
-	if err != nil {
-		kernel.WriteProblem(w, r, 500, "webhook_storage_failed", "The webhook event could not be stored.")
-		return
-	}
-	receiptID := kernel.NewID()
-	result, err := s.app.DB.Exec(r.Context(), `INSERT INTO provider_events (id,application_id,provider_connection_id,provider_event_id,api_version,event_type,raw_body_ciphertext) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (provider_connection_id,provider_event_id) DO NOTHING`, receiptID, applicationID, connectionID, event.ID, event.APIVersion, event.Type, ciphertext)
-	if err != nil {
-		kernel.WriteProblem(w, r, 500, "webhook_storage_failed", "The webhook event could not be stored.")
-		return
-	}
-	if result.RowsAffected() == 0 {
-		w.WriteHeader(200)
-		return
-	}
-	if err = s.processStripeEvent(r, receiptID.String(), applicationID, connectionID, event.Type, event.Data.Object); err != nil {
-		_, _ = s.app.DB.Exec(r.Context(), "UPDATE provider_events SET status='failed',attempts=attempts+1,last_error=$1 WHERE id=$2", truncate(err.Error(), 1000), receiptID)
-		kernel.WriteProblem(w, r, 500, "webhook_processing_failed", "The webhook was stored but processing failed.")
-		return
-	}
-	_, _ = s.app.DB.Exec(r.Context(), "UPDATE provider_events SET status='processed',attempts=attempts+1,processed_at=now() WHERE id=$1", receiptID)
-	w.WriteHeader(200)
-}
-
-func (s *Server) processStripeEvent(r *http.Request, receiptID, applicationID, connectionID, eventType string, object map[string]any) error {
-	_ = receiptID
-	switch eventType {
-	case "checkout.session.completed", "checkout.session.async_payment_succeeded":
-		return s.normalizeStripeCheckout(r.Context(), applicationID, connectionID, object, true)
-	case "checkout.session.expired":
-		return s.normalizeStripeCheckout(r.Context(), applicationID, connectionID, object, false)
-	case "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted":
-		return s.normalizeStripeSubscription(r.Context(), applicationID, connectionID, object)
-	case "invoice.created", "invoice.finalized", "invoice.paid", "invoice.payment_failed", "invoice.voided", "invoice.marked_uncollectible":
-		return s.normalizeStripeInvoice(r.Context(), applicationID, connectionID, object)
-	case "payment_intent.created", "payment_intent.processing", "payment_intent.succeeded", "payment_intent.payment_failed", "payment_intent.canceled", "payment_intent.amount_capturable_updated":
-		return s.normalizeStripePayment(r.Context(), applicationID, connectionID, object)
-	case "refund.created", "refund.updated", "refund.failed":
-		return s.normalizeStripeRefund(r.Context(), applicationID, connectionID, object)
-	case "charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed":
-		return s.normalizeStripeDispute(r.Context(), applicationID, connectionID, object)
-	}
-	return nil
-}
-
 func stripeEventApplicationID(object map[string]any) string {
 	var find func(map[string]any, int) string
 	find = func(current map[string]any, depth int) string {
@@ -420,36 +330,77 @@ func stripeEventApplicationID(object map[string]any) string {
 }
 
 func (s *Server) stripeEventApplicationFromRecords(ctx context.Context, connectionID, eventType string, object map[string]any) (string, error) {
+	applications, err := s.stripeEventApplicationsFromRecords(ctx, connectionID, eventType, object)
+	if err != nil {
+		return "", err
+	}
+	if len(applications) == 0 {
+		return "", pgx.ErrNoRows
+	}
+	if len(applications) != 1 {
+		return "", errStripeAssociation
+	}
+	return applications[0], nil
+}
+
+func (s *Server) stripeEventApplicationsFromRecords(ctx context.Context, connectionID, eventType string, object map[string]any) ([]string, error) {
 	objectID := stringValue(object["id"])
 	customerID := stripeObjectID(object["customer"])
 	subscriptionID := stripeObjectID(object["subscription"])
 	invoiceID := stripeObjectID(object["invoice"])
 	paymentID := stripeObjectID(object["payment_intent"])
+	if paymentID == "" {
+		paymentID = stripeObjectID(nestedValue(object, "charge", "payment_intent"))
+	}
+	if customerID == "" {
+		customerID = stripeObjectID(nestedValue(object, "charge", "customer"))
+	}
+	refundID, disputeID := "", ""
 	checkoutID := ""
+	clientReference := ""
 	switch {
 	case strings.HasPrefix(eventType, "checkout.session."):
 		checkoutID = objectID
+		clientReference = stringValue(object["client_reference_id"])
 	case strings.HasPrefix(eventType, "customer.subscription."):
 		subscriptionID = objectID
 	case strings.HasPrefix(eventType, "invoice."):
 		invoiceID = objectID
 	case strings.HasPrefix(eventType, "payment_intent."):
 		paymentID = objectID
+	case strings.HasPrefix(eventType, "refund."):
+		refundID = objectID
+	case strings.HasPrefix(eventType, "charge.dispute."):
+		disputeID = objectID
 	}
 	if parent, ok := object["parent"].(map[string]any); ok {
 		if details, ok := parent["subscription_details"].(map[string]any); ok && subscriptionID == "" {
 			subscriptionID = stripeObjectID(details["subscription"])
 		}
 	}
-	var applicationID string
-	err := s.app.DB.QueryRow(ctx, `SELECT application_id FROM (
+	rows, err := s.app.DB.Query(ctx, `SELECT DISTINCT application_id FROM (
 SELECT application_id,1 AS priority FROM checkout_sessions WHERE provider_connection_id=$1 AND provider_session_id=NULLIF($2,'')
 UNION ALL SELECT application_id,2 FROM subscriptions WHERE provider_connection_id=$1 AND provider_subscription_id=NULLIF($3,'')
 UNION ALL SELECT application_id,3 FROM invoices WHERE provider_connection_id=$1 AND provider_invoice_id=NULLIF($4,'')
 UNION ALL SELECT application_id,4 FROM payments WHERE provider_connection_id=$1 AND provider_payment_id=NULLIF($5,'')
 UNION ALL SELECT application_id,5 FROM billing_customers WHERE provider_connection_id=$1 AND provider_customer_id=NULLIF($6,'')
-) candidates ORDER BY priority LIMIT 1`, connectionID, checkoutID, subscriptionID, invoiceID, paymentID, customerID).Scan(&applicationID)
-	return applicationID, err
+UNION ALL SELECT application_id,6 FROM refunds WHERE provider_connection_id=$1 AND provider_refund_id=NULLIF($7,'')
+UNION ALL SELECT application_id,7 FROM disputes WHERE provider_connection_id=$1 AND provider_dispute_id=NULLIF($8,'')
+UNION ALL SELECT application_id,8 FROM checkout_sessions WHERE provider_connection_id=$1 AND id::text=NULLIF($9,'')
+) candidates`, connectionID, checkoutID, subscriptionID, invoiceID, paymentID, customerID, refundID, disputeID, clientReference)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	applications := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		applications = append(applications, id)
+	}
+	return applications, rows.Err()
 }
 
 func (s *Server) ensureStripeCustomer(ctx context.Context, applicationID, providerConnectionID, subjectType, subjectID, secret, apiVersion string) (string, error) {

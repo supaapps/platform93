@@ -3,37 +3,45 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/supaapps/platform93/internal/kernel"
 )
 
 func (s *Server) normalizeStripeCheckout(ctx context.Context, applicationID, connectionID string, object map[string]any, completed bool) error {
+	return s.withStripeTransaction(ctx, func(tx pgx.Tx) error {
+		return s.normalizeStripeCheckoutTx(ctx, tx, applicationID, connectionID, object, completed)
+	})
+}
+
+func (s *Server) normalizeStripeCheckoutTx(ctx context.Context, tx pgx.Tx, applicationID, connectionID string, object map[string]any, completed bool) error {
+	var err error
 	checkoutID := metadataString(object, "platform93_checkout_id")
 	if checkoutID == "" {
-		checkoutID = stringValue(object["client_reference_id"])
-	}
-	if checkoutID == "" {
-		return nil
+		err = tx.QueryRow(ctx, `SELECT id FROM checkout_sessions WHERE application_id=$1 AND provider_connection_id=$2
+AND (provider_session_id=$3 OR id::text=$4) ORDER BY (provider_session_id=$3) DESC LIMIT 1`, applicationID, connectionID, stringValue(object["id"]), stringValue(object["client_reference_id"])).Scan(&checkoutID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errStripeMappingPending
+		}
+		if err != nil {
+			return err
+		}
 	}
 	status := "expired"
 	if completed {
 		status = "completed"
 	}
-	tx, err := s.app.DB.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
 	var mode, subjectType, subjectID, productID, priceID string
 	var externalReference *string
 	var validity *int64
 	err = tx.QueryRow(ctx, `UPDATE checkout_sessions c SET status=$1,provider_session_id=COALESCE(NULLIF($2,''),provider_session_id),updated_at=now()
-FROM prices pr WHERE c.id=$3 AND c.application_id=$4 AND pr.id=c.price_id
-RETURNING pr.mode,c.subject_type,c.subject_id,pr.product_id,pr.id,pr.validity_seconds,c.external_reference`, status, stringValue(object["id"]), checkoutID, applicationID).
+FROM prices pr WHERE c.id=$3 AND c.application_id=$4 AND c.provider_connection_id=$5 AND pr.id=c.price_id
+RETURNING pr.mode,c.subject_type,c.subject_id,pr.product_id,pr.id,pr.validity_seconds,c.external_reference`, status, stringValue(object["id"]), checkoutID, applicationID, connectionID).
 		Scan(&mode, &subjectType, &subjectID, &productID, &priceID, &validity, &externalReference)
 	if err != nil {
 		return fmt.Errorf("resolve checkout %s: %w", checkoutID, err)
@@ -51,10 +59,17 @@ RETURNING pr.mode,c.subject_type,c.subject_id,pr.product_id,pr.id,pr.validity_se
 			}
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (s *Server) normalizeStripeSubscription(ctx context.Context, applicationID, connectionID string, object map[string]any) error {
+	return s.withStripeTransaction(ctx, func(tx pgx.Tx) error {
+		return s.normalizeStripeSubscriptionTx(ctx, tx, applicationID, connectionID, object)
+	})
+}
+
+func (s *Server) normalizeStripeSubscriptionTx(ctx context.Context, tx pgx.Tx, applicationID, connectionID string, object map[string]any) error {
+	var err error
 	providerSubscriptionID := stringValue(object["id"])
 	if providerSubscriptionID == "" {
 		return fmt.Errorf("Stripe subscription is missing id")
@@ -63,21 +78,26 @@ func (s *Server) normalizeStripeSubscription(ctx context.Context, applicationID,
 	var subjectType, subjectID, priceID string
 	var externalReference *string
 	if checkoutID != "" {
-		_ = s.app.DB.QueryRow(ctx, `SELECT subject_type,subject_id,price_id,external_reference FROM checkout_sessions
+		_ = tx.QueryRow(ctx, `SELECT subject_type,subject_id,price_id,external_reference FROM checkout_sessions
 WHERE id=$1 AND application_id=$2 AND provider_connection_id=$3`, checkoutID, applicationID, connectionID).
 			Scan(&subjectType, &subjectID, &priceID, &externalReference)
 	}
 	if priceID == "" {
-		_ = s.app.DB.QueryRow(ctx, `SELECT subject_type,subject_id,price_id FROM subscriptions
-WHERE provider_connection_id=$1 AND provider_subscription_id=$2`, connectionID, providerSubscriptionID).
+		_ = tx.QueryRow(ctx, `SELECT subject_type,subject_id,price_id FROM subscriptions
+WHERE provider_connection_id=$1 AND provider_subscription_id=$2 AND application_id=$3`, connectionID, providerSubscriptionID, applicationID).
 			Scan(&subjectType, &subjectID, &priceID)
 	}
 	if priceID == "" {
-		return nil
+		return errStripeMappingPending
 	}
 	item := firstStripeListObject(object["items"])
 	providerItemID := stringValue(item["id"])
-	if mappedPriceID := s.internalProviderMapping(ctx, connectionID, "price", stripeObjectID(item["price"])); mappedPriceID != "" {
+	var mappedPriceID string
+	err = tx.QueryRow(ctx, `SELECT internal_id FROM provider_mappings WHERE provider_connection_id=$1 AND object_type='price' AND provider_id=$2 AND application_id=$3`, connectionID, stripeObjectID(item["price"]), applicationID).Scan(&mappedPriceID)
+	if err != nil && err != pgx.ErrNoRows {
+		return err
+	}
+	if mappedPriceID != "" {
 		priceID = mappedPriceID
 	}
 	periodStart := unixTimeValue(item["current_period_start"])
@@ -93,11 +113,6 @@ WHERE provider_connection_id=$1 AND provider_subscription_id=$2`, connectionID, 
 		status = "unknown"
 	}
 	metadata, _ := json.Marshal(mapValue(object["metadata"]))
-	tx, err := s.app.DB.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
 	var subscriptionID, productID string
 	err = tx.QueryRow(ctx, `INSERT INTO subscriptions
 (id,application_id,subject_type,subject_id,price_id,provider_connection_id,provider_subscription_id,provider_item_id,status,
@@ -107,7 +122,8 @@ ON CONFLICT(provider_connection_id,provider_subscription_id) DO UPDATE SET
 price_id=EXCLUDED.price_id,provider_item_id=COALESCE(EXCLUDED.provider_item_id,subscriptions.provider_item_id),status=EXCLUDED.status,
 current_period_start=EXCLUDED.current_period_start,current_period_end=EXCLUDED.current_period_end,cancel_at=EXCLUDED.cancel_at,
 canceled_at=EXCLUDED.canceled_at,trial_end=EXCLUDED.trial_end,cancel_at_period_end=EXCLUDED.cancel_at_period_end,
-metadata=EXCLUDED.metadata,external_reference=COALESCE(EXCLUDED.external_reference,subscriptions.external_reference),updated_at=now() RETURNING id`, kernel.NewID(), applicationID, subjectType, subjectID, priceID,
+metadata=EXCLUDED.metadata,external_reference=COALESCE(EXCLUDED.external_reference,subscriptions.external_reference),updated_at=now()
+WHERE subscriptions.application_id=EXCLUDED.application_id RETURNING id`, kernel.NewID(), applicationID, subjectType, subjectID, priceID,
 		connectionID, providerSubscriptionID, providerItemID, status, periodStart, periodEnd, unixTimeValue(object["cancel_at"]),
 		unixTimeValue(object["canceled_at"]), unixTimeValue(object["trial_end"]), boolValue(object["cancel_at_period_end"]), metadata, externalReference).
 		Scan(&subscriptionID)
@@ -138,20 +154,31 @@ FROM invoices i WHERE p.invoice_id=i.id AND i.subscription_id=$1 AND p.external_
 	if _, err = s.app.Emit(ctx, tx, &parsedApplicationID, "billing.subscription.updated", "subscription/"+subscriptionID, map[string]any{"type": "provider"}, map[string]any{"subscription_id": subscriptionID, "status": status, "subject_type": subjectType, "subject_id": subjectID, "external_reference": externalReference}); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (s *Server) normalizeStripeInvoice(ctx context.Context, applicationID, connectionID string, object map[string]any) error {
+	return s.withStripeTransaction(ctx, func(tx pgx.Tx) error { return s.normalizeStripeInvoiceTx(ctx, tx, applicationID, connectionID, object) })
+}
+
+func (s *Server) normalizeStripeInvoiceTx(ctx context.Context, tx pgx.Tx, applicationID, connectionID string, object map[string]any) error {
+	var err error
 	providerInvoiceID := stringValue(object["id"])
 	if providerInvoiceID == "" {
 		return fmt.Errorf("Stripe invoice is missing id")
 	}
-	customerID := s.billingCustomerID(ctx, connectionID, stripeObjectID(object["customer"]))
+	customerID, err := stripeRelatedID(ctx, tx, applicationID, connectionID, "billing_customers", "provider_customer_id", stripeObjectID(object["customer"]))
+	if err != nil {
+		return err
+	}
 	providerSubscriptionID := stripeObjectID(nestedValue(object, "parent", "subscription_details", "subscription"))
 	if providerSubscriptionID == "" {
 		providerSubscriptionID = stripeObjectID(object["subscription"])
 	}
-	subscriptionID := s.subscriptionID(ctx, connectionID, providerSubscriptionID)
+	subscriptionID, err := stripeRelatedID(ctx, tx, applicationID, connectionID, "subscriptions", "provider_subscription_id", providerSubscriptionID)
+	if err != nil {
+		return err
+	}
 	status := stringValue(object["status"])
 	if status == "" {
 		status = "draft"
@@ -159,13 +186,8 @@ func (s *Server) normalizeStripeInvoice(ctx context.Context, applicationID, conn
 	providerCustomerID := stripeObjectID(object["customer"])
 	externalReference := metadataString(object, "platform93_external_reference")
 	if externalReference == "" && subscriptionID != nil {
-		_ = s.app.DB.QueryRow(ctx, `SELECT COALESCE(external_reference,'') FROM subscriptions WHERE id=$1`, *subscriptionID).Scan(&externalReference)
+		_ = tx.QueryRow(ctx, `SELECT COALESCE(external_reference,'') FROM subscriptions WHERE id=$1`, *subscriptionID).Scan(&externalReference)
 	}
-	tx, err := s.app.DB.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
 	var invoiceID string
 	err = tx.QueryRow(ctx, `INSERT INTO invoices
 (id,application_id,provider_connection_id,provider_invoice_id,provider_customer_id,provider_subscription_id,billing_customer_id,subscription_id,status,
@@ -178,7 +200,8 @@ billing_customer_id=COALESCE(EXCLUDED.billing_customer_id,invoices.billing_custo
 subscription_id=COALESCE(EXCLUDED.subscription_id,invoices.subscription_id),status=EXCLUDED.status,
 amount_due_minor=EXCLUDED.amount_due_minor,amount_paid_minor=EXCLUDED.amount_paid_minor,tax_minor=EXCLUDED.tax_minor,
 currency=EXCLUDED.currency,due_at=EXCLUDED.due_at,paid_at=EXCLUDED.paid_at,hosted_uri=EXCLUDED.hosted_uri,
-external_reference=COALESCE(EXCLUDED.external_reference,invoices.external_reference),updated_at=now() RETURNING id`,
+external_reference=COALESCE(EXCLUDED.external_reference,invoices.external_reference),updated_at=now()
+WHERE invoices.application_id=EXCLUDED.application_id RETURNING id`,
 		kernel.NewID(), applicationID, connectionID, providerInvoiceID, providerCustomerID, providerSubscriptionID, customerID, subscriptionID, status,
 		int64Number(object["amount_due"]), int64Number(object["amount_paid"]), stripeTaxAmount(object), normalizedCurrency(object["currency"]),
 		unixTimeValue(object["due_date"]), unixTimeValue(nestedValue(object, "status_transitions", "paid_at")), stringValue(object["hosted_invoice_url"]), externalReference).Scan(&invoiceID)
@@ -197,18 +220,33 @@ AND p.provider_invoice_id=i.provider_invoice_id AND p.invoice_id IS NULL`, conne
 	if parseErr != nil {
 		return parseErr
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (s *Server) normalizeStripePayment(ctx context.Context, applicationID, connectionID string, object map[string]any) error {
+	return s.withStripeTransaction(ctx, func(tx pgx.Tx) error { return s.normalizeStripePaymentTx(ctx, tx, applicationID, connectionID, object) })
+}
+
+func (s *Server) normalizeStripePaymentTx(ctx context.Context, tx pgx.Tx, applicationID, connectionID string, object map[string]any) error {
+	var err error
 	providerPaymentID := stringValue(object["id"])
 	if providerPaymentID == "" {
 		return fmt.Errorf("Stripe payment intent is missing id")
 	}
-	checkoutID := s.checkoutSessionID(ctx, applicationID, connectionID, metadataString(object, "platform93_checkout_id"))
+	checkoutID, err := stripeRelatedID(ctx, tx, applicationID, connectionID, "checkout_sessions", "id", metadataString(object, "platform93_checkout_id"))
+	if err != nil {
+		return err
+	}
 	providerInvoiceID := stripeObjectID(object["invoice"])
-	invoiceID := s.invoiceID(ctx, connectionID, providerInvoiceID)
+	invoiceID, err := stripeRelatedID(ctx, tx, applicationID, connectionID, "invoices", "provider_invoice_id", providerInvoiceID)
+	if err != nil {
+		return err
+	}
 	providerCustomerID := stripeObjectID(object["customer"])
+	billingCustomerID, err := stripeRelatedID(ctx, tx, applicationID, connectionID, "billing_customers", "provider_customer_id", providerCustomerID)
+	if err != nil {
+		return err
+	}
 	method := firstString(object["payment_method_types"])
 	if method == "" {
 		method = stringValue(nestedValue(object, "latest_charge", "payment_method_details", "type"))
@@ -217,16 +255,11 @@ func (s *Server) normalizeStripePayment(ctx context.Context, applicationID, conn
 	failureMessage := stringValue(nestedValue(object, "last_payment_error", "message"))
 	externalReference := metadataString(object, "platform93_external_reference")
 	if externalReference == "" && checkoutID != nil {
-		_ = s.app.DB.QueryRow(ctx, `SELECT COALESCE(external_reference,'') FROM checkout_sessions WHERE id=$1`, *checkoutID).Scan(&externalReference)
+		_ = tx.QueryRow(ctx, `SELECT COALESCE(external_reference,'') FROM checkout_sessions WHERE id=$1`, *checkoutID).Scan(&externalReference)
 	}
 	if externalReference == "" && invoiceID != nil {
-		_ = s.app.DB.QueryRow(ctx, `SELECT COALESCE(external_reference,'') FROM invoices WHERE id=$1`, *invoiceID).Scan(&externalReference)
+		_ = tx.QueryRow(ctx, `SELECT COALESCE(external_reference,'') FROM invoices WHERE id=$1`, *invoiceID).Scan(&externalReference)
 	}
-	tx, err := s.app.DB.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
 	var paymentID string
 	err = tx.QueryRow(ctx, `INSERT INTO payments
 (id,application_id,provider_connection_id,provider_payment_id,provider_customer_id,provider_invoice_id,billing_customer_id,checkout_session_id,invoice_id,status,
@@ -239,8 +272,9 @@ billing_customer_id=COALESCE(EXCLUDED.billing_customer_id,payments.billing_custo
 checkout_session_id=COALESCE(EXCLUDED.checkout_session_id,payments.checkout_session_id),invoice_id=COALESCE(EXCLUDED.invoice_id,payments.invoice_id),
 status=EXCLUDED.status,amount_minor=EXCLUDED.amount_minor,amount_received_minor=EXCLUDED.amount_received_minor,external_reference=COALESCE(EXCLUDED.external_reference,payments.external_reference),
 currency=EXCLUDED.currency,payment_method_type=EXCLUDED.payment_method_type,failure_code=EXCLUDED.failure_code,
-failure_message=EXCLUDED.failure_message,updated_at=now() RETURNING id`, kernel.NewID(), applicationID, connectionID, providerPaymentID,
-		providerCustomerID, providerInvoiceID, s.billingCustomerID(ctx, connectionID, providerCustomerID), checkoutID, invoiceID, stringValue(object["status"]),
+failure_message=EXCLUDED.failure_message,updated_at=now()
+WHERE payments.application_id=EXCLUDED.application_id RETURNING id`, kernel.NewID(), applicationID, connectionID, providerPaymentID,
+		providerCustomerID, providerInvoiceID, billingCustomerID, checkoutID, invoiceID, stringValue(object["status"]),
 		int64Number(object["amount"]), int64Number(object["amount_received"]), normalizedCurrency(object["currency"]), method, failureCode, failureMessage, externalReference).Scan(&paymentID)
 	if err == nil {
 		_, err = tx.Exec(ctx, `UPDATE refunds r SET payment_id=p.id,updated_at=now() FROM payments p
@@ -262,28 +296,32 @@ AND d.provider_payment_id=p.provider_payment_id AND d.payment_id IS NULL`, conne
 	if parseErr != nil {
 		return parseErr
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (s *Server) normalizeStripeRefund(ctx context.Context, applicationID, connectionID string, object map[string]any) error {
+	return s.withStripeTransaction(ctx, func(tx pgx.Tx) error { return s.normalizeStripeRefundTx(ctx, tx, applicationID, connectionID, object) })
+}
+
+func (s *Server) normalizeStripeRefundTx(ctx context.Context, tx pgx.Tx, applicationID, connectionID string, object map[string]any) error {
+	var err error
 	providerRefundID := stringValue(object["id"])
 	if providerRefundID == "" {
 		return fmt.Errorf("Stripe refund is missing id")
 	}
-	paymentID := s.paymentID(ctx, connectionID, stripeObjectID(object["payment_intent"]))
-	providerPaymentID := stripeObjectID(object["payment_intent"])
-	tx, err := s.app.DB.Begin(ctx)
+	paymentID, err := stripeRelatedID(ctx, tx, applicationID, connectionID, "payments", "provider_payment_id", stripeObjectID(object["payment_intent"]))
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	providerPaymentID := stripeObjectID(object["payment_intent"])
 	var refundID string
 	err = tx.QueryRow(ctx, `INSERT INTO refunds
 (id,application_id,provider_connection_id,provider_payment_id,payment_id,provider_refund_id,status,amount_minor,currency,reason)
 VALUES($1,$2,$3,NULLIF($4,''),$5,$6,$7,$8,upper($9),NULLIF($10,'')) ON CONFLICT(provider_connection_id,provider_refund_id) DO UPDATE SET
 provider_payment_id=COALESCE(EXCLUDED.provider_payment_id,refunds.provider_payment_id),
 payment_id=COALESCE(EXCLUDED.payment_id,refunds.payment_id),status=EXCLUDED.status,amount_minor=EXCLUDED.amount_minor,
-currency=EXCLUDED.currency,reason=EXCLUDED.reason,updated_at=now() RETURNING id`, kernel.NewID(), applicationID, connectionID, providerPaymentID, paymentID,
+currency=EXCLUDED.currency,reason=EXCLUDED.reason,updated_at=now()
+WHERE refunds.application_id=EXCLUDED.application_id RETURNING id`, kernel.NewID(), applicationID, connectionID, providerPaymentID, paymentID,
 		providerRefundID, stringValue(object["status"]), int64Number(object["amount"]), normalizedCurrency(object["currency"]), stringValue(object["reason"])).Scan(&refundID)
 	var externalReference string
 	if err == nil && paymentID != nil {
@@ -299,10 +337,15 @@ currency=EXCLUDED.currency,reason=EXCLUDED.reason,updated_at=now() RETURNING id`
 	if parseErr != nil {
 		return parseErr
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (s *Server) normalizeStripeDispute(ctx context.Context, applicationID, connectionID string, object map[string]any) error {
+	return s.withStripeTransaction(ctx, func(tx pgx.Tx) error { return s.normalizeStripeDisputeTx(ctx, tx, applicationID, connectionID, object) })
+}
+
+func (s *Server) normalizeStripeDisputeTx(ctx context.Context, tx pgx.Tx, applicationID, connectionID string, object map[string]any) error {
+	var err error
 	providerDisputeID := stringValue(object["id"])
 	if providerDisputeID == "" {
 		return fmt.Errorf("Stripe dispute is missing id")
@@ -311,19 +354,18 @@ func (s *Server) normalizeStripeDispute(ctx context.Context, applicationID, conn
 	if providerPaymentID == "" {
 		providerPaymentID = stripeObjectID(nestedValue(object, "charge", "payment_intent"))
 	}
-	paymentID := s.paymentID(ctx, connectionID, providerPaymentID)
-	tx, err := s.app.DB.Begin(ctx)
+	paymentID, err := stripeRelatedID(ctx, tx, applicationID, connectionID, "payments", "provider_payment_id", providerPaymentID)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
 	var disputeID string
 	err = tx.QueryRow(ctx, `INSERT INTO disputes
 (id,application_id,provider_connection_id,provider_payment_id,payment_id,provider_dispute_id,status,amount_minor,currency,reason,evidence_due_at)
 VALUES($1,$2,$3,NULLIF($4,''),$5,$6,$7,$8,upper($9),NULLIF($10,''),$11) ON CONFLICT(provider_connection_id,provider_dispute_id) DO UPDATE SET
 provider_payment_id=COALESCE(EXCLUDED.provider_payment_id,disputes.provider_payment_id),
 payment_id=COALESCE(EXCLUDED.payment_id,disputes.payment_id),status=EXCLUDED.status,amount_minor=EXCLUDED.amount_minor,
-currency=EXCLUDED.currency,reason=EXCLUDED.reason,evidence_due_at=EXCLUDED.evidence_due_at,updated_at=now() RETURNING id`, kernel.NewID(), applicationID,
+currency=EXCLUDED.currency,reason=EXCLUDED.reason,evidence_due_at=EXCLUDED.evidence_due_at,updated_at=now()
+WHERE disputes.application_id=EXCLUDED.application_id RETURNING id`, kernel.NewID(), applicationID,
 		connectionID, providerPaymentID, paymentID, providerDisputeID, stringValue(object["status"]),
 		int64Number(object["amount"]), normalizedCurrency(object["currency"]), stringValue(object["reason"]), unixTimeValue(nestedValue(object, "evidence_details", "due_by"))).Scan(&disputeID)
 	var externalReference string
@@ -340,62 +382,7 @@ currency=EXCLUDED.currency,reason=EXCLUDED.reason,evidence_due_at=EXCLUDED.evide
 	if parseErr != nil {
 		return parseErr
 	}
-	return tx.Commit(ctx)
-}
-
-func (s *Server) billingCustomerID(ctx context.Context, connectionID, providerID string) *string {
-	if providerID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM billing_customers WHERE provider_connection_id=$1 AND provider_customer_id=$2`, connectionID, providerID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) subscriptionID(ctx context.Context, connectionID, providerID string) *string {
-	if providerID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM subscriptions WHERE provider_connection_id=$1 AND provider_subscription_id=$2`, connectionID, providerID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) invoiceID(ctx context.Context, connectionID, providerID string) *string {
-	if providerID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM invoices WHERE provider_connection_id=$1 AND provider_invoice_id=$2`, connectionID, providerID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) paymentID(ctx context.Context, connectionID, providerID string) *string {
-	if providerID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM payments WHERE provider_connection_id=$1 AND provider_payment_id=$2`, connectionID, providerID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) checkoutSessionID(ctx context.Context, applicationID, connectionID, checkoutID string) *string {
-	if checkoutID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM checkout_sessions WHERE id=$1 AND application_id=$2 AND provider_connection_id=$3`, checkoutID, applicationID, connectionID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
+	return nil
 }
 
 func nestedValue(value any, path ...string) any {
