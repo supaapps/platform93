@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -24,6 +25,9 @@ func (s *Server) normalizeStripeCheckoutTx(ctx context.Context, tx pgx.Tx, appli
 	if checkoutID == "" {
 		err = tx.QueryRow(ctx, `SELECT id FROM checkout_sessions WHERE application_id=$1 AND provider_connection_id=$2
 AND (provider_session_id=$3 OR id::text=$4) ORDER BY (provider_session_id=$3) DESC LIMIT 1`, applicationID, connectionID, stringValue(object["id"]), stringValue(object["client_reference_id"])).Scan(&checkoutID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errStripeMappingPending
+		}
 		if err != nil {
 			return err
 		}
@@ -379,61 +383,6 @@ WHERE disputes.application_id=EXCLUDED.application_id RETURNING id`, kernel.NewI
 		return parseErr
 	}
 	return nil
-}
-
-func (s *Server) billingCustomerID(ctx context.Context, connectionID, providerID string) *string {
-	if providerID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM billing_customers WHERE provider_connection_id=$1 AND provider_customer_id=$2`, connectionID, providerID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) subscriptionID(ctx context.Context, connectionID, providerID string) *string {
-	if providerID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM subscriptions WHERE provider_connection_id=$1 AND provider_subscription_id=$2`, connectionID, providerID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) invoiceID(ctx context.Context, connectionID, providerID string) *string {
-	if providerID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM invoices WHERE provider_connection_id=$1 AND provider_invoice_id=$2`, connectionID, providerID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) paymentID(ctx context.Context, connectionID, providerID string) *string {
-	if providerID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM payments WHERE provider_connection_id=$1 AND provider_payment_id=$2`, connectionID, providerID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
-}
-
-func (s *Server) checkoutSessionID(ctx context.Context, applicationID, connectionID, checkoutID string) *string {
-	if checkoutID == "" {
-		return nil
-	}
-	var id string
-	if s.app.DB.QueryRow(ctx, `SELECT id FROM checkout_sessions WHERE id=$1 AND application_id=$2 AND provider_connection_id=$3`, checkoutID, applicationID, connectionID).Scan(&id) != nil {
-		return nil
-	}
-	return &id
 }
 
 func nestedValue(value any, path ...string) any {

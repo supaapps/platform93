@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -113,6 +114,10 @@ AND (pc.application_id IS NULL OR a.deleted_at IS NULL)`, chi.URLParam(r, "conne
 		s.ignoreStripeEvent(w, r, connectionID, event, "unsupported_event")
 		return
 	}
+	if stringValue(event.Data.Object["id"]) == "" {
+		kernel.WriteProblem(w, r, 400, "invalid_webhook_event", "The Stripe event object is missing its identifier.")
+		return
+	}
 	applicationID, err := s.resolveStripeApplication(r.Context(), connectionID, event.Type, event.Data.Object)
 	if errors.Is(err, errStripeAssociation) {
 		kernel.WriteProblem(w, r, 422, "provider_event_application_unavailable", "The Stripe event does not identify an application allowed to use this connection.")
@@ -142,6 +147,10 @@ VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(provider_connection_id,provider_event_i
 		return
 	}
 	status, err := s.processStripeReceipt(r.Context(), connectionID, event.ID, applicationID, event.Type)
+	if errors.Is(err, errStripeMappingPending) {
+		kernel.WriteProblem(w, r, 503, "provider_event_mapping_pending", "The Stripe event references Platform93 records whose mapping is not available yet.")
+		return
+	}
 	if errors.Is(err, errStripeAssociation) {
 		kernel.WriteProblem(w, r, 422, "provider_event_application_unavailable", "The event conflicts with its stored provider receipt.")
 		return
@@ -164,7 +173,7 @@ func validStripeEvent(event stripeEvent) bool {
 			}
 		}
 	}
-	return stringValue(event.Data.Object["id"]) != ""
+	return true
 }
 
 func (s *Server) ignoreStripeEvent(w http.ResponseWriter, r *http.Request, connection string, event stripeEvent, reason string) {
@@ -244,10 +253,12 @@ WHERE provider_connection_id=$1 AND provider_event_id=$2 FOR UPDATE`, connection
 		_, err = tx.Exec(ctx, `UPDATE provider_events SET status=$1,attempts=attempts+1,last_error=NULL,processed_at=now() WHERE id=$2`, status, id)
 		return err
 	})
-	if err != nil && !errors.Is(err, errStripeAssociation) {
+	if err != nil {
 		// Do not overwrite another retry's completed result after releasing the lock.
-		_, _ = s.app.DB.Exec(ctx, `UPDATE provider_events SET status='failed',attempts=attempts+1,last_error='Stripe processing failed; retry delivery or replay.'
-WHERE provider_connection_id=$1 AND provider_event_id=$2 AND application_id=$3 AND status NOT IN ('processed','ignored')`, connection, eventID, application)
+		failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer cancel()
+		_, _ = s.app.DB.Exec(failureCtx, `UPDATE provider_events SET status='failed',attempts=attempts+1,last_error='Stripe processing failed; retry delivery or replay.'
+WHERE provider_connection_id=$1 AND provider_event_id=$2 AND application_id=$3 AND event_type=$4 AND status NOT IN ('processed','ignored')`, connection, eventID, application, expectedType)
 	}
 	return status, err
 }

@@ -5509,6 +5509,7 @@ paths:
           $ref: '#/components/schemas/UUID'
     post:
       operationId: replayBillingProviderEvent
+      description: Retries a pending or failed stored receipt atomically. Already processed or ignored receipts are acknowledged without repeating billing changes or lifecycle events.
       tags:
         - Billing
       security:

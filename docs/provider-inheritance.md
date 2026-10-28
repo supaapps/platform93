@@ -88,6 +88,11 @@ Unsupported types are acknowledged after signature/envelope validation without
 application routing. Supported types with no P93 markers or connection-scoped
 record association are unrelated; a connection's owning application is never used
 as a default owner. Shared accounts may safely contain unrelated subscriptions.
+This classification uses local records and event metadata, not a Stripe API
+lookup. An event with neither cannot be distinguished from external account
+activity, even if a mapping might be introduced later; it is not automatically
+recovered. Preserve P93 metadata and existing customer/object mappings. A known
+P93 reference whose required mapping is missing is retryable instead.
 
 Ignored decisions are logged with connection/event identifiers, event type,
 reason and request ID, not raw payloads, metadata, customer details or secrets.
@@ -105,8 +110,10 @@ than inventing application metadata to make an unrelated event pass.
 
 Failed/pending receipts retry under a database row lock. Normalization, grants,
 events/outbox and completion status share one transaction, so failure rolls back
-side effects. Completed duplicates and administrative replays are no-ops; replay
-of a failed receipt uses the same atomic processing path. Application/operator
+side effects. A crash after receipt insertion but before processing leaves a
+pending receipt recoverable through Stripe retry or administrative replay.
+Completed duplicates and administrative replays are no-ops; replay
+of a failed receipt uses the same atomic processing path. Application/control-user
 authorization for administrative replay is unchanged.
 
 Checkout and portal requests may omit `provider_id`; Platform93 then resolves the newest active application, organization, or installation connection in that order. Supplying `provider_id` explicitly pins an allowed connection. Existing subscriptions remain attached to their original connection so lifecycle operations continue using the correct credentials.

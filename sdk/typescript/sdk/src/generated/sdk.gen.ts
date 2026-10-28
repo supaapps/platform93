@@ -4016,6 +4016,9 @@ export const listBillingProviderEvents = <ThrowOnError extends boolean = false>(
     ...options
 });
 
+/**
+ * Retries a pending or failed stored receipt atomically. Already processed or ignored receipts are acknowledged without repeating billing changes or lifecycle events.
+ */
 export const replayBillingProviderEvent = <ThrowOnError extends boolean = false>(options: Options<ReplayBillingProviderEventData, ThrowOnError>): RequestResult<ReplayBillingProviderEventResponses, unknown, ThrowOnError> => (options.client ?? client).post<ReplayBillingProviderEventResponses, unknown, ThrowOnError>({
     security: [{
             key: 'controlBearer',

@@ -79,7 +79,7 @@ func TestStripeWebhookSignaturesAndMalformedEventsPostgres(t *testing.T) {
 		{"invalid JSON", []byte(`{invalid`), f.app.Now(), true},
 		{"null object", []byte(`{"id":"evt_null","type":"payout.updated","data":{"object":null}}`), f.app.Now(), true},
 		{"missing type", []byte(`{"id":"evt_type","data":{"object":{"id":"po_other"}}}`), f.app.Now(), true},
-		{"missing object id", []byte(`{"id":"evt_id","type":"payout.updated","data":{"object":{}}}`), f.app.Now(), true},
+		{"missing object id", []byte(`{"id":"evt_id","type":"payment_intent.succeeded","data":{"object":{}}}`), f.app.Now(), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := f.raw(tc.body, tc.at, tc.signed)
@@ -87,6 +87,9 @@ func TestStripeWebhookSignaturesAndMalformedEventsPostgres(t *testing.T) {
 				t.Fatalf("expected rejection: %d %s", w.Code, w.Body.String())
 			}
 		})
+	}
+	if w := f.deliver("evt_balance", "balance.available", map[string]any{"object": "balance", "available": []any{}}); w.Code != 200 || !strings.Contains(w.Body.String(), "unsupported_event") {
+		t.Fatalf("valid unsupported object without id rejected: %d %s", w.Code, w.Body.String())
 	}
 	f.exec(`UPDATE provider_connections SET webhook_secret_ciphertext='invalid-ciphertext' WHERE id=$1`, f.connection)
 	if w := f.raw(valid, f.app.Now(), true); w.Code != 500 {
@@ -262,6 +265,62 @@ func TestStripeWebhookCommitFailureAndReplayPostgres(t *testing.T) {
 	defer cancel()
 	if err := f.app.DB.QueryRow(ctx, `SELECT count(*) FROM domain_events WHERE event_type='billing.payment.updated'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("replay emitted duplicate events: %d %v", count, err)
+	}
+}
+
+func TestStripeWebhookPendingReceiptRecoveryAndDiagnosticsPostgres(t *testing.T) {
+	f := newStripeWebhookFixture(t)
+	body, err := json.Marshal(map[string]any{"id": "evt_pending_receipt", "type": "payment_intent.succeeded", "data": map[string]any{"object": f.payment("pi_pending_receipt")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := f.app.Vault.Encrypt(body, "provider-event:"+f.connection+":evt_pending_receipt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.exec(`INSERT INTO provider_events(id,application_id,provider_connection_id,provider_event_id,event_type,raw_body_ciphertext) VALUES($1,$2,$3,'evt_pending_receipt','payment_intent.succeeded',$4)`, kernel.NewID(), f.application, f.connection, cipher)
+	s := &Server{app: f.app}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := s.processStripeReceipt(ctx, f.connection, "evt_pending_receipt", f.application, "payment_intent.succeeded"); err == nil {
+		t.Fatal("cancelled processing succeeded")
+	}
+	var status string
+	var attempts int
+	if err := f.app.DB.QueryRow(t.Context(), `SELECT status,attempts FROM provider_events WHERE provider_event_id='evt_pending_receipt'`).Scan(&status, &attempts); err != nil || status != "failed" || attempts != 1 {
+		t.Fatalf("cancelled request lost failure diagnostic: %s %d %v", status, attempts, err)
+	}
+	f.exec(`UPDATE provider_connections SET inheritable=false WHERE id=$1`, f.connection)
+	if _, err := s.processStripeReceipt(t.Context(), f.connection, "evt_pending_receipt", f.application, "payment_intent.succeeded"); err != errStripeAssociation {
+		t.Fatalf("association failure not rejected: %v", err)
+	}
+	if err := f.app.DB.QueryRow(t.Context(), `SELECT status,attempts FROM provider_events WHERE provider_event_id='evt_pending_receipt'`).Scan(&status, &attempts); err != nil || status != "failed" || attempts != 2 {
+		t.Fatalf("association failure lost diagnostic: %s %d %v", status, attempts, err)
+	}
+	f.exec(`UPDATE provider_connections SET inheritable=true WHERE id=$1`, f.connection)
+	if w := f.raw(body, f.app.Now(), true); w.Code != 200 || !strings.Contains(w.Body.String(), "processed") {
+		t.Fatalf("pending receipt did not recover: %d %s", w.Code, w.Body.String())
+	}
+	if w := f.deliver("evt_pending_receipt", "payment_intent.canceled", f.payment("pi_pending_receipt")); w.Code != 422 {
+		t.Fatalf("receipt type collision accepted: %d %s", w.Code, w.Body.String())
+	}
+	if err := f.app.DB.QueryRow(t.Context(), `SELECT status,attempts FROM provider_events WHERE provider_event_id='evt_pending_receipt'`).Scan(&status, &attempts); err != nil || status != "processed" || attempts != 3 {
+		t.Fatalf("collision overwrote completed receipt: %s %d %v", status, attempts, err)
+	}
+}
+
+func TestStripeWebhookCheckoutMissingMappingRetriesPostgres(t *testing.T) {
+	f := newStripeWebhookFixture(t)
+	object := map[string]any{"id": "cs_late", "metadata": map[string]any{"platform93_application_id": f.application}}
+	if w := f.deliver("evt_late_checkout", "checkout.session.expired", object); w.Code != 503 || !strings.Contains(w.Body.String(), "provider_event_mapping_pending") {
+		t.Fatalf("missing checkout not retryable: %d %s", w.Code, w.Body.String())
+	}
+	product, price, checkout := kernel.NewID().String(), kernel.NewID().String(), kernel.NewID().String()
+	f.exec(`INSERT INTO products(id,application_id,key,name) VALUES($1,$2,'late','Late checkout')`, product, f.application)
+	f.exec(`INSERT INTO prices(id,application_id,product_id,key,mode,amount_minor,currency) VALUES($1,$2,$3,'late','one_time',100,'CHF')`, price, f.application, product)
+	f.exec(`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri,provider_session_id) VALUES($1,$2,'user',$3,$4,$5,'open','{}','https://app.example/success','https://app.example/cancel','cs_late')`, checkout, f.application, f.user, price, f.connection)
+	if w := f.deliver("evt_late_checkout", "checkout.session.expired", object); w.Code != 200 || !strings.Contains(w.Body.String(), "processed") {
+		t.Fatalf("checkout mapping retry failed: %d %s", w.Code, w.Body.String())
 	}
 }
 
