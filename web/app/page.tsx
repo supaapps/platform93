@@ -1191,7 +1191,7 @@ function CreateResource({ application, resource, setMessage, onCreated }: { appl
     }
     try {
       const result = await api.request<Record<string, unknown>>("POST", `/v1/control/applications/${application.id}/${resource.path}`, body, { idempotencyKey: crypto.randomUUID() });
-      const returnedSecret = result?.secret ?? result?.client_secret ?? result?.invitation_token;
+      const returnedSecret = result?.secret ?? result?.client_secret ?? result?.invitation_token ?? result?.invitation_url;
       if (returnedSecret) showCredential(`Created. Store this one-time credential now: ${String(returnedSecret)}`);
       else setMessage(`${resource.create!.label} completed.`);
       target.reset();
@@ -1285,7 +1285,7 @@ function ResourceRow({ item, resource, application, setMessage, onInspect, onCha
     setPendingAction(action.label);
     try {
       const result = await api.request<Record<string, unknown>>(action.method ?? "POST", `/v1/control/applications/${application.id}/${action.suffix}`, action.body ?? {}, { idempotencyKey: crypto.randomUUID(), headers: action.headers });
-      const returnedSecret = result?.secret ?? result?.client_secret ?? result?.invitation_token;
+      const returnedSecret = result?.secret ?? result?.client_secret ?? result?.invitation_token ?? result?.invitation_url;
       if (returnedSecret) showCredential(`Store this one-time credential now: ${String(returnedSecret)}`);
       else setMessage(resource === "products" ? `${action.label} completed.` : result ? JSON.stringify(result) : `${action.label} completed.`);
       onChanged();

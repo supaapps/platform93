@@ -31,6 +31,26 @@ test("one-time client credentials stay visible until explicitly dismissed", asyn
   await expect(page.locator(".credential-notice")).toHaveCount(0);
 });
 
+test("application invitation links use the persistent credential notice", async ({ page }) => {
+  await mockAdmin(page);
+  await page.clock.install();
+  const invitationURL = "https://client.example.test/invite?token=fixture-only";
+  await page.route(`**/v1/control/applications/${app.id}/invitations`, async (route) => {
+    if (route.request().method() === "POST") return route.fulfill({ status: 201, json: { id: "invitation-fixture", invitation_url: invitationURL } });
+    return route.fulfill({ json: { items: [], next_cursor: null } });
+  });
+  await page.goto(`/?context=application&application_id=${app.id}&section=workspaces&resource=invitations`);
+  await page.getByRole("button", { name: "Create invitation", exact: true }).click();
+  await page.getByLabel("Email", { exact: true }).fill("invitee@example.test");
+  await page.getByRole("button", { name: "Create invitation", exact: true }).click();
+  const notice = page.getByRole("region", { name: "One-time credentials" });
+  await expect(notice).toContainText(invitationURL);
+  await page.clock.runFor(10_000);
+  await expect(notice).toContainText(invitationURL);
+  await page.getByRole("button", { name: "Dismiss credential notice" }).click();
+  await expect(notice).not.toContainText(invitationURL);
+});
+
 test("immutable prices retain configured trial and tax policies", async ({ page }) => {
   await mockAdmin(page);
   const policy = { trial_period_days: 14, single_subscription: true, trial_once_per_subject: true, automatic_tax: true, billing_address_required: true };
