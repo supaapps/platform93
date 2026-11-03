@@ -2515,7 +2515,7 @@ select,
   pointer-events: none;
   overflow: hidden;
 }
-.toast-success {
+.toast-success, .credential-notice {
   background: var(--p93-mint-deep);
   border-color: color-mix(in srgb, var(--p93-mint) 70%, var(--p93-dark-text));
 }
@@ -3105,3 +3105,8 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
 .record-id { font-size: 11px; color: var(--muted); max-width: 240px; }
 .record-id summary { cursor: pointer; padding: 8px; }
 .record-id code { display: block; overflow-wrap: anywhere; padding: 8px; }
+/* One-time credentials are independent of ordinary transient notifications. */
+.credential-notices { position: fixed; z-index: 2000; bottom: 1rem; right: 1rem; display: grid; gap: .75rem; max-width: min(36rem, calc(100vw - 2rem)); max-height: min(60dvh, calc(100dvh - 2rem)); overflow-y: auto; }
+.credential-notices .credential-notice { position: relative; inset: auto; width: 100%; margin: 0; pointer-events: auto; }
+.credential-notice span { overflow-wrap: anywhere; user-select: text; }
+.credential-notice small { display: block; margin-top: .5rem; }

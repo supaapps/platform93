@@ -27,6 +27,7 @@ WHERE a.id=$1 AND a.deleted_at IS NULL AND pc.status='active' AND (pc.applicatio
 
 type stripeEvent struct {
 	ID         string `json:"id"`
+	Created    int64  `json:"created"`
 	Type       string `json:"type"`
 	APIVersion string `json:"api_version"`
 	Data       struct {
@@ -244,6 +245,9 @@ WHERE provider_connection_id=$1 AND provider_event_id=$2 FOR UPDATE`, connection
 			return fmt.Errorf("stored Stripe event is invalid")
 		}
 		if normalize := stripeNormalizers[eventType]; normalize != nil {
+			if event.Created > 0 {
+				ctx = context.WithValue(ctx, stripeObservationTime{}, time.Unix(event.Created, 0))
+			}
 			if err = normalize(s, ctx, tx, application, connection, event.Data.Object); err != nil {
 				return err
 			}

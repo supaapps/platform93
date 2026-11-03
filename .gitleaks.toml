@@ -10,6 +10,7 @@ condition = "AND"
 paths = ['''^internal/generated/openapi\.gen\.go$''']
 regexTarget = "secret"
 regexes = [
+  '''^VS3WtMIJ3VlS2mRaBIIGnfUhV7D1phh45IfcpIF3V862FLvrBZx709XD0L79RSB1RLjUnoLAoxxPKh04$''',
   '''^yDG4fArMIMwK6NnFudYc6jfrqs/MFfomNELzDPLVnPGNb8JzcIb0Gn60O4HMrze85id5cvS3p3979uSb$''',
   '''^dFSo9p0RAipQLOtpQwq0THNqQIFAsRiZcWHIBG4SHQSXwHfoA9a6lnrkiWAShJpagRAGg4TqkOAGw9ff$''',
   '''^s8lkYIuCGcDV1sNjheNSA7nTl9\+eniimy988P7FXtU8IKLl/gKPkGWnmwZsci7dn6wRsL17Myfv8VYm2$''',

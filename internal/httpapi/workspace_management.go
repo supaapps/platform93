@@ -114,6 +114,16 @@ func (s *Server) deleteWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rollback(tx, r.Context())
+	var billingBusy bool
+	err = tx.QueryRow(r.Context(), `SELECT NOT pg_try_advisory_xact_lock(hashtextextended($1,0))
+OR EXISTS(SELECT 1 FROM subscriptions WHERE application_id=$2 AND subject_type='workspace' AND subject_id=$3 AND status IN('active','trialing','past_due','paused','incomplete','unpaid'))
+OR EXISTS(SELECT 1 FROM checkout_sessions WHERE application_id=$2 AND subject_type='workspace' AND subject_id=$3 AND status IN('pending','open'))
+OR EXISTS(SELECT 1 FROM checkout_sessions c JOIN prices p ON p.id=c.price_id WHERE c.application_id=$2 AND c.subject_type='workspace' AND c.subject_id=$3 AND c.status='completed' AND p.mode='recurring' AND NOT EXISTS(SELECT 1 FROM subscriptions s WHERE s.application_id=c.application_id AND s.metadata->>'platform93_checkout_id'=c.id::text))
+OR EXISTS(SELECT 1 FROM billing_subject_cancellations WHERE application_id=$2 AND subject_type='workspace' AND subject_id=$3)`, applicationID+":workspace:"+workspaceID, applicationID, workspaceID).Scan(&billingBusy)
+	if err != nil || billingBusy {
+		kernel.WriteProblem(w, r, http.StatusConflict, "workspace_billing_unsettled", "Cancel subscriptions and reconcile or expire pending checkout before archiving this workspace.")
+		return
+	}
 	result, err := tx.Exec(r.Context(), `UPDATE workspaces SET deleted_at=now(),version=version+1,updated_at=now()
 WHERE id=$1 AND application_id=$2 AND deleted_at IS NULL`, workspaceID, applicationID)
 	if err != nil || result.RowsAffected() != 1 {
