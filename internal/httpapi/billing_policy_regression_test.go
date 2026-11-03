@@ -505,6 +505,68 @@ func TestBillingPolicyPostgresUpgradeFromReleasedSchema(t *testing.T) {
 	}
 }
 
+func TestBillingPolicyPostgresSignedReceiptGraceAndStaleEvents(t *testing.T) {
+	b := newBillingReviewFixture(t)
+	config := b.app.DB.Config()
+	config.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(t.Context(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	b.app.DB = pool
+	secret := "whsec_grace_fixture_only"
+	sealed, err := b.app.Vault.Encrypt([]byte(secret), "billing-provider:"+b.provider+":webhook")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.exec(`UPDATE provider_connections SET webhook_secret_ciphertext=$1 WHERE id=$2`, sealed, b.provider)
+	checkout := kernel.NewID().String()
+	b.exec(`INSERT INTO checkout_sessions(id,application_id,subject_type,subject_id,price_id,provider_connection_id,status,policy_snapshot,success_uri,cancel_uri) VALUES($1,$2,'workspace',$3,$4,$5,'completed','{}','https://client.example.test/callback','https://client.example.test/callback')`, checkout, b.application, b.workspace, b.price, b.provider)
+	f := &stripeWebhookFixture{workspaceHTTPFixture: b.workspaceHTTPFixture, connection: b.provider, publicID: b.provider, secret: secret}
+	first := b.app.Now().Add(-48 * time.Hour).Truncate(time.Second)
+	body, err := json.Marshal(map[string]any{"id": "evt_grace_retry", "type": "customer.subscription.updated", "created": first.Unix(), "data": map[string]any{"object": b.subscription(checkout, "past_due", true)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.exec(`CREATE FUNCTION reject_grace_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture rollback'; END $$`)
+	b.exec(`CREATE TRIGGER reject_grace_event BEFORE INSERT ON domain_events FOR EACH ROW EXECUTE FUNCTION reject_grace_event()`)
+	if w := f.raw(body, b.app.Now(), true); w.Code != 500 {
+		t.Fatalf("receipt failure acknowledged: %d %s", w.Code, w.Body)
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM subscriptions`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed normalization was not atomic: %d %v", count, err)
+	}
+	b.exec(`DROP TRIGGER reject_grace_event ON domain_events`)
+	if w := f.raw(body, b.app.Now(), true); w.Code != 200 {
+		t.Fatalf("receipt retry failed: %d %s", w.Code, w.Body)
+	}
+	var since *time.Time
+	if err := pool.QueryRow(t.Context(), `SELECT past_due_since FROM subscriptions WHERE provider_subscription_id='sub_fixture'`).Scan(&since); err != nil || since == nil || !since.Equal(first) {
+		t.Fatalf("retry lost original signed event timestamp: %v %v", since, err)
+	}
+	for index, observation := range []struct {
+		status string
+		at     time.Time
+	}{{"active", first.Add(24 * time.Hour)}, {"past_due", first.Add(time.Hour)}} {
+		body, err := json.Marshal(map[string]any{"id": fmt.Sprintf("evt_grace_%d", index), "type": "customer.subscription.updated", "created": observation.at.Unix(), "data": map[string]any{"object": b.subscription(checkout, observation.status, true)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if w := f.raw(body, b.app.Now(), true); w.Code != 200 {
+			t.Fatalf("observation failed: %d %s", w.Code, w.Body)
+		}
+	}
+	var status string
+	if err := pool.QueryRow(t.Context(), `SELECT status,past_due_since FROM subscriptions WHERE provider_subscription_id='sub_fixture'`).Scan(&status, &since); err != nil || status != "active" || since != nil {
+		t.Fatalf("stale event undid recovery: %s %v %v", status, since, err)
+	}
+	if err := pool.QueryRow(t.Context(), `SELECT count(*) FROM domain_events WHERE event_type='billing.subscription.updated'`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("failed/stale receipt emitted subscription events: %d %v", count, err)
+	}
+}
+
 func TestBillingPolicyPostgresCancelBeforeSubscriptionWebhook(t *testing.T) {
 	b := newBillingReviewFixture(t)
 	id := kernel.NewID().String()
