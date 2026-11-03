@@ -205,4 +205,33 @@ FROM entitlement_grants g WHERE g.application_id=$1 AND g.source_type='subscript
 WHERE g.application_id=$1 AND g.source_type='subscription' ORDER BY a.created_at DESC,a.id DESC LIMIT 1`, applicationID).Scan(&latestAction); err != nil || latestAction != "restored" {
 		t.Fatalf("provider reactivation was not append-only: action=%s err=%v", latestAction, err)
 	}
+	for index, status := range []string{"past_due", "past_due", "active"} {
+		if err = server.normalizeStripeSubscription(ctx, applicationID.String(), connectionID.String(), map[string]any{
+			"id": "sub_test", "status": status, "metadata": map[string]any{"platform93_checkout_id": checkoutID.String()},
+			"items": map[string]any{"data": []any{map[string]any{"id": "si_test", "current_period_start": float64(periodEnd), "current_period_end": float64(newPeriodEnd)}}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var since *time.Time
+		if err = db.QueryRow(ctx, `SELECT past_due_since FROM subscriptions WHERE application_id=$1 AND provider_subscription_id='sub_test'`, applicationID).Scan(&since); err != nil {
+			t.Fatal(err)
+		}
+		if status == "active" {
+			if since != nil {
+				t.Fatal("payment recovery did not clear grace timestamp")
+			}
+		} else {
+			if since == nil {
+				t.Fatal("payment failure did not record grace timestamp")
+			}
+			// Backdate the first failure so a repeated event must preserve it.
+			if index == 0 {
+				if _, err = db.Exec(ctx, `UPDATE subscriptions SET past_due_since=now()-interval '4 days' WHERE application_id=$1`, applicationID); err != nil {
+					t.Fatal(err)
+				}
+			} else if since.After(time.Now().Add(-72 * time.Hour)) {
+				t.Fatal("replayed payment failure extended grace")
+			}
+		}
+	}
 }

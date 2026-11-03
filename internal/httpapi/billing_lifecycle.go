@@ -1,6 +1,9 @@
 package httpapi
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -264,27 +267,10 @@ func (s *Server) cancelSubscription(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	method := http.MethodPost
-	form := url.Values{}
-	if atPeriodEnd {
-		form.Set("cancel_at_period_end", "true")
-	} else {
-		method = http.MethodDelete
-	}
-	response, err := stripeRequest(r.Context(), method, "https://api.stripe.com/v1/subscriptions/"+url.PathEscape(providerSubscriptionID), secret, version,
-		providerIdempotencyKey(r, "subscription-cancel"), form)
-	if err != nil {
-		kernel.WriteProblem(w, r, 502, "subscription_cancel_failed", "Stripe could not cancel the subscription.")
+	if err := s.cancelProviderSubscription(r.Context(), chi.URLParam(r, "application_id"), providerID, providerSubscriptionID, secret, version, providerIdempotencyKey(r, "subscription-cancel"), atPeriodEnd); err != nil {
+		kernel.WriteProblem(w, r, 502, "subscription_cancel_failed", "Cancellation or local reconciliation is pending. Retry with the same idempotency key.")
 		return
 	}
-	var subscription map[string]any
-	if json.Unmarshal(response, &subscription) != nil {
-		kernel.WriteProblem(w, r, 502, "invalid_provider_response", "Stripe returned an invalid subscription.")
-		return
-	}
-	_, _ = s.app.DB.Exec(r.Context(), `UPDATE subscriptions SET status=$1,cancel_at_period_end=$2,cancel_at=$3,canceled_at=$4,updated_at=now()
-WHERE id=$5 AND provider_connection_id=$6`, stringValue(subscription["status"]), boolValue(subscription["cancel_at_period_end"]),
-		unixTime(subscription["cancel_at"]), unixTime(subscription["canceled_at"]), chi.URLParam(r, "subscription_id"), providerID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -638,7 +624,8 @@ func stringValue(value any) string { result, _ := value.(string); return result 
 
 func providerIdempotencyKey(r *http.Request, operation string) string {
 	if key := strings.TrimSpace(r.Header.Get("Idempotency-Key")); key != "" {
-		return key
+		sum := sha256.Sum256([]byte(operation + ":" + chi.URLParam(r, "application_id") + ":" + actor(r).Type + ":" + actor(r).ID + ":" + r.URL.Path + ":" + key))
+		return "platform93-" + hex.EncodeToString(sum[:])
 	}
 	return "platform93-" + operation + "-" + kernel.NewID().String()
 }
